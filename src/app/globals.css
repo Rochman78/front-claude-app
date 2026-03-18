@@ -7,3 +7,34 @@ body {
   background: #030712;
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Force readable contrast on FrontApp HTML emails embedded in dark theme */
+.email-body,
+.email-body * {
+  color: #e5e7eb !important;
+  background-color: transparent !important;
+  border-color: #374151 !important;
+}
+
+.email-body a {
+  color: #60a5fa !important;
+}
+
+.email-body table {
+  border-collapse: collapse;
+}
+
+.email-body td,
+.email-body th {
+  padding: 4px 8px;
+  border: 1px solid #374151 !important;
+}
+
+.email-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+.email-body hr {
+  border-color: #4b5563 !important;
+}

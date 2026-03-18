@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { Agent, AgentFile, SharedFile, ChatMessage } from '@/types';
-import { getAgent, updateAgent, getSharedFilesForAgent, getChatMessages, saveChatMessages } from '@/lib/storage';
+import { Agent, AgentFile, SharedFile } from '@/types';
+import { getAgent, updateAgent, getSharedFilesForAgent } from '@/lib/storage';
 
-type Tab = 'instructions' | 'knowledge' | 'chat';
+type Tab = 'instructions' | 'knowledge';
 
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -13,13 +13,10 @@ export default function AgentDetailPage() {
   const [activeTab, setActiveTab] = useState<Tab>('instructions');
   const [instructions, setInstructions] = useState('');
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [newFileContent, setNewFileContent] = useState('');
   const [showFileForm, setShowFileForm] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [uploadError, setUploadError] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -28,15 +25,10 @@ export default function AgentDetailPage() {
         setAgent(a);
         setInstructions(a.instructions);
         setSharedFiles(await getSharedFilesForAgent(id));
-        setChatMessages(await getChatMessages(`agent_${id}`));
       }
     };
     load();
   }, [id]);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
 
   const saveInstructions = async () => {
     if (!agent) return;
@@ -47,9 +39,16 @@ export default function AgentDetailPage() {
 
   const addFile = async () => {
     if (!agent || !newFileName.trim() || !newFileContent.trim()) return;
+    const name = newFileName.trim();
+
+    if (agent.files.some((f) => f.name === name)) {
+      setUploadError(`Un fichier "${name}" existe déjà.`);
+      return;
+    }
+
     const file: AgentFile = {
       id: crypto.randomUUID(),
-      name: newFileName.trim(),
+      name,
       content: newFileContent.trim(),
       createdAt: new Date().toISOString(),
     };
@@ -59,6 +58,7 @@ export default function AgentDetailPage() {
     setNewFileName('');
     setNewFileContent('');
     setShowFileForm(false);
+    setUploadError('');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,9 +81,24 @@ export default function AgentDetailPage() {
       });
 
     const newFiles = await Promise.all(Array.from(files).map(readFile));
-    const updated = { ...agent, files: [...agent.files, ...newFiles] };
-    await updateAgent(updated);
-    setAgent(updated);
+
+    // Filter out duplicates by name
+    const existingNames = new Set(agent.files.map((f) => f.name));
+    const duplicates = newFiles.filter((f) => existingNames.has(f.name));
+    const unique = newFiles.filter((f) => !existingNames.has(f.name));
+
+    if (duplicates.length > 0) {
+      setUploadError(`Fichiers ignorés (déjà existants) : ${duplicates.map((f) => f.name).join(', ')}`);
+    } else {
+      setUploadError('');
+    }
+
+    if (unique.length > 0) {
+      const updated = { ...agent, files: [...agent.files, ...unique] };
+      await updateAgent(updated);
+      setAgent(updated);
+    }
+
     e.target.value = '';
   };
 
@@ -94,66 +109,6 @@ export default function AgentDetailPage() {
     setAgent(updated);
   };
 
-  const sendMessage = async () => {
-    if (!chatInput.trim() || !agent || isLoading) return;
-
-    const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: chatInput.trim(),
-      timestamp: new Date().toISOString(),
-    };
-
-    const updatedWithUser = [...chatMessages, userMsg];
-    setChatMessages(updatedWithUser);
-    setChatInput('');
-    setIsLoading(true);
-
-    // Build system prompt with context
-    const allFiles = [
-      ...agent.files.map((f) => `[Fichier: ${f.name}]\n${f.content}`),
-      ...sharedFiles.map((f) => `[Fichier partagé: ${f.name}]\n${f.content}`),
-    ].join('\n\n');
-
-    const systemPrompt = `Tu es l'agent "${agent.name}" (${agent.email}).\n\n${agent.instructions || ''}\n\nBase de connaissances:\n${allFiles || '(aucun fichier)'}`;
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemPrompt,
-          messages: updatedWithUser.map((m) => ({ role: m.role, content: m.content })),
-        }),
-      });
-
-      const data = await res.json();
-
-      const assistantMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: data.error ? `Erreur: ${data.error}` : data.content,
-        timestamp: new Date().toISOString(),
-      };
-
-      const updated = [...updatedWithUser, assistantMsg];
-      setChatMessages(updated);
-      await saveChatMessages(`agent_${id}`, updated);
-    } catch {
-      const errorMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: 'Erreur de connexion à l\'API. Vérifiez que ANTHROPIC_API_KEY est configurée.',
-        timestamp: new Date().toISOString(),
-      };
-      const updated = [...updatedWithUser, errorMsg];
-      setChatMessages(updated);
-      await saveChatMessages(`agent_${id}`, updated);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   if (!agent) {
     return <div className="py-10 text-center text-gray-500">Agent introuvable</div>;
   }
@@ -161,7 +116,6 @@ export default function AgentDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'instructions', label: 'Instructions' },
     { key: 'knowledge', label: 'Base de connaissances' },
-    { key: 'chat', label: 'Chat' },
   ];
 
   return (
@@ -224,13 +178,19 @@ export default function AgentDetailPage() {
                   <input type="file" className="hidden" onChange={handleFileUpload} multiple />
                 </label>
                 <button
-                  onClick={() => setShowFileForm(!showFileForm)}
+                  onClick={() => { setShowFileForm(!showFileForm); setUploadError(''); }}
                   className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
                 >
                   {showFileForm ? 'Annuler' : '+ Manuel'}
                 </button>
               </div>
             </div>
+
+            {uploadError && (
+              <div className="mb-4 rounded-lg bg-red-600/10 border border-red-600/30 px-4 py-3 text-sm text-red-400">
+                {uploadError}
+              </div>
+            )}
 
             {showFileForm && (
               <div className="mb-4 flex flex-col gap-3 bg-gray-900 rounded-lg p-4">
@@ -295,53 +255,6 @@ export default function AgentDetailPage() {
                 ))}
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Chat Tab */}
-      {activeTab === 'chat' && (
-        <div className="rounded-xl bg-gray-800 border border-gray-700 flex flex-col h-[500px]">
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {chatMessages.length === 0 && (
-              <div className="text-center text-gray-500 py-10">
-                Commencez une conversation avec l&apos;agent &quot;{agent.name}&quot;
-              </div>
-            )}
-            {chatMessages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-xl px-4 py-3 text-sm whitespace-pre-wrap ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-200'
-                  }`}
-                >
-                  {msg.content}
-                </div>
-              </div>
-            ))}
-            <div ref={chatEndRef} />
-          </div>
-          <div className="border-t border-gray-700 p-4 flex gap-3">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-              placeholder="Écrivez un message..."
-              className="flex-1 rounded-lg bg-gray-900 border border-gray-600 px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-            />
-            <button
-              onClick={sendMessage}
-              disabled={isLoading}
-              className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {isLoading ? '...' : 'Envoyer'}
-            </button>
           </div>
         </div>
       )}

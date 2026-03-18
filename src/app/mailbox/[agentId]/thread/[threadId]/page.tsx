@@ -22,6 +22,7 @@ export default function ThreadDetailPage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [subject, setSubject] = useState('');
   const [messages, setMessages] = useState<FrontMessage[]>([]);
+  const [isPartial, setIsPartial] = useState(false);
   const [loadingThread, setLoadingThread] = useState(true);
   const [threadError, setThreadError] = useState('');
   const [view, setView] = useState<View>('thread');
@@ -29,6 +30,7 @@ export default function ThreadDetailPage() {
   const [chatInput, setChatInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [draft, setDraft] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -45,8 +47,13 @@ export default function ThreadDetailPage() {
         } else {
           const msgs: FrontMessage[] = data._results || [];
           setMessages(msgs.sort((a, b) => a.created_at - b.created_at));
-          if (msgs.length > 0 && msgs[0].subject) {
+          if (data._subject) {
+            setSubject(data._subject);
+          } else if (msgs.length > 0 && msgs[0].subject) {
             setSubject(msgs[0].subject);
+          }
+          if (data._partial) {
+            setIsPartial(true);
           }
         }
       } catch {
@@ -74,16 +81,19 @@ export default function ThreadDetailPage() {
     return div.textContent || div.innerText || '';
   };
 
-  const buildSystemPrompt = async () => {
-    if (!agent || messages.length === 0) return '';
-    const msgs = messages
+  const buildEmailContext = () => {
+    return messages
       .map((m) => {
-        const from = m.author?.email || 'inconnu';
+        const from = m.author?.email || m.author?.name || 'inconnu';
         const to = m.recipients?.map((r) => r.handle).join(', ') || 'inconnu';
         const date = new Date(m.created_at * 1000).toLocaleString('fr-FR');
         return `De: ${from}\nÀ: ${to}\nDate: ${date}\n\n${stripHtml(m.body)}`;
       })
       .join('\n\n---\n\n');
+  };
+
+  const buildSystemPrompt = async () => {
+    if (!agent || messages.length === 0) return '';
 
     const sharedFiles = await getSharedFilesForAgent(agentId);
     const allFiles = [
@@ -101,9 +111,59 @@ ${allFiles || '(vide)'}
 CONVERSATION EMAIL COMPLÈTE À ANALYSER:
 Sujet: ${subject || '(Sans sujet)'}
 
-${msgs}
+${buildEmailContext()}
 
 Tu dois analyser cette conversation email et répondre aux questions de l'utilisateur en te basant sur tes instructions et ta base de connaissances.`;
+  };
+
+  const generateDraft = async () => {
+    if (!agent || messages.length === 0 || isGeneratingDraft) return;
+
+    setIsGeneratingDraft(true);
+
+    try {
+      const sharedFiles = await getSharedFilesForAgent(agentId);
+      const allFiles = [
+        ...agent.files.map((f) => `[${f.name}]\n${f.content}`),
+        ...sharedFiles.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
+      ].join('\n\n');
+
+      const systemPrompt = `Tu es l'agent "${agent.name}" (${agent.email}).
+
+${agent.instructions || ''}
+
+BASE DE CONNAISSANCES:
+${allFiles || '(vide)'}
+
+CONVERSATION EMAIL COMPLÈTE:
+Sujet: ${subject || '(Sans sujet)'}
+
+${buildEmailContext()}
+
+Tu dois rédiger une réponse email professionnelle à cette conversation en te basant strictement sur tes instructions et ta base de connaissances.
+Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De:/À:", juste le texte de la réponse prête à envoyer.`;
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt,
+          messages: [{ role: 'user', content: 'Rédige le brouillon de réponse à cet email.' }],
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        alert(`Erreur: ${data.error}`);
+      } else {
+        setDraft(data.content);
+      }
+    } catch {
+      alert("Erreur de connexion à l'API.");
+    } finally {
+      setIsGeneratingDraft(false);
+    }
   };
 
   const sendMessage = async () => {
@@ -240,6 +300,11 @@ Tu dois analyser cette conversation email et répondre aux questions de l'utilis
           <div className="text-center py-12 text-gray-500">Aucun message dans cette conversation.</div>
         ) : (
           <div className="space-y-4">
+            {isPartial && (
+              <div className="rounded-lg bg-yellow-600/10 border border-yellow-600/30 px-4 py-3 text-sm text-yellow-400">
+                Seul le dernier message est affiché. Ajoutez le scope <strong>messages:read</strong> au token FrontApp pour voir l&apos;historique complet.
+              </div>
+            )}
             {messages.map((msg) => (
               <div key={msg.id} className="rounded-xl bg-gray-800 p-5 border border-gray-700">
                 <div className="flex items-start justify-between mb-3">
@@ -278,7 +343,7 @@ Tu dois analyser cette conversation email et répondre aux questions de l'utilis
       {view === 'chat' && (
         <div className="rounded-xl bg-gray-800 border border-gray-700 flex flex-col h-[500px]">
           <div className="px-4 py-2 border-b border-gray-700 text-xs text-gray-500">
-            L&apos;assistant a reçu la conversation email complète + instructions + base de connaissances
+            L&apos;assistant a reçu la conversation email + instructions + base de connaissances
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {chatMessages.length === 0 && (
@@ -334,12 +399,26 @@ Tu dois analyser cette conversation email et répondre aux questions de l'utilis
       {/* Draft View */}
       {view === 'draft' && (
         <div className="rounded-xl bg-gray-800 p-6 border border-gray-700">
-          <h2 className="text-lg font-semibold text-white mb-4">Éditeur de brouillon</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white">Brouillon de réponse</h2>
+            <button
+              onClick={generateDraft}
+              disabled={isGeneratingDraft || messages.length === 0}
+              className="rounded-lg bg-purple-600 px-5 py-2 text-sm font-semibold text-white hover:bg-purple-700 transition-colors disabled:opacity-50"
+            >
+              {isGeneratingDraft ? 'Génération en cours...' : 'Générer un brouillon'}
+            </button>
+          </div>
+          {isGeneratingDraft && (
+            <div className="mb-4 rounded-lg bg-purple-600/10 border border-purple-600/30 px-4 py-3 text-sm text-purple-300">
+              L&apos;agent analyse la conversation et rédige une réponse selon ses instructions...
+            </div>
+          )}
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            rows={10}
-            placeholder="Rédigez votre réponse ici..."
+            rows={12}
+            placeholder="Cliquez sur « Générer un brouillon » pour que l'agent prépare une réponse automatique, ou rédigez manuellement..."
             className="w-full rounded-lg bg-gray-900 border border-gray-600 px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-y"
           />
           <div className="mt-4 flex gap-3 justify-end">
@@ -351,7 +430,7 @@ Tu dois analyser cette conversation email et répondre aux questions de l'utilis
             </button>
             <button
               onClick={handlePushToFront}
-              disabled={isSending}
+              disabled={isSending || !draft.trim()}
               className="rounded-lg bg-orange-600 px-6 py-2 text-sm font-bold text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
             >
               {isSending ? 'Envoi...' : 'Pousser vers FrontApp'}

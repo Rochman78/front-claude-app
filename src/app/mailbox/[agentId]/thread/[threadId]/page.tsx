@@ -15,7 +15,7 @@ interface FrontMessage {
   is_inbound: boolean;
 }
 
-type View = 'thread' | 'chat' | 'draft';
+type View = 'thread' | 'draft';
 
 export default function ThreadDetailPage() {
   const { agentId, threadId } = useParams<{ agentId: string; threadId: string }>();
@@ -66,7 +66,7 @@ export default function ThreadDetailPage() {
   }, [agentId, threadId]);
 
   useEffect(() => {
-    if (view === 'chat') {
+    if (view === 'draft') {
       getChatMessages(`thread_${agentId}_${threadId}`).then(setChatMessages);
     }
   }, [view, agentId, threadId]);
@@ -92,7 +92,7 @@ export default function ThreadDetailPage() {
       .join('\n\n---\n\n');
   };
 
-  const buildSystemPrompt = async () => {
+  const buildSystemPrompt = async (forDraft = false) => {
     if (!agent || messages.length === 0) return '';
 
     const sharedFiles = await getSharedFilesForAgent(agentId);
@@ -101,48 +101,42 @@ export default function ThreadDetailPage() {
       ...sharedFiles.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
     ].join('\n\n');
 
-    return `Tu es l'agent "${agent.name}" (${agent.email}).
+    const base = `Tu es l'agent "${agent.name}" (${agent.email}).
 
 ${agent.instructions || ''}
 
 BASE DE CONNAISSANCES:
 ${allFiles || '(vide)'}
 
-CONVERSATION EMAIL COMPLÈTE À ANALYSER:
+CONVERSATION EMAIL:
 Sujet: ${subject || '(Sans sujet)'}
 
-${buildEmailContext()}
+${buildEmailContext()}`;
 
-Tu dois analyser cette conversation email et répondre aux questions de l'utilisateur en te basant sur tes instructions et ta base de connaissances.`;
+    if (forDraft) {
+      return `${base}
+
+Tu dois rédiger une réponse email professionnelle à cette conversation en te basant strictement sur tes instructions et ta base de connaissances.
+Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De:/À:", juste le texte de la réponse prête à envoyer.`;
+    }
+
+    const draftContext = draft.trim()
+      ? `\n\nBROUILLON ACTUEL DE RÉPONSE:\n${draft}`
+      : '';
+
+    return `${base}${draftContext}
+
+Tu es un assistant qui aide à rédiger et améliorer la réponse à cet email. Tu as accès aux instructions, à la base de connaissances et à la conversation email.
+${draft.trim() ? "Un brouillon de réponse a déjà été généré. L'utilisateur peut te demander de le modifier." : ''}
+Réponds de manière concise et utile. Si on te demande de modifier le brouillon, renvoie la version complète modifiée.`;
   };
 
   const generateDraft = async () => {
     if (!agent || messages.length === 0 || isGeneratingDraft) return;
-
     setIsGeneratingDraft(true);
 
     try {
-      const sharedFiles = await getSharedFilesForAgent(agentId);
-      const allFiles = [
-        ...agent.files.map((f) => `[${f.name}]\n${f.content}`),
-        ...sharedFiles.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
-      ].join('\n\n');
-
-      const systemPrompt = `Tu es l'agent "${agent.name}" (${agent.email}).
-
-${agent.instructions || ''}
-
-BASE DE CONNAISSANCES:
-${allFiles || '(vide)'}
-
-CONVERSATION EMAIL COMPLÈTE:
-Sujet: ${subject || '(Sans sujet)'}
-
-${buildEmailContext()}
-
-Tu dois rédiger une réponse email professionnelle à cette conversation en te basant strictement sur tes instructions et ta base de connaissances.
-Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De:/À:", juste le texte de la réponse prête à envoyer.`;
-
+      const systemPrompt = await buildSystemPrompt(true);
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -153,7 +147,6 @@ Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De
       });
 
       const data = await res.json();
-
       if (data.error) {
         alert(`Erreur: ${data.error}`);
       } else {
@@ -182,7 +175,7 @@ Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De
     setIsLoading(true);
 
     try {
-      const systemPrompt = await buildSystemPrompt();
+      const systemPrompt = await buildSystemPrompt(false);
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -208,7 +201,7 @@ Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: "Erreur de connexion à l'API. Vérifiez que ANTHROPIC_API_KEY est configurée.",
+        content: "Erreur de connexion à l'API.",
         timestamp: new Date().toISOString(),
       };
       const updated = [...updatedWithUser, errorMsg];
@@ -220,24 +213,15 @@ Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De
   };
 
   const handlePushToFront = async () => {
-    if (!draft.trim()) {
-      alert('Le brouillon est vide.');
-      return;
-    }
-
+    if (!draft.trim()) return;
     setIsSending(true);
     try {
       const res = await fetch('/api/frontapp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId: threadId,
-          body: draft,
-        }),
+        body: JSON.stringify({ conversationId: threadId, body: draft }),
       });
-
       const data = await res.json();
-
       if (data.error) {
         alert(`Erreur FrontApp: ${data.error}`);
       } else {
@@ -256,13 +240,13 @@ Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De
   }
 
   return (
-    <div className="max-w-4xl mx-auto py-6">
+    <div className="max-w-5xl mx-auto py-6 px-4">
       <div className="mb-4">
         <h1 className="text-xl font-bold text-white">{subject || '(Sans sujet)'}</h1>
-        <p className="text-sm text-gray-400">{agent.name} — {agent.email}</p>
+        <p className="text-sm text-gray-400 mt-1">{agent.name}</p>
       </div>
 
-      {/* View tabs */}
+      {/* Tabs */}
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => setView('thread')}
@@ -270,15 +254,7 @@ Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De
             view === 'thread' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
           }`}
         >
-          Thread
-        </button>
-        <button
-          onClick={() => setView('chat')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            view === 'chat' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-          }`}
-        >
-          Discuter avec l&apos;assistant
+          Conversation
         </button>
         <button
           onClick={() => setView('draft')}
@@ -293,44 +269,44 @@ Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De
       {/* Thread View */}
       {view === 'thread' && (
         loadingThread ? (
-          <div className="text-center py-12 text-gray-500">Chargement des messages...</div>
+          <div className="text-center py-12 text-gray-400">Chargement des messages...</div>
         ) : threadError ? (
           <div className="text-center py-12 text-red-400">{threadError}</div>
         ) : messages.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">Aucun message dans cette conversation.</div>
+          <div className="text-center py-12 text-gray-400">Aucun message dans cette conversation.</div>
         ) : (
           <div className="space-y-4">
             {isPartial && (
-              <div className="rounded-lg bg-yellow-600/10 border border-yellow-600/30 px-4 py-3 text-sm text-yellow-400">
+              <div className="rounded-lg bg-yellow-900/30 border border-yellow-700/50 px-4 py-3 text-sm text-yellow-300">
                 Seul le dernier message est affiché. Ajoutez le scope <strong>messages:read</strong> au token FrontApp pour voir l&apos;historique complet.
               </div>
             )}
             {messages.map((msg) => (
-              <div key={msg.id} className="rounded-xl bg-gray-800 p-5 border border-gray-700">
+              <div key={msg.id} className="rounded-xl bg-gray-800/80 p-5 border border-gray-700">
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <div className="font-semibold text-white">
                       {msg.author?.name || msg.author?.email || 'Inconnu'}
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-gray-400">
                       À : {msg.recipients?.map((r) => r.name || r.handle).join(', ') || 'Inconnu'}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                       msg.is_inbound
-                        ? 'bg-green-600/20 text-green-400'
-                        : 'bg-blue-600/20 text-blue-400'
+                        ? 'bg-green-500/20 text-green-300'
+                        : 'bg-blue-500/20 text-blue-300'
                     }`}>
                       {msg.is_inbound ? 'Reçu' : 'Envoyé'}
                     </span>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-gray-400">
                       {new Date(msg.created_at * 1000).toLocaleString('fr-FR')}
                     </span>
                   </div>
                 </div>
                 <div
-                  className="text-sm text-gray-300 leading-relaxed prose prose-invert max-w-none"
+                  className="email-body text-sm leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: msg.body }}
                 />
               </div>
@@ -339,102 +315,105 @@ Rédige UNIQUEMENT le corps de l'email de réponse, sans objet, sans formule "De
         )
       )}
 
-      {/* Chat View */}
-      {view === 'chat' && (
-        <div className="rounded-xl bg-gray-800 border border-gray-700 flex flex-col h-[500px]">
-          <div className="px-4 py-2 border-b border-gray-700 text-xs text-gray-500">
-            L&apos;assistant a reçu la conversation email + instructions + base de connaissances
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {chatMessages.length === 0 && (
-              <div className="text-center text-gray-500 py-10">
-                Posez une question sur cette conversation email
-              </div>
-            )}
-            {chatMessages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-xl px-4 py-3 text-sm whitespace-pre-wrap ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-200'
-                  }`}
-                >
-                  {msg.content}
-                </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-gray-700 text-gray-400 rounded-xl px-4 py-3 text-sm">
-                  En train de réfléchir...
-                </div>
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-          <div className="border-t border-gray-700 p-4 flex gap-3">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-              placeholder="Posez une question sur cet email..."
-              className="flex-1 rounded-lg bg-gray-900 border border-gray-600 px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-            />
-            <button
-              onClick={sendMessage}
-              disabled={isLoading}
-              className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {isLoading ? '...' : 'Envoyer'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Draft View */}
+      {/* Draft + Chat View (Claude Projects style) */}
       {view === 'draft' && (
-        <div className="rounded-xl bg-gray-800 p-6 border border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">Brouillon de réponse</h2>
-            <button
-              onClick={generateDraft}
-              disabled={isGeneratingDraft || messages.length === 0}
-              className="rounded-lg bg-purple-600 px-5 py-2 text-sm font-semibold text-white hover:bg-purple-700 transition-colors disabled:opacity-50"
-            >
-              {isGeneratingDraft ? 'Génération en cours...' : 'Générer un brouillon'}
-            </button>
-          </div>
-          {isGeneratingDraft && (
-            <div className="mb-4 rounded-lg bg-purple-600/10 border border-purple-600/30 px-4 py-3 text-sm text-purple-300">
-              L&apos;agent analyse la conversation et rédige une réponse selon ses instructions...
+        <div className="flex flex-col gap-4">
+          {/* Draft section */}
+          <div className="rounded-xl bg-gray-800/80 border border-gray-700 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-white">Brouillon de réponse</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={generateDraft}
+                  disabled={isGeneratingDraft || messages.length === 0}
+                  className="rounded-lg bg-purple-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-purple-700 transition-colors disabled:opacity-50"
+                >
+                  {isGeneratingDraft ? 'Génération...' : draft.trim() ? 'Régénérer' : 'Générer le brouillon'}
+                </button>
+                {draft.trim() && (
+                  <button
+                    onClick={handlePushToFront}
+                    disabled={isSending}
+                    className="rounded-lg bg-orange-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
+                  >
+                    {isSending ? 'Envoi...' : 'Envoyer vers FrontApp'}
+                  </button>
+                )}
+              </div>
             </div>
-          )}
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={12}
-            placeholder="Cliquez sur « Générer un brouillon » pour que l'agent prépare une réponse automatique, ou rédigez manuellement..."
-            className="w-full rounded-lg bg-gray-900 border border-gray-600 px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-y"
-          />
-          <div className="mt-4 flex gap-3 justify-end">
-            <button
-              onClick={() => setView('chat')}
-              className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-semibold text-gray-300 hover:bg-gray-600 transition-colors"
-            >
-              Retour au chat
-            </button>
-            <button
-              onClick={handlePushToFront}
-              disabled={isSending || !draft.trim()}
-              className="rounded-lg bg-orange-600 px-6 py-2 text-sm font-bold text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
-            >
-              {isSending ? 'Envoi...' : 'Pousser vers FrontApp'}
-            </button>
+            {isGeneratingDraft && (
+              <div className="mb-3 rounded-lg bg-purple-900/20 border border-purple-700/40 px-4 py-3 text-sm text-purple-300">
+                L&apos;agent analyse la conversation et rédige une réponse selon ses instructions...
+              </div>
+            )}
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={10}
+              placeholder="Cliquez sur « Générer le brouillon » pour que l'agent prépare une réponse automatique..."
+              className="w-full rounded-lg bg-gray-900 border border-gray-600 px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-y text-sm leading-relaxed"
+            />
+          </div>
+
+          {/* Chat section for iterating */}
+          <div className="rounded-xl bg-gray-800/80 border border-gray-700 flex flex-col" style={{ height: '400px' }}>
+            <div className="px-4 py-2.5 border-b border-gray-700 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-300">Itérer avec l&apos;agent</span>
+              <span className="text-xs text-gray-500">L&apos;agent a accès à la conversation, ses instructions et le brouillon actuel</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {chatMessages.length === 0 && !isLoading && (
+                <div className="text-center text-gray-500 py-8 text-sm">
+                  Discutez avec l&apos;agent pour affiner le brouillon.<br />
+                  Ex: &quot;Rends le ton plus formel&quot;, &quot;Ajoute une mention sur les délais&quot;...
+                </div>
+              )}
+              {chatMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700/80 text-gray-100'
+                    }`}
+                  >
+                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                  </div>
+                </div>
+              ))}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-700/80 text-gray-300 rounded-2xl px-4 py-3 text-sm">
+                    <span className="inline-flex gap-1">
+                      <span className="animate-pulse">●</span>
+                      <span className="animate-pulse" style={{ animationDelay: '0.2s' }}>●</span>
+                      <span className="animate-pulse" style={{ animationDelay: '0.4s' }}>●</span>
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="border-t border-gray-700 p-3 flex gap-2">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                placeholder="Demandez une modification du brouillon..."
+                className="flex-1 rounded-xl bg-gray-900 border border-gray-600 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              />
+              <button
+                onClick={sendMessage}
+                disabled={isLoading || !chatInput.trim()}
+                className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                Envoyer
+              </button>
+            </div>
           </div>
         </div>
       )}

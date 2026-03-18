@@ -32,6 +32,7 @@ export default function ThreadDetailPage() {
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [draft, setDraft] = useState('');
+  const [successUrl, setSuccessUrl] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,7 +68,16 @@ export default function ThreadDetailPage() {
 
   useEffect(() => {
     if (view === 'draft') {
-      getChatMessages(`thread_${agentId}_${threadId}`).then(setChatMessages);
+      getChatMessages(`thread_${agentId}_${threadId}`).then((msgs) => {
+        setChatMessages(msgs);
+        // Restore draft from last assistant message if draft is empty
+        if (!draft.trim() && msgs.length > 0) {
+          const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant');
+          if (lastAssistant && !lastAssistant.content.startsWith('Erreur')) {
+            setDraft(lastAssistant.content);
+          }
+        }
+      });
     }
   }, [view, agentId, threadId]);
 
@@ -191,12 +201,18 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
 
       const data = await res.json();
 
+      const assistantContent = data.error ? `Erreur: ${data.error}` : data.content;
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: data.error ? `Erreur: ${data.error}` : data.content,
+        content: assistantContent,
         timestamp: new Date().toISOString(),
       };
+
+      // Update draft with assistant's latest response (if not an error)
+      if (!data.error && assistantContent.trim()) {
+        setDraft(assistantContent);
+      }
 
       const updated = [...updatedWithUser, assistantMsg];
       setChatMessages(updated);
@@ -217,7 +233,10 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
   };
 
   const handlePushToFront = async () => {
-    if (!draft.trim()) return;
+    if (!draft.trim()) {
+      alert('Le brouillon est vide. Générez ou rédigez un brouillon avant de valider.');
+      return;
+    }
     setIsSending(true);
     try {
       const res = await fetch('/api/frontapp/send', {
@@ -229,7 +248,7 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
       if (data.error) {
         alert(`Erreur FrontApp: ${data.error}`);
       } else {
-        alert('Brouillon envoyé vers FrontApp avec succès !');
+        setSuccessUrl(data.frontUrl || `https://app.frontapp.com/open/${threadId}`);
         setDraft('');
       }
     } catch {
@@ -414,10 +433,43 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
             <button
               onClick={handlePushToFront}
               disabled={isSending || !draft.trim()}
-              className="rounded-xl bg-green-600 px-8 py-3 text-base font-bold text-white hover:bg-green-700 transition-colors disabled:opacity-40 uppercase tracking-wide"
+              className={`rounded-xl px-8 py-3 text-base font-bold text-white transition-colors uppercase tracking-wide ${
+                !draft.trim()
+                  ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                  : isSending
+                    ? 'bg-yellow-600'
+                    : 'bg-green-600 hover:bg-green-700'
+              }`}
             >
-              {isSending ? 'Envoi en cours...' : 'Valider le brouillon'}
+              {isSending ? 'Envoi en cours...' : !draft.trim() ? 'Aucun brouillon à valider' : 'Valider le brouillon'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Success modal */}
+      {successUrl && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-2xl border border-gray-600 p-8 max-w-md w-full mx-4 text-center">
+            <div className="text-4xl mb-4">&#10003;</div>
+            <h2 className="text-xl font-bold text-white mb-2">Brouillon envoyé !</h2>
+            <p className="text-gray-400 mb-6">Le brouillon a été créé avec succès dans FrontApp.</p>
+            <div className="flex flex-col gap-3">
+              <a
+                href={successUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-xl bg-blue-600 px-6 py-3 text-base font-semibold text-white hover:bg-blue-700 transition-colors"
+              >
+                Ouvrir dans FrontApp
+              </a>
+              <button
+                onClick={() => setSuccessUrl('')}
+                className="rounded-xl bg-gray-700 px-6 py-3 text-base font-medium text-gray-300 hover:bg-gray-600 transition-colors"
+              >
+                Fermer
+              </button>
+            </div>
           </div>
         </div>
       )}

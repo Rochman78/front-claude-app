@@ -71,9 +71,16 @@ export async function POST(req: NextRequest) {
     // Get the assignee or first teammate as author
     const authorId = conv.assignee?.id || conv.last_message?.author?.id;
 
+    // Convert plain text line breaks to HTML for proper formatting in FrontApp
+    const htmlBody = body
+      .split('\n')
+      .map((line: string) => line || '<br>')
+      .join('<br>');
+
     const draftBody: Record<string, unknown> = {
-      body,
+      body: htmlBody,
       channel_id: channelId,
+      mode: 'shared',
     };
 
     if (authorId) {
@@ -100,6 +107,7 @@ export async function POST(req: NextRequest) {
 
     const text = await response.text();
     const data = text ? JSON.parse(text) : { success: true };
+    data.frontUrl = `https://app.frontapp.com/open/${conversationId}`;
     return NextResponse.json(data);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Erreur inconnue';

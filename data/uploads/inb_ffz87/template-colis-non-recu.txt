@@ -1,0 +1,51 @@
+TEMPLATE — COLIS NON REÇU
+==========================
+
+QUAND UTILISER CE TEMPLATE :
+Quand un client signale ne pas avoir reçu son colis alors que le suivi indique une livraison effectuée ou que le délai de livraison est largement dépassé.
+
+AVANT DE RÉDIGER, VÉRIFIER :
+- Le statut du suivi de la commande (si disponible dans la conversation)
+- La date d'expédition vs la date du jour (le colis est-il réellement en retard ou encore dans les délais ?)
+- Si le client a déjà contacté le transporteur
+
+PIÈCE JOINTE OBLIGATOIRE :
+Joindre le PDF "Attestation sur l'honneur — Non-réception de colis" au mail.
+Signaler au gérant : [⚠️ PJ À JOINDRE : attestation-non-reception.pdf]
+
+STRUCTURE DU MAIL :
+1. Salutation + empathie (désolé, situation indépendante de notre volonté)
+2. Inviter le client à vérifier :
+   - Auprès de ses voisins, gardien(ne) ou concierge
+   - Auprès du point relais si applicable
+   - Le lien de suivi pour vérifier le dernier statut
+3. Expliquer la procédure si le colis reste introuvable :
+   - Compléter et signer l'attestation sur l'honneur jointe au mail
+   - Nous la retourner par email sous 7 jours
+   - Préciser s'il souhaite un renvoi gratuit ou un remboursement intégral
+4. Délai de traitement : nous traiterons sa demande sous 48h après réception de l'attestation
+5. Question / invitation à nous recontacter
+
+EXEMPLE DE BROUILLON (à adapter au cas du client) :
+
+Bonjour [Prénom],
+
+Nous sommes sincèrement désolés d'apprendre que vous n'avez pas reçu votre commande. Cette situation est indépendante de notre volonté et nous comprenons votre frustration.
+
+Avant toute chose, pourriez-vous vérifier les points suivants :
+vérifier auprès de vos voisins, gardien(ne) ou concierge si le colis n'a pas été déposé en votre absence,
+consulter votre lien de suivi pour vérifier le dernier statut du colis (parfois le colis est en instance au bureau de poste ou en point relais).
+
+Si malgré ces vérifications le colis reste introuvable, nous pouvons tout à fait lancer une procédure. Pour cela, nous avons besoin que vous complétiez et signiez l'attestation sur l'honneur que vous trouverez en pièce jointe de ce mail, puis que vous nous la retourniez par email sous 7 jours.
+
+Merci également de nous indiquer si vous souhaitez un renvoi gratuit de votre commande ou un remboursement intégral.
+
+Dès réception de votre attestation, nous traiterons votre demande sous 48 heures.
+
+N'hésitez pas à revenir vers nous si vous avez la moindre question.
+
+RAPPELS IMPORTANTS :
+- Ne PAS mettre de listes à puces dans le mail final (texte brut pour Front App)
+- Adapter le ton selon le contexte (client déjà agacé = plus empathique)
+- Si le client a déjà vérifié auprès des voisins, ne pas le lui redemander — passer directement à la procédure attestation
+- Toujours signaler au gérant la PJ à joindre

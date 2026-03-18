@@ -1,0 +1,343 @@
+DEVIS SUR MESURE — Instructions, grille de prix et templates
+=============================================================
+
+Applicable à : le-filet-de-camouflage.fr / tarnnetz.com / het-camouflagenet.nl
+Dernière mise à jour : Février 2026
+
+
+INSTRUCTIONS GÉNÉRALES
+======================
+
+Quand un client fait une demande de devis sur mesure, tu suis ces règles :
+
+1. Choisis le bon template selon la forme (rectangle, triangle ou trapèze)
+2. Adapte en fonction de la quantité de filets
+3. Adapte la finition (polyester ou câble acier)
+4. Ajoute la mention FIRE RETARDANT si applicable
+5. Ajoute les lignes accessoires si besoin, une ligne par accessoire (et supprime cette section entièrement si aucun accessoire)
+6. Calcule la surface correctement selon la forme
+7. Applique le bon prix au m² selon la grille de prix, en te basant sur la SURFACE TOTALE de la commande (si plusieurs filets, additionne les surfaces pour déterminer la tranche de prix)
+8. Pour les accessoires : prends le prix TTC du site et calcule le HT en fonction du taux de TVA du pays du client
+
+
+CALCUL DES SURFACES
+===================
+
+SURFACE MINIMUM : 2 m²
+Toute demande de devis sur mesure dont la surface totale est inférieure à 2 m² doit être REFUSÉE. Ce seuil est non négociable (rentabilité). Dans ce cas, ne pas générer de devis et orienter le client vers les produits du catalogue en tailles standard.
+
+Rectangle : longueur x largeur
+Triangle : (base x hauteur) / 2
+Trapèze : ((grande base + petite base) x hauteur) / 2
+
+
+GRILLE DE PRIX SUR MESURE (€ HT / m²)
+=======================================
+
+La tranche de prix s'applique en fonction de la SURFACE TOTALE commandée (tous filets confondus).
+
+RECTANGLE / POLYESTER :
+- Surface inférieure ou égale à 5 m² : 28,84 € HT / m²
+- Surface entre 6 et 10 m² : 21,59 € HT / m²
+- Surface au-delà de 10 m² : 12,50 € HT / m²
+
+RECTANGLE / ACIER :
+- Surface inférieure ou égale à 5 m² : 30,75 € HT / m²
+- Surface entre 6 et 10 m² : 23,50 € HT / m²
+- Surface au-delà de 10 m² : 15,50 € HT / m²
+
+TRIANGLE OU TRAPÈZE / POLYESTER :
+- Surface inférieure ou égale à 5 m² : 30,97 € HT / m²
+- Surface entre 6 et 10 m² : 23,72 € HT / m²
+- Surface au-delà de 10 m² : 17,50 € HT / m²
+
+TRIANGLE OU TRAPÈZE / ACIER :
+- Surface inférieure ou égale à 5 m² : 33,65 € HT / m²
+- Surface entre 6 et 10 m² : 26,40 € HT / m²
+- Surface au-delà de 10 m² : 24,50 € HT / m²
+
+RECTANGLE / POLYESTER / IGNIFUGÉ (Fire Retardant) :
+- Surface inférieure ou égale à 5 m² : 32,82 € HT / m²
+- Surface entre 6 et 10 m² : 24,57 € HT / m²
+- Surface au-delà de 10 m² : 14,50 € HT / m²
+
+RECTANGLE / ACIER / IGNIFUGÉ (Fire Retardant) :
+- Surface inférieure ou égale à 5 m² : 34,25 € HT / m²
+- Surface entre 6 et 10 m² : 26,17 € HT / m²
+- Surface au-delà de 10 m² : 17,50 € HT / m²
+
+
+LIVRAISON
+=========
+
+Frais de livraison : 19,99 € HT
+Remise livraison : 19,99 € HT (livraison offerte)
+Mention à inclure dans le devis : "Les frais de livraison s'élèvent à 19,99 € HT et font l'objet d'une remise équivalente (livraison offerte)."
+
+
+RÉGIMES TVA
+===========
+
+- Client français (particulier ou professionnel) : TVA 20%
+- Client UE professionnel avec numéro de TVA intracommunautaire valide (LIC) : TVA 0%, mentionner "Livraison intracommunautaire exonérée de TVA"
+- Client UE professionnel SANS numéro de TVA intracommunautaire : TVA française 20%
+- Client UE particulier : TVA du pays de destination (régime OSS). Consulter le document "Obligations TVA" pour le taux exact par pays (ex : Allemagne 19%, Espagne 21%, Italie 22%, Pays-Bas 21%, etc.)
+- Client hors UE : TVA 0% (exportation), mentionner "Exportation hors UE exonérée de TVA"
+
+IMPORTANT : le taux de TVA est fourni dans le tableau Excel par le gérant (champ "Taux de TVA"). En cas de doute ou d'incohérence avec les règles ci-dessus, signaler le problème au gérant avant de générer le devis.
+
+
+LISTE DES ACCESSOIRES ET PRIX TTC
+===================================
+
+Mât télescopique : 199,90 € TTC
+Base ancrage : 39,90 € TTC
+Cordes à cliquets (lot de 4) : 19,90 € TTC
+Kit de fixation : 29,90 € TTC
+Corde de fixation en polyester 7,5 m : 6,90 € TTC
+Corde de fixation en polyester 15 m : 9,90 € TTC
+Corde de fixation en polyester 30 m : 14,90 € TTC
+Collier de serrage (lot de 100) : 6,90 € TTC
+Câble acier 7,5 m : 14,90 € TTC
+Câble acier 15 m : 22,90 € TTC
+Câble acier 30 m : 39,99 € TTC
+
+RAPPEL : Ces prix sont TTC. Pour le devis, tu dois calculer le prix HT en fonction du taux de TVA applicable au client. Exemple : 19,90 € TTC avec TVA 20% → 19,90 / 1,20 = 16,58 € HT. En LIC (TVA 0%), le prix HT = prix TTC.
+
+
+DÉLAI
+=====
+
+Environ 14 jours à partir de la validation de la commande.
+
+
+RAPPEL IMPORTANT
+================
+
+Les produits sur mesure sont EXCLUS du droit de rétractation (14 jours) et de la garantie commerciale "satisfait ou remboursé" (30 jours).
+
+
+COMMENT TRAITER UNE DEMANDE DE DEVIS SUR MESURE
+=================================================
+
+Quand tu identifies qu'un client demande un devis sur mesure, voici le process :
+
+ÉTAPE A — Tu me le signales dans ton analyse (étape 1 du workflow habituel) :
+"Ce client demande un devis sur mesure. Peux-tu me fournir le tableau complété avec les caractéristiques du filet ?"
+
+ÉTAPE B — Je te colle le tableau rempli. Il ressemblera à ceci :
+
+    Type de commande : Commande sur mesure
+    Forme filet : Rectangle
+    Matière corde : Polyester
+    Couleur : BLANC
+    Fire retardant : Oui
+    Longueur (a) : 6
+    Largeur (b) : 6
+    Hauteur (c) :
+    Base (d) :
+    Quantité filet : 1
+    Régime TVA : LIC
+    Taux de TVA : 0%
+    Livraison HT : 19,99
+    Remise livraison HT : 19,99
+    Accessoires 1 :
+    Quantité accessoires 1 :
+    Accessoires 2 :
+    Quantité accessoires 2 :
+
+ÉTAPE C — VÉRIFICATION DES INFORMATIONS CLIENT
+
+Avant de générer le devis, vérifie que tu disposes des informations suivantes (normalement présentes dans le formulaire client) :
+- Nom et prénom du client (ou raison sociale si professionnel)
+- Adresse de facturation
+- Adresse de livraison (si différente de l'adresse de facturation)
+
+Si ces informations sont déjà dans la conversation ou le formulaire client, les reprendre et les faire confirmer au client dans le mail de devis.
+Si ces informations MANQUENT, les demander au client AVANT de générer le devis.
+
+ÉTAPE D — À partir de ce tableau, tu :
+1. Calcules la surface (selon la forme)
+2. Détermines la tranche de prix (selon surface totale + matière + fire retardant ou non)
+3. Calcules le prix HT des accessoires si présents (prix TTC du catalogue ÷ (1 + taux TVA))
+4. Remplis le template approprié (rectangle, triangle ou trapèze)
+5. Me présentes le brouillon du mail avec devis intégré pour validation
+
+SI DES INFOS MANQUENT dans le tableau (champs vides qui devraient être remplis, incohérence) : signale-le moi avant de générer le devis. Ne génère PAS de devis incomplet ou avec des hypothèses non confirmées.
+
+Ensuite on reprend le workflow habituel : étape 2 (ajustements) → étape 3 (fichier final).
+
+
+==========================================================================
+TEMPLATE 1 : DEVIS RECTANGLE
+==========================================================================
+
+Bonjour,
+
+Nous vous remercions pour votre réponse concernant les dimensions.
+
+Voici le devis pour [QUANTITÉ] filet(s) de camouflage rectangulaire(s), de [LONGUEUR] x [LARGEUR] mètres, de couleur [COULEUR], avec contour [câble acier / polyester][SI FIRE RETARDANT : , ignifugé classification M3 (classification française avec certificat sur demande)][SI ACCESSOIRES : , ainsi que [LISTE ACCESSOIRES]].
+
+Filet prix unitaire hors TVA :
+Finition : [polyester / câble acier]
+Couleur : [COULEUR]
+Dimensions : [LONGUEUR] x [LARGEUR] m
+Surface unitaire : [SURFACE] m²
+Quantité : [QUANTITÉ]
+Surface totale : [SURFACE TOTALE] m²
+Prix unitaire hors TVA : [PRIX] € / m²
+Total hors TVA : [SURFACE TOTALE] x [PRIX] € = [TOTAL FILET] €
+
+[SI ACCESSOIRES — sinon supprimer entièrement cette section :
+Accessoires prix unitaires hors TVA :
+[NOM ACCESSOIRE 1] – Quantité : [QTÉ] → [QTÉ] x [PRIX HT] € = [TOTAL] €
+[NOM ACCESSOIRE 2] – Quantité : [QTÉ] → [QTÉ] x [PRIX HT] € = [TOTAL] €
+]
+
+Total hors TVA : [TOTAL GÉNÉRAL HT] €
+TVA ([TAUX] %) : [MONTANT TVA] €
+Montant TTC : [TOTAL TTC] €
+
+Les frais de livraison s'élèvent à 19,99 € HT et font l'objet d'une remise équivalente (livraison offerte).
+
+Le délai de fabrication et de livraison est d'environ 14 jours à partir de la validation de la commande.
+
+Afin de finaliser votre devis, nous vous prions de bien vouloir confirmer les informations suivantes :
+
+Nom et prénom : [NOM PRÉNOM DU CLIENT — ou raison sociale si professionnel]
+Adresse de facturation : [ADRESSE DE FACTURATION]
+[SI ADRESSE DE LIVRAISON DIFFÉRENTE : Adresse de livraison : [ADRESSE DE LIVRAISON]]
+
+[SI CES INFORMATIONS SONT CONNUES (formulaire client) : les pré-remplir et demander au client de confirmer]
+[SI CES INFORMATIONS MANQUENT : les demander au client]
+
+Souhaitez-vous recevoir ce devis au format PDF pour préparer une éventuelle commande ?
+
+N'hésitez pas à nous contacter si vous avez d'autres questions.
+
+Nous vous souhaitons une bonne journée !
+
+
+==========================================================================
+TEMPLATE 2 : DEVIS TRIANGLE
+==========================================================================
+
+Bonjour,
+
+Nous vous remercions pour votre réponse concernant les dimensions.
+
+Voici le devis pour [QUANTITÉ] filet(s) de camouflage triangulaire(s), de [CÔTÉ A] x [CÔTÉ B] x [CÔTÉ C] mètres, de couleur [COULEUR], avec contour [câble acier / polyester][SI FIRE RETARDANT : , ignifugé classification M3 (classification française avec certificat sur demande)][SI ACCESSOIRES : , ainsi que [LISTE ACCESSOIRES]].
+
+Filet prix unitaire hors TVA :
+Finition : [polyester / câble acier]
+Couleur : [COULEUR]
+Dimensions : [CÔTÉ A] x [CÔTÉ B] x [CÔTÉ C] m
+Surface unitaire : [SURFACE] m²
+Quantité : [QUANTITÉ]
+Surface totale : [SURFACE TOTALE] m²
+Prix unitaire hors TVA : [PRIX] € / m²
+Total hors TVA : [SURFACE TOTALE] x [PRIX] € = [TOTAL FILET] €
+
+[SI ACCESSOIRES — sinon supprimer entièrement cette section :
+Accessoires prix unitaires hors TVA :
+[NOM ACCESSOIRE 1] – Quantité : [QTÉ] → [QTÉ] x [PRIX HT] € = [TOTAL] €
+[NOM ACCESSOIRE 2] – Quantité : [QTÉ] → [QTÉ] x [PRIX HT] € = [TOTAL] €
+]
+
+Total hors TVA : [TOTAL GÉNÉRAL HT] €
+TVA ([TAUX] %) : [MONTANT TVA] €
+Montant TTC : [TOTAL TTC] €
+
+Les frais de livraison s'élèvent à 19,99 € HT et font l'objet d'une remise équivalente (livraison offerte).
+
+Le délai de fabrication et de livraison est d'environ 14 jours à partir de la validation de la commande.
+
+Afin de finaliser votre devis, nous vous prions de bien vouloir confirmer les informations suivantes :
+
+Nom et prénom : [NOM PRÉNOM DU CLIENT — ou raison sociale si professionnel]
+Adresse de facturation : [ADRESSE DE FACTURATION]
+[SI ADRESSE DE LIVRAISON DIFFÉRENTE : Adresse de livraison : [ADRESSE DE LIVRAISON]]
+
+[SI CES INFORMATIONS SONT CONNUES (formulaire client) : les pré-remplir et demander au client de confirmer]
+[SI CES INFORMATIONS MANQUENT : les demander au client]
+
+Souhaitez-vous recevoir ce devis au format PDF pour préparer une éventuelle commande ?
+
+N'hésitez pas à nous contacter si vous avez d'autres questions.
+
+Nous vous souhaitons une bonne journée !
+
+
+==========================================================================
+TEMPLATE 3 : DEVIS TRAPÈZE
+==========================================================================
+
+Bonjour,
+
+Nous vous remercions pour votre réponse concernant les dimensions.
+
+Voici le devis pour [QUANTITÉ] filet(s) de camouflage trapézoïdal(aux), de [CÔTÉ A] x [CÔTÉ B] x [CÔTÉ C] x [CÔTÉ D] mètres, de couleur [COULEUR], avec contour [câble acier / polyester][SI FIRE RETARDANT : , ignifugé classification M3 (classification française avec certificat sur demande)][SI ACCESSOIRES : , ainsi que [LISTE ACCESSOIRES]].
+
+Filet prix unitaire hors TVA :
+Finition : [polyester / câble acier]
+Couleur : [COULEUR]
+Dimensions : [CÔTÉ A] x [CÔTÉ B] x [CÔTÉ C] x [CÔTÉ D] m
+Surface unitaire : [SURFACE] m²
+Quantité : [QUANTITÉ]
+Surface totale : [SURFACE TOTALE] m²
+Prix unitaire hors TVA : [PRIX] € / m²
+Total hors TVA : [SURFACE TOTALE] x [PRIX] € = [TOTAL FILET] €
+
+[SI ACCESSOIRES — sinon supprimer entièrement cette section :
+Accessoires prix unitaires hors TVA :
+[NOM ACCESSOIRE 1] – Quantité : [QTÉ] → [QTÉ] x [PRIX HT] € = [TOTAL] €
+[NOM ACCESSOIRE 2] – Quantité : [QTÉ] → [QTÉ] x [PRIX HT] € = [TOTAL] €
+]
+
+Total hors TVA : [TOTAL GÉNÉRAL HT] €
+TVA ([TAUX] %) : [MONTANT TVA] €
+Montant TTC : [TOTAL TTC] €
+
+Les frais de livraison s'élèvent à 19,99 € HT et font l'objet d'une remise équivalente (livraison offerte).
+
+Le délai de fabrication et de livraison est d'environ 14 jours à partir de la validation de la commande.
+
+Afin de finaliser votre devis, nous vous prions de bien vouloir confirmer les informations suivantes :
+
+Nom et prénom : [NOM PRÉNOM DU CLIENT — ou raison sociale si professionnel]
+Adresse de facturation : [ADRESSE DE FACTURATION]
+[SI ADRESSE DE LIVRAISON DIFFÉRENTE : Adresse de livraison : [ADRESSE DE LIVRAISON]]
+
+[SI CES INFORMATIONS SONT CONNUES (formulaire client) : les pré-remplir et demander au client de confirmer]
+[SI CES INFORMATIONS MANQUENT : les demander au client]
+
+Souhaitez-vous recevoir ce devis au format PDF pour préparer une éventuelle commande ?
+
+N'hésitez pas à nous contacter si vous avez d'autres questions.
+
+Nous vous souhaitons une bonne journée !
+
+
+==========================================================================
+EXEMPLE CONCRET — Pour vérifier que tu appliques bien les règles
+==========================================================================
+
+Données d'entrée :
+- Forme : Rectangle
+- Matière : Polyester
+- Couleur : Blanc
+- Fire retardant : Oui
+- Longueur : 6 m
+- Largeur : 6 m
+- Quantité : 1
+- Régime TVA : LIC (0%)
+- Accessoires : aucun
+
+Résultat attendu :
+- Surface : 6 x 6 = 36 m²
+- Tranche : au-delà de 10 m² → grille Rectangle / Polyester / Ignifugé
+- Prix : 14,50 € HT / m²
+- Total filet HT : 36 x 14,50 = 522,00 €
+- TVA (0%) : 0,00 €
+- Montant TTC : 522,00 €
+- Pas de section accessoires (aucun accessoire)

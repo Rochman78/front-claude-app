@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FrontappAI by ZEPHYR OSC</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="app">
+        <nav class="navbar">
+            <a href="/" class="navbar-brand">FrontappAI <span class="brand-sub">by ZEPHYR OSC</span></a>
+            <button onclick="showAdminLogin()" class="navbar-link">Administration</button>
+        </nav>
+        <section id="step0" class="panel active">
+            <div class="home-content">
+                <div id="inboxes-grid" class="inboxes-grid">
+                    <p class="placeholder"><span class="loading"></span> Chargement des boites...</p>
+                </div>
+            </div>
+        </section>
+        <div id="admin-modal" class="modal" style="display:none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Administration</h2>
+                    <button onclick="closeAdminModal()" class="btn btn-secondary btn-small">Fermer</button>
+                </div>
+                <div id="admin-login-form" class="modal-body">
+                    <label>Mot de passe admin :</label>
+                    <input type="password" id="admin-password" placeholder="Mot de passe">
+                    <button onclick="adminLogin()" class="btn btn-primary">Se connecter</button>
+                    <p id="admin-error" class="error-text"></p>
+                </div>
+                <div id="admin-panel" class="modal-body" style="display:none;">
+                    <div class="admin-inbox-select">
+                        <label>Configurer la boite :</label>
+                        <select id="admin-inbox-select" onchange="loadInboxConfig()">
+                            <option value="">-- Choisir une boite --</option>
+                        </select>
+                    </div>
+                    <div id="admin-config" style="display:none;">
+                        <div class="config-section">
+                            <label>Instructions personnalisees :</label>
+                            <p class="hint">Collez le prompt systeme de votre agent Claude pour cette boite</p>
+                            <textarea id="admin-instructions" rows="8" placeholder="Ex: Tu es l'assistant de la boutique X..."></textarea>
+                            <button onclick="saveAdminInstructions()" class="btn btn-primary">Sauvegarder</button>
+                            <span id="save-status" class="save-status"></span>
+                        </div>
+                        <div class="config-section">
+                            <label>Fichiers de reference :</label>
+                            <p class="hint">FAQ, templates, procedures... (txt, pdf, md, csv, json, docx)</p>
+                            <input type="file" id="admin-file-upload" accept=".txt,.pdf,.md,.csv,.json,.docx" onchange="uploadAdminFile()">
+                            <div id="admin-files-list" class="files-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <section id="step1" class="panel">
+            <div class="panel-header">
+                <h2 id="inbox-title">Conversations</h2>
+                <button onclick="goToStep(0)" class="btn btn-secondary">Retour</button>
+            </div>
+            <div id="conversations-list" class="conversations-list">
+                <p class="placeholder"><span class="loading"></span> Chargement...</p>
+            </div>
+        </section>
+        <section id="step2" class="panel">
+            <div class="panel-header">
+                <h2 id="conv-subject">Conversation</h2>
+                <button onclick="goToStep(1)" class="btn btn-secondary">Retour</button>
+            </div>
+            <div id="email-viewer" class="email-viewer">
+                <div id="email-thread"></div>
+            </div>
+            <div id="draft-info-bar" class="draft-info-bar" style="display:none;">
+                <span>Brouillon genere par Claude present dans FrontApp</span>
+            </div>
+            <div id="generate-bar" class="generate-bar">
+                <button onclick="showChatMode()" id="generate-btn" class="btn btn-generate">Generer un brouillon avec Claude</button>
+            </div>
+            <div id="chat-section" class="chat-section" style="display:none;">
+                <div class="chat-section-header">
+                    <span>Travailler avec Claude</span>
+                </div>
+                <div id="chat-messages" class="chat-messages"></div>
+                <div class="chat-input-area">
+                    <textarea id="user-input" placeholder="Donnez des instructions a Claude..." rows="2"></textarea>
+                    <button onclick="sendToClaud()" id="send-btn" class="btn btn-primary">Envoyer</button>
+                    <button onclick="generateQuote()" class="btn btn-quote" title="Generer un devis PDF via Pennylane">Devis PDF</button>
+                </div>
+            </div>
+        </section>
+        <section id="step3" class="panel">
+            <div class="panel-header">
+                <h2>Votre brouillon</h2>
+                <span></span>
+            </div>
+            <div class="draft-area">
+                <textarea id="draft-content" rows="12" placeholder="Le brouillon genere par Claude apparait ici. Vous pouvez le modifier avant de l'envoyer dans Front."></textarea>
+            </div>
+            <div class="draft-actions">
+                <button onclick="backToChat()" class="btn btn-secondary">Modifier avec Claude</button>
+                <button onclick="sendDraftToFront()" id="send-draft-btn" class="btn btn-success">Charger le brouillon dans Front</button>
+            </div>
+            <p class="draft-warning">Ce bouton cree uniquement un brouillon dans Front. Rien n'est envoye au client.</p>
+            <div id="draft-status" class="status-message"></div>
+        </section>
+        <div id="quote-modal" class="modal" style="display:none;">
+            <div class="modal-content modal-success">
+                <div id="quote-modal-loading" style="display:none;">
+                    <p><span class="loading"></span> Generation du devis en cours...</p>
+                </div>
+                <div id="quote-modal-success" style="display:none;">
+                    <div class="success-icon">&#10003;</div>
+                    <h2>Devis cree avec succes</h2>
+                    <p id="quote-info" class="success-subtitle"></p>
+                    <div class="success-actions">
+                        <a id="quote-pdf-link" href="#" target="_blank" class="btn btn-secondary">Voir le PDF</a>
+                        <button onclick="goToQuoteDraft()" class="btn btn-primary">Preparer le brouillon</button>
+                    </div>
+                </div>
+                <div id="quote-modal-error" style="display:none;">
+                    <div class="success-icon" style="background:#dc2626;">&#10007;</div>
+                    <h2>Erreur</h2>
+                    <p id="quote-error-text" class="success-subtitle"></p>
+                    <div class="success-actions">
+                        <button onclick="closeQuoteModal()" class="btn btn-secondary">Fermer</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="success-modal" class="modal" style="display:none;">
+            <div class="modal-content modal-success">
+                <div class="success-icon">&#10003;</div>
+                <h2>Brouillon charge dans Front</h2>
+                <p class="success-subtitle">Le brouillon a ete cree avec succes. Rien n'a ete envoye au client.</p>
+                <div class="success-actions">
+                    <a id="front-link" href="#" target="_blank" class="btn btn-primary">Voir dans Front</a>
+                    <button onclick="finishAndGoBack()" class="btn btn-secondary">Termine</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>

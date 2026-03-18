@@ -13,8 +13,9 @@ export default function AgentMailboxPage() {
   const [threads] = useState<EmailThread[]>(mockThreads);
 
   useEffect(() => {
-    const a = getAgent(agentId);
-    if (a) setAgent(a);
+    getAgent(agentId).then((a) => {
+      if (a) setAgent(a);
+    });
   }, [agentId]);
 
   if (!agent) {

@@ -9,7 +9,7 @@ export default function MailboxPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
 
   useEffect(() => {
-    setAgents(getAgents());
+    getAgents().then(setAgents);
   }, []);
 
   return (

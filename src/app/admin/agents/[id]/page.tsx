@@ -22,27 +22,30 @@ export default function AgentDetailPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const a = getAgent(id);
-    if (a) {
-      setAgent(a);
-      setInstructions(a.instructions);
-      setSharedFiles(getSharedFilesForAgent(id));
-      setChatMessages(getChatMessages(`agent_${id}`));
-    }
+    const load = async () => {
+      const a = await getAgent(id);
+      if (a) {
+        setAgent(a);
+        setInstructions(a.instructions);
+        setSharedFiles(await getSharedFilesForAgent(id));
+        setChatMessages(await getChatMessages(`agent_${id}`));
+      }
+    };
+    load();
   }, [id]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const saveInstructions = () => {
+  const saveInstructions = async () => {
     if (!agent) return;
     const updated = { ...agent, instructions };
-    updateAgent(updated);
+    await updateAgent(updated);
     setAgent(updated);
   };
 
-  const addFile = () => {
+  const addFile = async () => {
     if (!agent || !newFileName.trim() || !newFileContent.trim()) return;
     const file: AgentFile = {
       id: crypto.randomUUID(),
@@ -51,7 +54,7 @@ export default function AgentDetailPage() {
       createdAt: new Date().toISOString(),
     };
     const updated = { ...agent, files: [...agent.files, file] };
-    updateAgent(updated);
+    await updateAgent(updated);
     setAgent(updated);
     setNewFileName('');
     setNewFileContent('');
@@ -65,7 +68,7 @@ export default function AgentDetailPage() {
     let processed = 0;
     Array.from(files).forEach((file) => {
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
         const content = ev.target?.result as string;
         const agentFile: AgentFile = {
           id: crypto.randomUUID(),
@@ -76,7 +79,7 @@ export default function AgentDetailPage() {
         currentAgent = { ...currentAgent, files: [...currentAgent.files, agentFile] };
         processed++;
         if (processed === files.length) {
-          updateAgent(currentAgent);
+          await updateAgent(currentAgent);
           setAgent(currentAgent);
         }
       };
@@ -85,10 +88,10 @@ export default function AgentDetailPage() {
     e.target.value = '';
   };
 
-  const deleteFile = (fileId: string) => {
+  const deleteFile = async (fileId: string) => {
     if (!agent) return;
     const updated = { ...agent, files: agent.files.filter((f) => f.id !== fileId) };
-    updateAgent(updated);
+    await updateAgent(updated);
     setAgent(updated);
   };
 
@@ -136,7 +139,7 @@ export default function AgentDetailPage() {
 
       const updated = [...updatedWithUser, assistantMsg];
       setChatMessages(updated);
-      saveChatMessages(`agent_${id}`, updated);
+      await saveChatMessages(`agent_${id}`, updated);
     } catch {
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -146,7 +149,7 @@ export default function AgentDetailPage() {
       };
       const updated = [...updatedWithUser, errorMsg];
       setChatMessages(updated);
-      saveChatMessages(`agent_${id}`, updated);
+      await saveChatMessages(`agent_${id}`, updated);
     } finally {
       setIsLoading(false);
     }

@@ -21,15 +21,18 @@ export default function ThreadDetailPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const a = getAgent(agentId);
-    if (a) setAgent(a);
-    const t = mockThreads.find((t) => t.id === threadId);
-    if (t) setThread(t);
+    const load = async () => {
+      const a = await getAgent(agentId);
+      if (a) setAgent(a);
+      const t = mockThreads.find((t) => t.id === threadId);
+      if (t) setThread(t);
+    };
+    load();
   }, [agentId, threadId]);
 
   useEffect(() => {
     if (view === 'chat') {
-      setChatMessages(getChatMessages(`thread_${agentId}_${threadId}`));
+      getChatMessages(`thread_${agentId}_${threadId}`).then(setChatMessages);
     }
   }, [view, agentId, threadId]);
 
@@ -37,13 +40,13 @@ export default function ThreadDetailPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const buildSystemPrompt = () => {
+  const buildSystemPrompt = async () => {
     if (!thread || !agent) return '';
     const msgs = thread.messages
       .map((m) => `De: ${m.from}\nÀ: ${m.to}\nDate: ${new Date(m.date).toLocaleString('fr-FR')}\n\n${m.body}`)
       .join('\n\n---\n\n');
 
-    const sharedFiles = getSharedFilesForAgent(agentId);
+    const sharedFiles = await getSharedFilesForAgent(agentId);
     const allFiles = [
       ...agent.files.map((f) => `[${f.name}]\n${f.content}`),
       ...sharedFiles.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
@@ -80,11 +83,12 @@ Tu dois analyser cette conversation email et répondre aux questions de l'utilis
     setIsLoading(true);
 
     try {
+      const systemPrompt = await buildSystemPrompt();
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          systemPrompt: buildSystemPrompt(),
+          systemPrompt,
           messages: updatedWithUser.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
@@ -100,7 +104,7 @@ Tu dois analyser cette conversation email et répondre aux questions de l'utilis
 
       const updated = [...updatedWithUser, assistantMsg];
       setChatMessages(updated);
-      saveChatMessages(`thread_${agentId}_${threadId}`, updated);
+      await saveChatMessages(`thread_${agentId}_${threadId}`, updated);
     } catch {
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -110,7 +114,7 @@ Tu dois analyser cette conversation email et répondre aux questions de l'utilis
       };
       const updated = [...updatedWithUser, errorMsg];
       setChatMessages(updated);
-      saveChatMessages(`thread_${agentId}_${threadId}`, updated);
+      await saveChatMessages(`thread_${agentId}_${threadId}`, updated);
     } finally {
       setIsLoading(false);
     }

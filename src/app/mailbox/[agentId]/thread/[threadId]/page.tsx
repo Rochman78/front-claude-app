@@ -322,24 +322,13 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
           <div className="rounded-xl bg-gray-800/80 border border-gray-700 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-white">Brouillon de réponse</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={generateDraft}
-                  disabled={isGeneratingDraft || messages.length === 0}
-                  className="rounded-lg bg-purple-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-purple-700 transition-colors disabled:opacity-50"
-                >
-                  {isGeneratingDraft ? 'Génération...' : draft.trim() ? 'Régénérer' : 'Générer le brouillon'}
-                </button>
-                {draft.trim() && (
-                  <button
-                    onClick={handlePushToFront}
-                    disabled={isSending}
-                    className="rounded-lg bg-orange-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
-                  >
-                    {isSending ? 'Envoi...' : 'Envoyer vers FrontApp'}
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={generateDraft}
+                disabled={isGeneratingDraft || messages.length === 0}
+                className="rounded-lg bg-purple-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-purple-700 transition-colors disabled:opacity-50"
+              >
+                {isGeneratingDraft ? 'Génération...' : draft.trim() ? 'Régénérer' : 'Travailler avec l\'agent'}
+              </button>
             </div>
             {isGeneratingDraft && (
               <div className="mb-3 rounded-lg bg-purple-900/20 border border-purple-700/40 px-4 py-3 text-sm text-purple-300">
@@ -350,7 +339,7 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={10}
-              placeholder="Cliquez sur « Générer le brouillon » pour que l'agent prépare une réponse automatique..."
+              placeholder="Cliquez sur « Travailler avec l'agent » pour générer un brouillon automatique..."
               className="w-full rounded-lg bg-gray-900 border border-gray-600 px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-y text-sm leading-relaxed"
             />
           </div>
@@ -414,6 +403,17 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
                 Envoyer
               </button>
             </div>
+          </div>
+
+          {/* Validate button */}
+          <div className="flex justify-center pt-2">
+            <button
+              onClick={handlePushToFront}
+              disabled={isSending || !draft.trim()}
+              className="rounded-xl bg-green-600 px-8 py-3 text-base font-bold text-white hover:bg-green-700 transition-colors disabled:opacity-40 uppercase tracking-wide"
+            >
+              {isSending ? 'Envoi en cours...' : 'Valider le brouillon'}
+            </button>
           </div>
         </div>
       )}

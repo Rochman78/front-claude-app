@@ -15,6 +15,7 @@ export default function AgentDetailPage() {
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [newFileContent, setNewFileContent] = useState('');
   const [showFileForm, setShowFileForm] = useState(false);
@@ -84,8 +85,9 @@ export default function AgentDetailPage() {
     setAgent(updated);
   };
 
-  const sendMessage = () => {
-    if (!chatInput.trim() || !agent) return;
+  const sendMessage = async () => {
+    if (!chatInput.trim() || !agent || isLoading) return;
+
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -93,26 +95,54 @@ export default function AgentDetailPage() {
       timestamp: new Date().toISOString(),
     };
 
-    // Build context for assistant
+    const updatedWithUser = [...chatMessages, userMsg];
+    setChatMessages(updatedWithUser);
+    setChatInput('');
+    setIsLoading(true);
+
+    // Build system prompt with context
     const allFiles = [
       ...agent.files.map((f) => `[Fichier: ${f.name}]\n${f.content}`),
       ...sharedFiles.map((f) => `[Fichier partagé: ${f.name}]\n${f.content}`),
     ].join('\n\n');
 
-    const context = `Instructions de l'agent "${agent.name}":\n${agent.instructions || '(aucune instruction)'}\n\nBase de connaissances:\n${allFiles || '(aucun fichier)'}\n\n`;
+    const systemPrompt = `Tu es l'agent "${agent.name}" (${agent.email}).\n\n${agent.instructions || ''}\n\nBase de connaissances:\n${allFiles || '(aucun fichier)'}`;
 
-    // Simulated assistant response
-    const assistantMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: `[Mode simulation] J'ai bien reçu votre message. En tant qu'agent "${agent.name}", voici mon contexte:\n\n- Instructions: ${agent.instructions ? 'configurées' : 'non configurées'}\n- Fichiers propres: ${agent.files.length}\n- Fichiers partagés: ${sharedFiles.length}\n\nVotre message: "${chatInput.trim()}"\n\n> Pour une réponse IA réelle, connectez une API LLM. Le contexte complet (${context.length} caractères) sera envoyé.`,
-      timestamp: new Date().toISOString(),
-    };
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt,
+          messages: updatedWithUser.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
 
-    const updated = [...chatMessages, userMsg, assistantMsg];
-    setChatMessages(updated);
-    saveChatMessages(`agent_${id}`, updated);
-    setChatInput('');
+      const data = await res.json();
+
+      const assistantMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: data.error ? `Erreur: ${data.error}` : data.content,
+        timestamp: new Date().toISOString(),
+      };
+
+      const updated = [...updatedWithUser, assistantMsg];
+      setChatMessages(updated);
+      saveChatMessages(`agent_${id}`, updated);
+    } catch {
+      const errorMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: 'Erreur de connexion à l\'API. Vérifiez que ANTHROPIC_API_KEY est configurée.',
+        timestamp: new Date().toISOString(),
+      };
+      const updated = [...updatedWithUser, errorMsg];
+      setChatMessages(updated);
+      saveChatMessages(`agent_${id}`, updated);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (!agent) {
@@ -298,9 +328,10 @@ export default function AgentDetailPage() {
             />
             <button
               onClick={sendMessage}
-              className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+              disabled={isLoading}
+              className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              Envoyer
+              {isLoading ? '...' : 'Envoyer'}
             </button>
           </div>
         </div>

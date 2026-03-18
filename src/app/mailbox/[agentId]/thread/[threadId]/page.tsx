@@ -15,6 +15,8 @@ export default function ThreadDetailPage() {
   const [view, setView] = useState<View>('thread');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [draft, setDraft] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -35,7 +37,7 @@ export default function ThreadDetailPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const buildThreadContext = () => {
+  const buildSystemPrompt = () => {
     if (!thread || !agent) return '';
     const msgs = thread.messages
       .map((m) => `De: ${m.from}\nÀ: ${m.to}\nDate: ${new Date(m.date).toLocaleString('fr-FR')}\n\n${m.body}`)
@@ -47,11 +49,23 @@ export default function ThreadDetailPage() {
       ...sharedFiles.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
     ].join('\n\n');
 
-    return `INSTRUCTIONS AGENT "${agent.name}":\n${agent.instructions || '(aucune)'}\n\nBASE DE CONNAISSANCES:\n${allFiles || '(vide)'}\n\nCONVERSATION EMAIL COMPLÈTE:\nSujet: ${thread.subject}\n\n${msgs}`;
+    return `Tu es l'agent "${agent.name}" (${agent.email}).
+
+${agent.instructions || ''}
+
+BASE DE CONNAISSANCES:
+${allFiles || '(vide)'}
+
+CONVERSATION EMAIL COMPLÈTE À ANALYSER:
+Sujet: ${thread.subject}
+
+${msgs}
+
+Tu dois analyser cette conversation email et répondre aux questions de l'utilisateur en te basant sur tes instructions et ta base de connaissances.`;
   };
 
-  const sendMessage = () => {
-    if (!chatInput.trim() || !agent || !thread) return;
+  const sendMessage = async () => {
+    if (!chatInput.trim() || !agent || !thread || isLoading) return;
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -60,27 +74,78 @@ export default function ThreadDetailPage() {
       timestamp: new Date().toISOString(),
     };
 
-    const context = buildThreadContext();
-
-    const assistantMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: `[Mode simulation] J'ai analysé la conversation email "${thread.subject}" (${thread.messages.length} messages).\n\nContexte chargé: ${context.length} caractères (instructions + fichiers + emails)\n\nEn réponse à: "${chatInput.trim()}"\n\n> Connectez une API LLM pour obtenir des réponses intelligentes basées sur le contexte complet.`,
-      timestamp: new Date().toISOString(),
-    };
-
-    const updated = [...chatMessages, userMsg, assistantMsg];
-    setChatMessages(updated);
-    saveChatMessages(`thread_${agentId}_${threadId}`, updated);
+    const updatedWithUser = [...chatMessages, userMsg];
+    setChatMessages(updatedWithUser);
     setChatInput('');
+    setIsLoading(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: buildSystemPrompt(),
+          messages: updatedWithUser.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+
+      const data = await res.json();
+
+      const assistantMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: data.error ? `Erreur: ${data.error}` : data.content,
+        timestamp: new Date().toISOString(),
+      };
+
+      const updated = [...updatedWithUser, assistantMsg];
+      setChatMessages(updated);
+      saveChatMessages(`thread_${agentId}_${threadId}`, updated);
+    } catch {
+      const errorMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: "Erreur de connexion à l'API. Vérifiez que ANTHROPIC_API_KEY est configurée.",
+        timestamp: new Date().toISOString(),
+      };
+      const updated = [...updatedWithUser, errorMsg];
+      setChatMessages(updated);
+      saveChatMessages(`thread_${agentId}_${threadId}`, updated);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handlePushToFront = () => {
+  const handlePushToFront = async () => {
     if (!draft.trim()) {
       alert('Le brouillon est vide.');
       return;
     }
-    alert(`[FrontApp API] Brouillon envoyé !\n\nContenu:\n${draft.substring(0, 200)}${draft.length > 200 ? '...' : ''}\n\n(Intégration FrontApp API à venir)`);
+
+    setIsSending(true);
+    try {
+      const res = await fetch('/api/frontapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: threadId,
+          body: draft,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        alert(`Erreur FrontApp: ${data.error}`);
+      } else {
+        alert('Brouillon envoyé vers FrontApp avec succès !');
+        setDraft('');
+      }
+    } catch {
+      alert("Erreur de connexion à l'API FrontApp.");
+    } finally {
+      setIsSending(false);
+    }
   };
 
   if (!agent || !thread) {
@@ -172,6 +237,13 @@ export default function ThreadDetailPage() {
                 </div>
               </div>
             ))}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-gray-700 text-gray-400 rounded-xl px-4 py-3 text-sm">
+                  En train de réfléchir...
+                </div>
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
           <div className="border-t border-gray-700 p-4 flex gap-3">
@@ -185,9 +257,10 @@ export default function ThreadDetailPage() {
             />
             <button
               onClick={sendMessage}
-              className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+              disabled={isLoading}
+              className="rounded-lg bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              Envoyer
+              {isLoading ? '...' : 'Envoyer'}
             </button>
           </div>
         </div>
@@ -213,9 +286,10 @@ export default function ThreadDetailPage() {
             </button>
             <button
               onClick={handlePushToFront}
-              className="rounded-lg bg-orange-600 px-6 py-2 text-sm font-bold text-white hover:bg-orange-700 transition-colors"
+              disabled={isSending}
+              className="rounded-lg bg-orange-600 px-6 py-2 text-sm font-bold text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
             >
-              Pousser vers FrontApp
+              {isSending ? 'Envoi...' : 'Pousser vers FrontApp'}
             </button>
           </div>
         </div>

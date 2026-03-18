@@ -106,7 +106,7 @@ export default function AgentsPage() {
                 <option value="">-- Choisir une boîte mail --</option>
                 {availableInboxes.map((inbox) => (
                   <option key={inbox.id} value={inbox.id}>
-                    {inbox.name} {inbox.address ? `(${inbox.address})` : ''}
+                    {inbox.name}
                   </option>
                 ))}
               </select>

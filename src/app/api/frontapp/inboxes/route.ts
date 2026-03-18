@@ -25,11 +25,27 @@ export async function GET() {
 
     const data = await response.json();
 
-    const inboxes = (data._results || []).map((inbox: Record<string, unknown>) => ({
-      id: inbox.id,
-      name: inbox.name,
-      address: inbox.address,
-    }));
+    // Exclude internal/non-boutique inboxes
+    const EXCLUDED_NAMES = [
+      'zephyr o.s.c',
+      'c bamy',
+      'factures',
+      'to keep',
+      'bamybox',
+      'quems box',
+      'rochman box',
+    ];
+
+    const inboxes = (data._results || [])
+      .filter((inbox: Record<string, unknown>) => {
+        const name = (inbox.name as string || '').toLowerCase();
+        return !EXCLUDED_NAMES.some((excluded) => name.includes(excluded));
+      })
+      .map((inbox: Record<string, unknown>) => ({
+        id: inbox.id,
+        name: inbox.name,
+        address: inbox.address,
+      }));
 
     return NextResponse.json(inboxes);
   } catch (error: unknown) {

@@ -93,17 +93,21 @@ export default function ThreadDetailPage() {
   };
 
   const buildSystemPrompt = async (forDraft = false) => {
-    if (!agent || messages.length === 0) return '';
+    if (messages.length === 0) return '';
+
+    // Always re-fetch fresh agent data from DB to get latest instructions + files
+    const freshAgent = await getAgent(agentId);
+    if (!freshAgent) return '';
 
     const sharedFiles = await getSharedFilesForAgent(agentId);
     const allFiles = [
-      ...agent.files.map((f) => `[${f.name}]\n${f.content}`),
+      ...freshAgent.files.map((f) => `[${f.name}]\n${f.content}`),
       ...sharedFiles.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
     ].join('\n\n');
 
-    const base = `Tu es l'agent "${agent.name}" (${agent.email}).
+    const base = `Tu es l'agent "${freshAgent.name}" (${freshAgent.email}).
 
-${agent.instructions || ''}
+${freshAgent.instructions || ''}
 
 BASE DE CONNAISSANCES:
 ${allFiles || '(vide)'}

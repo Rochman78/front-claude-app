@@ -32,6 +32,7 @@ export default function ThreadDetailPage() {
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [draft, setDraft] = useState('');
+  const [successUrl, setSuccessUrl] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,7 +68,16 @@ export default function ThreadDetailPage() {
 
   useEffect(() => {
     if (view === 'draft') {
-      getChatMessages(`thread_${agentId}_${threadId}`).then(setChatMessages);
+      getChatMessages(`thread_${agentId}_${threadId}`).then((msgs) => {
+        setChatMessages(msgs);
+        // Restore draft from last assistant message if draft is empty
+        if (!draft.trim() && msgs.length > 0) {
+          const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant');
+          if (lastAssistant && !lastAssistant.content.startsWith('Erreur')) {
+            setDraft(lastAssistant.content);
+          }
+        }
+      });
     }
   }, [view, agentId, threadId]);
 
@@ -93,17 +103,21 @@ export default function ThreadDetailPage() {
   };
 
   const buildSystemPrompt = async (forDraft = false) => {
-    if (!agent || messages.length === 0) return '';
+    if (messages.length === 0) return '';
+
+    // Always re-fetch fresh agent data from DB to get latest instructions + files
+    const freshAgent = await getAgent(agentId);
+    if (!freshAgent) return '';
 
     const sharedFiles = await getSharedFilesForAgent(agentId);
     const allFiles = [
-      ...agent.files.map((f) => `[${f.name}]\n${f.content}`),
+      ...freshAgent.files.map((f) => `[${f.name}]\n${f.content}`),
       ...sharedFiles.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
     ].join('\n\n');
 
-    const base = `Tu es l'agent "${agent.name}" (${agent.email}).
+    const base = `Tu es l'agent "${freshAgent.name}" (${freshAgent.email}).
 
-${agent.instructions || ''}
+${freshAgent.instructions || ''}
 
 BASE DE CONNAISSANCES:
 ${allFiles || '(vide)'}
@@ -187,12 +201,18 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
 
       const data = await res.json();
 
+      const assistantContent = data.error ? `Erreur: ${data.error}` : data.content;
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: data.error ? `Erreur: ${data.error}` : data.content,
+        content: assistantContent,
         timestamp: new Date().toISOString(),
       };
+
+      // Update draft with assistant's latest response (if not an error)
+      if (!data.error && assistantContent.trim()) {
+        setDraft(assistantContent);
+      }
 
       const updated = [...updatedWithUser, assistantMsg];
       setChatMessages(updated);
@@ -213,7 +233,10 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
   };
 
   const handlePushToFront = async () => {
-    if (!draft.trim()) return;
+    if (!draft.trim()) {
+      alert('Le brouillon est vide. Générez ou rédigez un brouillon avant de valider.');
+      return;
+    }
     setIsSending(true);
     try {
       const res = await fetch('/api/frontapp/send', {
@@ -225,7 +248,7 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
       if (data.error) {
         alert(`Erreur FrontApp: ${data.error}`);
       } else {
-        alert('Brouillon envoyé vers FrontApp avec succès !');
+        setSuccessUrl(data.frontUrl || `https://app.frontapp.com/open/${threadId}`);
         setDraft('');
       }
     } catch {
@@ -322,24 +345,13 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
           <div className="rounded-xl bg-gray-800/80 border border-gray-700 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-white">Brouillon de réponse</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={generateDraft}
-                  disabled={isGeneratingDraft || messages.length === 0}
-                  className="rounded-lg bg-purple-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-purple-700 transition-colors disabled:opacity-50"
-                >
-                  {isGeneratingDraft ? 'Génération...' : draft.trim() ? 'Régénérer' : 'Générer le brouillon'}
-                </button>
-                {draft.trim() && (
-                  <button
-                    onClick={handlePushToFront}
-                    disabled={isSending}
-                    className="rounded-lg bg-orange-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-orange-700 transition-colors disabled:opacity-50"
-                  >
-                    {isSending ? 'Envoi...' : 'Envoyer vers FrontApp'}
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={generateDraft}
+                disabled={isGeneratingDraft || messages.length === 0}
+                className="rounded-lg bg-purple-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-purple-700 transition-colors disabled:opacity-50"
+              >
+                {isGeneratingDraft ? 'Génération...' : draft.trim() ? 'Régénérer' : 'Travailler avec l\'agent'}
+              </button>
             </div>
             {isGeneratingDraft && (
               <div className="mb-3 rounded-lg bg-purple-900/20 border border-purple-700/40 px-4 py-3 text-sm text-purple-300">
@@ -350,7 +362,7 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={10}
-              placeholder="Cliquez sur « Générer le brouillon » pour que l'agent prépare une réponse automatique..."
+              placeholder="Cliquez sur « Travailler avec l'agent » pour générer un brouillon automatique..."
               className="w-full rounded-lg bg-gray-900 border border-gray-600 px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-y text-sm leading-relaxed"
             />
           </div>
@@ -412,6 +424,50 @@ Réponds de manière concise et utile. Si on te demande de modifier le brouillon
                 className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 Envoyer
+              </button>
+            </div>
+          </div>
+
+          {/* Validate button */}
+          <div className="flex justify-center pt-2">
+            <button
+              onClick={handlePushToFront}
+              disabled={isSending || !draft.trim()}
+              className={`rounded-xl px-8 py-3 text-base font-bold text-white transition-colors uppercase tracking-wide ${
+                !draft.trim()
+                  ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                  : isSending
+                    ? 'bg-yellow-600'
+                    : 'bg-green-600 hover:bg-green-700'
+              }`}
+            >
+              {isSending ? 'Envoi en cours...' : !draft.trim() ? 'Aucun brouillon à valider' : 'Valider le brouillon'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Success modal */}
+      {successUrl && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-2xl border border-gray-600 p-8 max-w-md w-full mx-4 text-center">
+            <div className="text-4xl mb-4">&#10003;</div>
+            <h2 className="text-xl font-bold text-white mb-2">Brouillon envoyé !</h2>
+            <p className="text-gray-400 mb-6">Le brouillon a été créé avec succès dans FrontApp.</p>
+            <div className="flex flex-col gap-3">
+              <a
+                href={successUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-xl bg-blue-600 px-6 py-3 text-base font-semibold text-white hover:bg-blue-700 transition-colors"
+              >
+                Ouvrir dans FrontApp
+              </a>
+              <button
+                onClick={() => setSuccessUrl('')}
+                className="rounded-xl bg-gray-700 px-6 py-3 text-base font-medium text-gray-300 hover:bg-gray-600 transition-colors"
+              >
+                Fermer
               </button>
             </div>
           </div>

@@ -14,11 +14,11 @@ export async function getAgent(id: string): Promise<Agent | undefined> {
   return res.json();
 }
 
-export async function createAgent(name: string, email: string): Promise<Agent> {
+export async function createAgent(name: string, email: string, inboxId: string): Promise<Agent> {
   const res = await fetch('/api/agents', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email }),
+    body: JSON.stringify({ name, email, inboxId }),
   });
   return res.json();
 }

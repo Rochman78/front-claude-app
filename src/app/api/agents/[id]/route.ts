@@ -13,7 +13,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   );
   agent.files = files;
   agent.createdAt = agent.created_at;
+  agent.inboxId = agent.inbox_id;
   delete agent.created_at;
+  delete agent.inbox_id;
 
   return NextResponse.json(agent);
 }
@@ -23,8 +25,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const agent = await req.json();
 
   await pool.query(
-    'UPDATE agents SET name = $1, email = $2, instructions = $3 WHERE id = $4',
-    [agent.name, agent.email, agent.instructions, params.id]
+    'UPDATE agents SET name = $1, email = $2, inbox_id = $3, instructions = $4 WHERE id = $5',
+    [agent.name, agent.email, agent.inboxId || '', agent.instructions, params.id]
   );
 
   // Sync files: delete all then re-insert

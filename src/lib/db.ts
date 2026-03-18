@@ -17,6 +17,7 @@ export async function initDB() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT NOT NULL,
+      inbox_id TEXT NOT NULL DEFAULT '',
       instructions TEXT DEFAULT '',
       created_at TEXT NOT NULL
     );
@@ -47,6 +48,14 @@ export async function initDB() {
 
     CREATE INDEX IF NOT EXISTS idx_agent_files_agent_id ON agent_files(agent_id);
     CREATE INDEX IF NOT EXISTS idx_chat_messages_key ON chat_messages(chat_key);
+  `);
+
+  // Migration: add inbox_id if table already existed without it
+  await pool.query(`
+    DO $$ BEGIN
+      ALTER TABLE agents ADD COLUMN inbox_id TEXT NOT NULL DEFAULT '';
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
   `);
 
   initialized = true;

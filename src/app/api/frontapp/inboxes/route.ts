@@ -1,24 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 const FRONT_API_URL = 'https://api2.frontapp.com';
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     if (!process.env.FRONT_API_TOKEN) {
       return NextResponse.json({ error: 'FRONT_API_TOKEN non configuré' }, { status: 500 });
     }
 
-    const inboxId = req.nextUrl.searchParams.get('inbox_id');
-
-    // Build URL: fetch conversations for a specific inbox, only non-archived (assigned + unassigned)
-    let url: string;
-    if (inboxId) {
-      url = `${FRONT_API_URL}/inboxes/${inboxId}/conversations?q[statuses][]=assigned&q[statuses][]=unassigned`;
-    } else {
-      url = `${FRONT_API_URL}/conversations?q[statuses][]=assigned&q[statuses][]=unassigned`;
-    }
-
-    const response = await fetch(url, {
+    const response = await fetch(`${FRONT_API_URL}/inboxes`, {
       headers: {
         Authorization: `Bearer ${process.env.FRONT_API_TOKEN}`,
         'Content-Type': 'application/json',
@@ -34,10 +24,17 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+
+    const inboxes = (data._results || []).map((inbox: Record<string, unknown>) => ({
+      id: inbox.id,
+      name: inbox.name,
+      address: inbox.address,
+    }));
+
+    return NextResponse.json(inboxes);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Erreur inconnue';
-    console.error('FrontApp threads error:', message);
+    console.error('FrontApp inboxes error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

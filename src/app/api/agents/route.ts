@@ -12,7 +12,9 @@ export async function GET() {
     );
     agent.files = files;
     agent.createdAt = agent.created_at;
+    agent.inboxId = agent.inbox_id;
     delete agent.created_at;
+    delete agent.inbox_id;
   }
 
   return NextResponse.json(agents);
@@ -20,14 +22,14 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   await initDB();
-  const { name, email } = await req.json();
+  const { name, email, inboxId } = await req.json();
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
 
   await pool.query(
-    'INSERT INTO agents (id, name, email, instructions, created_at) VALUES ($1, $2, $3, $4, $5)',
-    [id, name, email, '', createdAt]
+    'INSERT INTO agents (id, name, email, inbox_id, instructions, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+    [id, name, email, inboxId || '', '', createdAt]
   );
 
-  return NextResponse.json({ id, name, email, instructions: '', files: [], createdAt });
+  return NextResponse.json({ id, name, email, inboxId: inboxId || '', instructions: '', files: [], createdAt });
 }

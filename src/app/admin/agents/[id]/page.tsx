@@ -61,30 +61,29 @@ export default function AgentDetailPage() {
     setShowFileForm(false);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !agent) return;
-    let currentAgent = { ...agent };
-    let processed = 0;
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const content = ev.target?.result as string;
-        const agentFile: AgentFile = {
-          id: crypto.randomUUID(),
-          name: file.name,
-          content,
-          createdAt: new Date().toISOString(),
+
+    const readFile = (file: File): Promise<AgentFile> =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          resolve({
+            id: crypto.randomUUID(),
+            name: file.name,
+            content: ev.target?.result as string,
+            createdAt: new Date().toISOString(),
+          });
         };
-        currentAgent = { ...currentAgent, files: [...currentAgent.files, agentFile] };
-        processed++;
-        if (processed === files.length) {
-          await updateAgent(currentAgent);
-          setAgent(currentAgent);
-        }
-      };
-      reader.readAsText(file);
-    });
+        reader.onerror = reject;
+        reader.readAsText(file);
+      });
+
+    const newFiles = await Promise.all(Array.from(files).map(readFile));
+    const updated = { ...agent, files: [...agent.files, ...newFiles] };
+    await updateAgent(updated);
+    setAgent(updated);
     e.target.value = '';
   };
 

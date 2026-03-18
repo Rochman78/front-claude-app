@@ -11,23 +11,27 @@ export default function AgentsPage() {
   const [email, setEmail] = useState('');
   const [showForm, setShowForm] = useState(false);
 
+  const loadAgents = async () => {
+    setAgents(await getAgents());
+  };
+
   useEffect(() => {
-    setAgents(getAgents());
+    loadAgents();
   }, []);
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!name.trim() || !email.trim()) return;
-    createAgent(name.trim(), email.trim());
-    setAgents(getAgents());
+    await createAgent(name.trim(), email.trim());
+    await loadAgents();
     setName('');
     setEmail('');
     setShowForm(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Supprimer cet agent ?')) return;
-    deleteAgent(id);
-    setAgents(getAgents());
+    await deleteAgent(id);
+    await loadAgents();
   };
 
   return (

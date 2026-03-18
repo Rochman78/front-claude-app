@@ -13,12 +13,16 @@ export default function SharedFilesPage() {
   const [assignMode, setAssignMode] = useState<'all' | 'specific'>('all');
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
 
+  const loadData = async () => {
+    setFiles(await getSharedFiles());
+    setAgents(await getAgents());
+  };
+
   useEffect(() => {
-    setFiles(getSharedFiles());
-    setAgents(getAgents());
+    loadData();
   }, []);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!fileName.trim() || !fileContent.trim()) return;
     const file: SharedFile = {
       id: crypto.randomUUID(),
@@ -27,8 +31,8 @@ export default function SharedFilesPage() {
       assignedTo: assignMode === 'all' ? 'all' : selectedAgents,
       createdAt: new Date().toISOString(),
     };
-    addSharedFile(file);
-    setFiles(getSharedFiles());
+    await addSharedFile(file);
+    await loadData();
     setFileName('');
     setFileContent('');
     setSelectedAgents([]);
@@ -36,10 +40,10 @@ export default function SharedFilesPage() {
     setShowForm(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Supprimer ce fichier partagé ?')) return;
-    deleteSharedFile(id);
-    setFiles(getSharedFiles());
+    await deleteSharedFile(id);
+    await loadData();
   };
 
   const toggleAgent = (agentId: string) => {

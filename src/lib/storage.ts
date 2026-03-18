@@ -2,85 +2,76 @@
 
 import { Agent, SharedFile, ChatMessage } from '@/types';
 
-const AGENTS_KEY = 'frontapp_agents';
-const SHARED_FILES_KEY = 'frontapp_shared_files';
-const CHAT_KEY_PREFIX = 'frontapp_chat_';
-
 // Agents
-export function getAgents(): Agent[] {
-  if (typeof window === 'undefined') return [];
-  const data = localStorage.getItem(AGENTS_KEY);
-  return data ? JSON.parse(data) : [];
+export async function getAgents(): Promise<Agent[]> {
+  const res = await fetch('/api/agents');
+  return res.json();
 }
 
-export function getAgent(id: string): Agent | undefined {
-  return getAgents().find((a) => a.id === id);
+export async function getAgent(id: string): Promise<Agent | undefined> {
+  const res = await fetch(`/api/agents/${id}`);
+  if (!res.ok) return undefined;
+  return res.json();
 }
 
-export function saveAgents(agents: Agent[]): void {
-  localStorage.setItem(AGENTS_KEY, JSON.stringify(agents));
+export async function createAgent(name: string, email: string): Promise<Agent> {
+  const res = await fetch('/api/agents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email }),
+  });
+  return res.json();
 }
 
-export function createAgent(name: string, email: string): Agent {
-  const agents = getAgents();
-  const agent: Agent = {
-    id: crypto.randomUUID(),
-    name,
-    email,
-    instructions: '',
-    files: [],
-    createdAt: new Date().toISOString(),
-  };
-  agents.push(agent);
-  saveAgents(agents);
-  return agent;
+export async function deleteAgent(id: string): Promise<void> {
+  await fetch(`/api/agents/${id}`, { method: 'DELETE' });
 }
 
-export function deleteAgent(id: string): void {
-  const agents = getAgents().filter((a) => a.id !== id);
-  saveAgents(agents);
-}
-
-export function updateAgent(agent: Agent): void {
-  const agents = getAgents().map((a) => (a.id === agent.id ? agent : a));
-  saveAgents(agents);
+export async function updateAgent(agent: Agent): Promise<void> {
+  await fetch(`/api/agents/${agent.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(agent),
+  });
 }
 
 // Shared Files
-export function getSharedFiles(): SharedFile[] {
-  if (typeof window === 'undefined') return [];
-  const data = localStorage.getItem(SHARED_FILES_KEY);
-  return data ? JSON.parse(data) : [];
+export async function getSharedFiles(): Promise<SharedFile[]> {
+  const res = await fetch('/api/shared-files');
+  return res.json();
 }
 
-export function saveSharedFiles(files: SharedFile[]): void {
-  localStorage.setItem(SHARED_FILES_KEY, JSON.stringify(files));
+export async function addSharedFile(file: SharedFile): Promise<void> {
+  await fetch('/api/shared-files', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(file),
+  });
 }
 
-export function addSharedFile(file: SharedFile): void {
-  const files = getSharedFiles();
-  files.push(file);
-  saveSharedFiles(files);
+export async function deleteSharedFile(id: string): Promise<void> {
+  await fetch('/api/shared-files', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
 }
 
-export function deleteSharedFile(id: string): void {
-  const files = getSharedFiles().filter((f) => f.id !== id);
-  saveSharedFiles(files);
-}
-
-export function getSharedFilesForAgent(agentId: string): SharedFile[] {
-  return getSharedFiles().filter(
-    (f) => f.assignedTo === 'all' || (Array.isArray(f.assignedTo) && f.assignedTo.includes(agentId))
-  );
+export async function getSharedFilesForAgent(agentId: string): Promise<SharedFile[]> {
+  const res = await fetch(`/api/shared-files?agentId=${agentId}`);
+  return res.json();
 }
 
 // Chat
-export function getChatMessages(key: string): ChatMessage[] {
-  if (typeof window === 'undefined') return [];
-  const data = localStorage.getItem(CHAT_KEY_PREFIX + key);
-  return data ? JSON.parse(data) : [];
+export async function getChatMessages(key: string): Promise<ChatMessage[]> {
+  const res = await fetch(`/api/chat-messages?key=${encodeURIComponent(key)}`);
+  return res.json();
 }
 
-export function saveChatMessages(key: string, messages: ChatMessage[]): void {
-  localStorage.setItem(CHAT_KEY_PREFIX + key, JSON.stringify(messages));
+export async function saveChatMessages(key: string, messages: ChatMessage[]): Promise<void> {
+  await fetch('/api/chat-messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, messages }),
+  });
 }

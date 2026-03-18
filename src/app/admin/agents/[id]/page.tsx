@@ -59,22 +59,29 @@ export default function AgentDetailPage() {
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !agent) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const content = ev.target?.result as string;
-      const agentFile: AgentFile = {
-        id: crypto.randomUUID(),
-        name: file.name,
-        content,
-        createdAt: new Date().toISOString(),
+    const files = e.target.files;
+    if (!files || files.length === 0 || !agent) return;
+    let currentAgent = { ...agent };
+    let processed = 0;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const content = ev.target?.result as string;
+        const agentFile: AgentFile = {
+          id: crypto.randomUUID(),
+          name: file.name,
+          content,
+          createdAt: new Date().toISOString(),
+        };
+        currentAgent = { ...currentAgent, files: [...currentAgent.files, agentFile] };
+        processed++;
+        if (processed === files.length) {
+          updateAgent(currentAgent);
+          setAgent(currentAgent);
+        }
       };
-      const updated = { ...agent, files: [...agent.files, agentFile] };
-      updateAgent(updated);
-      setAgent(updated);
-    };
-    reader.readAsText(file);
+      reader.readAsText(file);
+    });
     e.target.value = '';
   };
 
@@ -212,7 +219,7 @@ export default function AgentDetailPage() {
               <div className="flex gap-2">
                 <label className="cursor-pointer rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-purple-700 transition-colors">
                   Upload
-                  <input type="file" className="hidden" onChange={handleFileUpload} accept=".txt,.md,.json,.csv,.xml,.html" />
+                  <input type="file" className="hidden" onChange={handleFileUpload} multiple />
                 </label>
                 <button
                   onClick={() => setShowFileForm(!showFileForm)}

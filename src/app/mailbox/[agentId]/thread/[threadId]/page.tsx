@@ -2,16 +2,28 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { Agent, EmailThread, ChatMessage } from '@/types';
+import { Agent, ChatMessage } from '@/types';
 import { getAgent, getSharedFilesForAgent, getChatMessages, saveChatMessages } from '@/lib/storage';
-import { mockThreads } from '@/lib/mock-emails';
+
+interface FrontMessage {
+  id: string;
+  author?: { email?: string; name?: string };
+  recipients?: { handle: string; name?: string; role: string }[];
+  subject?: string;
+  body: string;
+  created_at: number;
+  is_inbound: boolean;
+}
 
 type View = 'thread' | 'chat' | 'draft';
 
 export default function ThreadDetailPage() {
   const { agentId, threadId } = useParams<{ agentId: string; threadId: string }>();
   const [agent, setAgent] = useState<Agent | null>(null);
-  const [thread, setThread] = useState<EmailThread | null>(null);
+  const [subject, setSubject] = useState('');
+  const [messages, setMessages] = useState<FrontMessage[]>([]);
+  const [loadingThread, setLoadingThread] = useState(true);
+  const [threadError, setThreadError] = useState('');
   const [view, setView] = useState<View>('thread');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
@@ -24,8 +36,24 @@ export default function ThreadDetailPage() {
     const load = async () => {
       const a = await getAgent(agentId);
       if (a) setAgent(a);
-      const t = mockThreads.find((t) => t.id === threadId);
-      if (t) setThread(t);
+
+      try {
+        const res = await fetch(`/api/frontapp/messages?conversation_id=${threadId}`);
+        const data = await res.json();
+        if (data.error) {
+          setThreadError(data.error);
+        } else {
+          const msgs: FrontMessage[] = data._results || [];
+          setMessages(msgs.sort((a, b) => a.created_at - b.created_at));
+          if (msgs.length > 0 && msgs[0].subject) {
+            setSubject(msgs[0].subject);
+          }
+        }
+      } catch {
+        setThreadError('Erreur de chargement des messages');
+      } finally {
+        setLoadingThread(false);
+      }
     };
     load();
   }, [agentId, threadId]);
@@ -40,10 +68,21 @@ export default function ThreadDetailPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  const stripHtml = (html: string) => {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return div.textContent || div.innerText || '';
+  };
+
   const buildSystemPrompt = async () => {
-    if (!thread || !agent) return '';
-    const msgs = thread.messages
-      .map((m) => `De: ${m.from}\nÀ: ${m.to}\nDate: ${new Date(m.date).toLocaleString('fr-FR')}\n\n${m.body}`)
+    if (!agent || messages.length === 0) return '';
+    const msgs = messages
+      .map((m) => {
+        const from = m.author?.email || 'inconnu';
+        const to = m.recipients?.map((r) => r.handle).join(', ') || 'inconnu';
+        const date = new Date(m.created_at * 1000).toLocaleString('fr-FR');
+        return `De: ${from}\nÀ: ${to}\nDate: ${date}\n\n${stripHtml(m.body)}`;
+      })
       .join('\n\n---\n\n');
 
     const sharedFiles = await getSharedFilesForAgent(agentId);
@@ -60,7 +99,7 @@ BASE DE CONNAISSANCES:
 ${allFiles || '(vide)'}
 
 CONVERSATION EMAIL COMPLÈTE À ANALYSER:
-Sujet: ${thread.subject}
+Sujet: ${subject || '(Sans sujet)'}
 
 ${msgs}
 
@@ -68,7 +107,7 @@ Tu dois analyser cette conversation email et répondre aux questions de l'utilis
   };
 
   const sendMessage = async () => {
-    if (!chatInput.trim() || !agent || !thread || isLoading) return;
+    if (!chatInput.trim() || !agent || isLoading) return;
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -152,15 +191,15 @@ Tu dois analyser cette conversation email et répondre aux questions de l'utilis
     }
   };
 
-  if (!agent || !thread) {
-    return <div className="py-10 text-center text-gray-500">Thread introuvable</div>;
+  if (!agent) {
+    return <div className="py-10 text-center text-gray-500">Agent introuvable</div>;
   }
 
   return (
     <div className="max-w-4xl mx-auto py-6">
       <div className="mb-4">
-        <h1 className="text-xl font-bold text-white">{thread.subject}</h1>
-        <p className="text-sm text-gray-400">{thread.participants.join(', ')}</p>
+        <h1 className="text-xl font-bold text-white">{subject || '(Sans sujet)'}</h1>
+        <p className="text-sm text-gray-400">{agent.name} — {agent.email}</p>
       </div>
 
       {/* View tabs */}
@@ -193,24 +232,46 @@ Tu dois analyser cette conversation email et répondre aux questions de l'utilis
 
       {/* Thread View */}
       {view === 'thread' && (
-        <div className="space-y-4">
-          {thread.messages.map((msg) => (
-            <div key={msg.id} className="rounded-xl bg-gray-800 p-5 border border-gray-700">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="font-semibold text-white">{msg.from}</div>
-                  <div className="text-xs text-gray-500">À : {msg.to}</div>
+        loadingThread ? (
+          <div className="text-center py-12 text-gray-500">Chargement des messages...</div>
+        ) : threadError ? (
+          <div className="text-center py-12 text-red-400">{threadError}</div>
+        ) : messages.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">Aucun message dans cette conversation.</div>
+        ) : (
+          <div className="space-y-4">
+            {messages.map((msg) => (
+              <div key={msg.id} className="rounded-xl bg-gray-800 p-5 border border-gray-700">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="font-semibold text-white">
+                      {msg.author?.name || msg.author?.email || 'Inconnu'}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      À : {msg.recipients?.map((r) => r.name || r.handle).join(', ') || 'Inconnu'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      msg.is_inbound
+                        ? 'bg-green-600/20 text-green-400'
+                        : 'bg-blue-600/20 text-blue-400'
+                    }`}>
+                      {msg.is_inbound ? 'Reçu' : 'Envoyé'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(msg.created_at * 1000).toLocaleString('fr-FR')}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500">
-                  {new Date(msg.date).toLocaleString('fr-FR')}
-                </div>
+                <div
+                  className="text-sm text-gray-300 leading-relaxed prose prose-invert max-w-none"
+                  dangerouslySetInnerHTML={{ __html: msg.body }}
+                />
               </div>
-              <div className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
-                {msg.body}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )
       )}
 
       {/* Chat View */}

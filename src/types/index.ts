@@ -2,9 +2,16 @@ export interface Agent {
   id: string;
   name: string;
   email: string;
+  inboxId: string;
   instructions: string;
   files: AgentFile[];
   createdAt: string;
+}
+
+export interface FrontInbox {
+  id: string;
+  name: string;
+  address: string;
 }
 
 export interface AgentFile {

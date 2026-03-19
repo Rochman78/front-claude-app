@@ -44,6 +44,7 @@ export default function ThreadDetailPage() {
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [draft, setDraft] = useState('');
+  const [draftValidated, setDraftValidated] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
 
   // Devis
@@ -52,6 +53,7 @@ export default function ThreadDetailPage() {
   const [currentQuote, setCurrentQuote] = useState<QuoteInfo | null>(null);
   const [isGeneratingQuote, setIsGeneratingQuote] = useState(false);
   const [quoteModal, setQuoteModal] = useState<QuoteModal>('hidden');
+  const [showQuoteWarning, setShowQuoteWarning] = useState(false);
   const [quoteError, setQuoteError] = useState('');
 
   const [successUrl, setSuccessUrl] = useState('');
@@ -128,6 +130,12 @@ export default function ThreadDetailPage() {
     // Si Claude a inclus une section BROUILLON DE RÉPONSE, extraire uniquement cette partie
     const brouillonMatch = raw.match(/\*?\*?BROUILLON\s+DE\s+R[EÉ]PONSE\s*:?\*?\*?\s*\n+([\s\S]+)/i);
     if (brouillonMatch) return brouillonMatch[1].trim();
+    // Si le message est identifié comme mail final (étape 3), couper tout avant "Bonjour"
+    const isFinalEmail = /[EÉ]TAPE\s*3|MAIL\s+FINAL|R[EÉ]PONSE\s+FINALE/i.test(raw);
+    if (isFinalEmail) {
+      const bonjourIdx = raw.search(/bonjour/i);
+      if (bonjourIdx !== -1) return raw.slice(bonjourIdx).trim();
+    }
     // Supprimer section d'analyse en tête si présente
     const analyseMatch = raw.match(/\*?\*?[A-ZÀÉÈÊ\s]+:?\*?\*?[\s\S]*?\n\n([\s\S]+)/);
     if (analyseMatch && /^(bonjour|chère|cher|madame|monsieur|hello)/i.test(analyseMatch[1])) {
@@ -153,6 +161,7 @@ export default function ThreadDetailPage() {
       if (!data.error) {
         const content = cleanDraftContent(data.content);
         setDraft(content);
+        setDraftValidated(false);
         const am: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content, timestamp: new Date().toISOString() };
         setChatMessages((prev) => {
           const updated = [...prev, am];
@@ -184,8 +193,9 @@ export default function ThreadDetailPage() {
       const sys = await buildSystemPrompt(false);
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt: sys, messages: updated.map((m) => ({ role: m.role, content: m.content })) }) });
       const data = await res.json();
-      const content = data.error ? `Erreur: ${data.error}` : data.content;
-      if (!data.error && content.trim()) setDraft(content);
+      const rawContent = data.error ? `Erreur: ${data.error}` : data.content;
+      const content = data.error ? rawContent : cleanDraftContent(rawContent);
+      if (!data.error && content.trim()) { setDraft(content); setDraftValidated(false); }
       const am: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content, timestamp: new Date().toISOString() };
       const final = [...updated, am];
       setChatMessages(final);
@@ -414,47 +424,75 @@ export default function ThreadDetailPage() {
             {/* Barre d'actions */}
             <div className="flex items-center justify-between gap-3 py-1 flex-shrink-0">
               {/* 🟡 Devis PDF */}
-              <div className="relative group inline-block">
-                <button
-                  onClick={quoteReady ? generateQuote : undefined}
-                  disabled={isGeneratingQuote}
-                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-                    quoteReady
-                      ? 'bg-amber-500 hover:bg-amber-600 text-white cursor-pointer'
-                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  {isGeneratingQuote ? 'Génération devis...' : currentQuote ? '✓ Devis créé' : '⬡ Générer le devis PDF'}
-                </button>
-                {!quoteReady && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 max-w-xs text-center">
-                    {quoteReadyReason || 'Le client doit valider une proposition chiffrée avant de générer un devis'}
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={() => quoteReady ? generateQuote() : setShowQuoteWarning(true)}
+                disabled={isGeneratingQuote}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                  quoteReady
+                    ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                {isGeneratingQuote ? 'Génération devis...' : currentQuote ? '✓ Devis créé' : '⬡ Générer le devis PDF'}
+              </button>
 
               <div className="flex items-center gap-3">
                 <p className="text-xs text-gray-400 italic">Crée un brouillon dans Front — rien n&apos;est envoyé au client</p>
+
+                {/* ✅ Valider le brouillon */}
+                {draft.trim() && !draftValidated && (
+                  <button
+                    onClick={() => setDraftValidated(true)}
+                    className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors"
+                  >
+                    ✓ Valider ce brouillon
+                  </button>
+                )}
+
                 {/* 🟢 Charger dans Front */}
                 <div className="relative group inline-block">
                   <button
-                    onClick={draft.trim() ? handleSendDraft : undefined}
+                    onClick={draftValidated ? handleSendDraft : undefined}
                     disabled={isSending}
                     className={`rounded-lg px-5 py-2 text-sm font-bold text-white transition-colors flex-shrink-0 ${
-                      !draft.trim() ? 'bg-gray-300 cursor-not-allowed'
+                      !draftValidated ? 'bg-gray-300 cursor-not-allowed'
                       : isSending ? 'bg-green-400'
                       : 'bg-green-600 hover:bg-green-700'
                     }`}
                   >
                     {isSending ? 'Envoi...' : currentQuote ? '↑ Charger brouillon + devis dans Front' : '↑ Charger dans Front'}
                   </button>
-                  {!draft.trim() && (
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                      Rédigez ou générez un brouillon d&apos;abord
+                  {!draftValidated && (
+                    <div className="absolute bottom-full right-0 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 text-center">
+                      {!draft.trim() ? 'Générez un brouillon d\'abord' : 'Validez le brouillon avant d\'envoyer dans Front'}
                     </div>
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODALE AVERTISSEMENT DEVIS ── */}
+      {showQuoteWarning && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-8 max-w-sm w-full mx-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4 text-2xl">⚠️</div>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Devis non recommandé</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              {quoteReadyReason || 'Le client n\'a pas encore validé de proposition chiffrée.'}<br /><br />
+              Vous pouvez tout de même générer le devis, mais il risque de manquer des informations.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowQuoteWarning(false)}
+                className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                Annuler
+              </button>
+              <button onClick={() => { setShowQuoteWarning(false); generateQuote(); }}
+                className="flex-1 rounded-lg bg-amber-500 hover:bg-amber-600 px-4 py-2.5 text-sm font-bold text-white transition-colors">
+                Générer quand même
+              </button>
             </div>
           </div>
         </div>

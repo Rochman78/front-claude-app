@@ -153,10 +153,19 @@ export default function ThreadDetailPage() {
     };
   }, [showReply, agentId]);
 
+  // Intercepter le bouton back du navigateur quand il y a des messages
+  useEffect(() => {
+    if (!chatMessages.length) return;
+    window.history.pushState(null, '', window.location.href);
+    const onPop = () => { setShowLeaveModal(true); setPendingNav(`/mailbox/${agentId}`); window.history.pushState(null, '', window.location.href); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [chatMessages.length, agentId]);
+
   const stripHtml = (html: string) => { const d = document.createElement('div'); d.innerHTML = html; return d.textContent || ''; };
 
   const handleNavAway = (dest: string) => {
-    if (showReply) { setShowLeaveModal(true); setPendingNav(dest); }
+    if (showReply || chatMessages.length > 0) { setShowLeaveModal(true); setPendingNav(dest); }
     else router.push(dest);
   };
 
@@ -308,7 +317,7 @@ export default function ThreadDetailPage() {
     const questionsMatch = content.match(/QUESTIONS?\s*:([^\n]*(?:\n(?!ÉTAPE|BROUILLON|##)[^\n]*)*)/i);
     if (questionsMatch) {
       const answer = questionsMatch[1].toLowerCase();
-      if (/pas de question|aucune question|sans question/.test(answer)) return true;
+      if (/pas de question|aucune question|sans question|pas de questions particulière|aucune question particulière/.test(answer)) return true;
     }
     // Sans header — Claude dit directement "Pas de question supplémentaire"
     return /pas de question suppl|aucune question suppl|pas de questions suppl|tu valides ce brouillon/.test(lower);

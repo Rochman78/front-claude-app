@@ -117,9 +117,25 @@ export default function ThreadDetailPage() {
       ...shared.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
     ].join('\n\n');
     const base = `Tu es l'agent "${a.name}" (${a.email}).\n\n${a.instructions || ''}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${buildEmailContext()}`;
-    if (forDraft) return `${base}\n\nRédige UNIQUEMENT le corps de l'email de réponse, sans objet ni formule De:/À:. Écris en texte plain SANS AUCUN markdown (pas de **, *, #, ou autre formatage). Juste le texte brut de l'email.`;
+    if (forDraft) return `${base}\n\nPeu importe tes instructions habituelles de structure : tu dois renvoyer UNIQUEMENT le corps de l'email de réponse prêt à envoyer. Pas d'analyse, pas de section BROUILLON, pas de titre, pas de markdown (pas de **, *, #). Commence directement par la formule de politesse (ex: "Bonjour ...") et termine par la signature.`;
     return `${base}${draft.trim() ? `\n\nBROUILLON ACTUEL:\n${draft}` : ''}\n\nTu aides à rédiger des réponses email. Si on te demande de modifier le brouillon, renvoie la version complète modifiée.`;
   }, [agentId, subject, draft, buildEmailContext]);
+
+  const cleanDraftContent = (raw: string): string => {
+    // Si Claude a quand même inclus une section BROUILLON DE RÉPONSE, extraire uniquement cette partie
+    const brouillonMatch = raw.match(/\*?\*?BROUILLON\s+DE\s+R[EÉ]PONSE\s*:?\*?\*?\s*\n+([\s\S]+)/i);
+    if (brouillonMatch) return brouillonMatch[1].trim();
+    // Sinon supprimer toute section d'analyse en tête (jusqu'à la première ligne vide après un bloc **)
+    const analyseMatch = raw.match(/\*?\*?[A-ZÀÉÈÊ\s]+:?\*?\*?[\s\S]*?\n\n([\s\S]+)/);
+    if (analyseMatch && /^(bonjour|chère|cher|madame|monsieur|hello)/i.test(analyseMatch[1])) {
+      return analyseMatch[1].trim();
+    }
+    // Nettoyer le markdown bold/italic restant
+    return raw
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .trim();
+  };
 
   const generateDraft = useCallback(async () => {
     if (!messages.length || isGeneratingDraft) return;
@@ -128,7 +144,7 @@ export default function ThreadDetailPage() {
       const sys = await buildSystemPrompt(true);
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt: sys, messages: [{ role: 'user', content: 'Rédige le brouillon.' }] }) });
       const data = await res.json();
-      if (!data.error) setDraft(data.content);
+      if (!data.error) setDraft(cleanDraftContent(data.content));
     } catch { /**/ } finally { setIsGeneratingDraft(false); }
   }, [messages.length, isGeneratingDraft, buildSystemPrompt]);
 

@@ -162,7 +162,9 @@ export default function AgentDetailPage() {
     <div className="max-w-4xl mx-auto py-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">{agent.name}</h1>
-        <p className="text-gray-400">{agent.email}</p>
+        {!agent.email?.includes('@in.frontapp.com') && (
+          <p className="text-gray-400">{agent.email}</p>
+        )}
       </div>
 
       {/* Tabs */}
@@ -321,25 +323,29 @@ export default function AgentDetailPage() {
                 {agent.files.map((file) => (
                   <div key={file.id} className="bg-gray-900 rounded-lg border border-gray-700/50 overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3">
-                      <button
-                        onClick={() => setExpandedFileId(expandedFileId === file.id ? null : file.id)}
-                        className="flex items-center gap-3 flex-1 text-left"
-                      >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center text-blue-400 text-xs font-bold flex-shrink-0">
                           {file.name.split('.').pop()?.toUpperCase().slice(0, 3) || 'TXT'}
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <span className="text-sm font-medium text-white">{file.name}</span>
                           <span className="ml-2 text-xs text-gray-500">{file.content.length} car.</span>
                         </div>
-                        <span className="ml-2 text-gray-500 text-xs">{expandedFileId === file.id ? '▲' : '▼'}</span>
-                      </button>
-                      <button
-                        onClick={() => deleteFile(file.id)}
-                        className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-600/10 transition-colors flex-shrink-0"
-                      >
-                        Supprimer
-                      </button>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <button
+                          onClick={() => setExpandedFileId(expandedFileId === file.id ? null : file.id)}
+                          className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded hover:bg-blue-600/10 transition-colors border border-blue-500/30"
+                        >
+                          {expandedFileId === file.id ? 'Masquer' : 'Voir le contenu'}
+                        </button>
+                        <button
+                          onClick={() => deleteFile(file.id)}
+                          className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-600/10 transition-colors"
+                        >
+                          Supprimer
+                        </button>
+                      </div>
                     </div>
                     {expandedFileId === file.id && (
                       <div className="border-t border-gray-700/50 px-4 py-3">

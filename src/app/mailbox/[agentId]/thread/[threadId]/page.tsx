@@ -325,7 +325,7 @@ export default function ThreadDetailPage() {
           </div>
 
           {/* Droite — brouillon (2/3) + chat (1/3) */}
-          <div className="flex-1 flex flex-col gap-3 min-w-0 overflow-hidden">
+          <div className="flex-1 flex flex-col gap-3 min-w-0 overflow-visible">
 
             {/* Brouillon — 2/3 hauteur */}
             <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-[2] min-h-0 overflow-hidden">

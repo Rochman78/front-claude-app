@@ -288,32 +288,32 @@ export default function ThreadDetailPage() {
         /* ── VUE SPLIT : 1/3 conversation | 2/3 chat+brouillon ── */
         <div className="flex gap-4" style={{ height: 'calc(100vh - 180px)', minHeight: '500px' }}>
 
-          {/* Gauche 1/3 — conversation compacte */}
-          <div className="w-1/3 flex-shrink-0 overflow-y-auto space-y-2 pr-1">
+          {/* Gauche — conversation pleine hauteur */}
+          <div className="w-2/5 flex-shrink-0 overflow-y-auto space-y-2 pr-1">
             {loadingThread ? (
               <div className="text-center py-8 text-gray-400 text-xs">Chargement...</div>
             ) : messages.map((msg) => (
-              <div key={msg.id} className={`rounded-lg border px-3 py-2.5 ${msg.is_inbound ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100'}`}>
-                <div className="flex items-center justify-between mb-1.5">
+              <div key={msg.id} className={`rounded-lg border px-3 py-3 ${msg.is_inbound ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100'}`}>
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
                     <span className={`text-xs px-1.5 py-px rounded font-medium ${msg.is_inbound ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
                       {msg.is_inbound ? 'Reçu' : 'Envoyé'}
                     </span>
-                    <span className="text-xs font-semibold text-gray-700 truncate max-w-[100px]">{msg.author?.name || msg.author?.email || 'Inconnu'}</span>
+                    <span className="text-xs font-semibold text-gray-700 truncate max-w-[120px]">{msg.author?.name || msg.author?.email || 'Inconnu'}</span>
                   </div>
                   <span className="text-xs text-gray-400 flex-shrink-0">{new Date(msg.created_at * 1000).toLocaleDateString('fr-FR')}</span>
                 </div>
-                <div className="text-xs text-gray-600 leading-relaxed line-clamp-4">{stripHtml(msg.body).slice(0, 300)}</div>
+                <div className="email-body text-xs" dangerouslySetInnerHTML={{ __html: msg.body }} />
               </div>
             ))}
           </div>
 
-          {/* Droite 2/3 — brouillon + chat */}
+          {/* Droite — brouillon (2/3) + chat (1/3) */}
           <div className="flex-1 flex flex-col gap-3 min-w-0 overflow-hidden">
 
-            {/* Brouillon */}
-            <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-shrink-0">
-              <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+            {/* Brouillon — 2/3 hauteur */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-[2] min-h-0 overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Brouillon</span>
                 {isGeneratingDraft && (
                   <span className="text-xs text-violet-500 flex items-center gap-1">
@@ -329,14 +329,13 @@ export default function ThreadDetailPage() {
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                rows={7}
                 placeholder={isGeneratingDraft ? '' : 'Le brouillon apparaîtra ici. Vous pouvez aussi le rédiger directement.'}
-                className="w-full px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none resize-none leading-relaxed rounded-b-xl"
+                className="w-full flex-1 px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none resize-none leading-relaxed rounded-b-xl"
               />
             </div>
 
-            {/* Chat avec l'agent */}
-            <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
+            {/* Chat avec l'agent — 1/3 hauteur */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-[1] min-h-0 overflow-hidden">
               <div className="px-4 py-2.5 border-b border-gray-100 flex-shrink-0 bg-gray-50 rounded-t-xl">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Discussion avec Claude</span>
               </div>

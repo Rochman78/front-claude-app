@@ -223,15 +223,13 @@ export default function ThreadDetailPage() {
     return Array.from(matched);
   }, []);
 
-  const buildSystemPrompt = useCallback((forDraft = false): string => {
+  const buildDocumentsContext = useCallback((): string => {
     if (!agent) return '';
 
-    // Contenu email pour détection de mots-clés
     const emailContext = buildEmailContext();
     const fullEmailText = `${subject} ${emailContext}`;
     const relevantDocNames = selectDocuments(fullEmailText);
 
-    // Filtrer les fichiers : ne garder que ceux dont le nom matche un doc pertinent
     const allFiles = [
       ...agent.files.map((f) => ({ name: f.name, content: f.content, shared: false })),
       ...sharedFiles.map((f) => ({ name: f.name, content: f.content, shared: true })),
@@ -241,7 +239,6 @@ export default function ThreadDetailPage() {
       relevantDocNames.some((docName) => f.name.toLowerCase().includes(docName.toLowerCase()) || docName.toLowerCase().includes(f.name.toLowerCase()))
     );
 
-    // Fichiers non reconnus (pas dans les catégories connues) → toujours inclus (instructions custom, etc.)
     const knownDocNames = [
       'devis-sur-mesure-base-documentaire.txt', 'obligations-tva-zephyr.docx', 'format-json-devis.txt',
       'POLITIQUE DE RETOURS.docx', 'template-echange-erreur-client.txt',
@@ -255,14 +252,19 @@ export default function ThreadDetailPage() {
     );
 
     const filesToInclude = [...unknownFiles, ...selectedFiles];
-    const files = filesToInclude.map((f) => f.shared ? `[Partagé: ${f.name}]\n${f.content}` : `[${f.name}]\n${f.content}`).join('\n\n');
+    return filesToInclude.map((f) => f.shared ? `[Partagé: ${f.name}]\n${f.content}` : `[${f.name}]\n${f.content}`).join('\n\n');
+  }, [agent, sharedFiles, subject, buildEmailContext, selectDocuments]);
 
-    const knowledgeInstructions = files ? `\nTu as accès à une base de connaissances ciblée dans ton contexte (section BASE DE CONNAISSANCES). Consulte-la systématiquement avant de répondre : tarifs, délais, conditions, informations produits. Si une information s'y trouve, utilise-la directement sans l'inventer. Si elle n'y est pas, indique-le clairement.\n` : '';
+  const buildSystemPrompt = useCallback((forDraft = false): string => {
+    if (!agent) return '';
+
+    const emailContext = buildEmailContext();
     const workflowRule = `RÈGLE PRIORITAIRE — WORKFLOW OBLIGATOIRE :\nTu ne dois JAMAIS générer directement un brouillon de mail. Tu dois TOUJOURS commencer par l'ANALYSE (type, urgence, résumé, contexte, points d'attention, conformité DGCCRF), puis proposer un brouillon, puis tes questions. Ces 3 éléments doivent apparaître dans ta PREMIÈRE réponse à chaque nouveau mail client. Si tu ne fais pas l'analyse avant le brouillon, ta réponse est incorrecte.\n\n`;
-    const base = `${workflowRule}Tu es l'agent "${agent.name}" (${agent.email}).\n\n${agent.instructions || ''}${knowledgeInstructions}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${emailContext}`;
+    const knowledgeInstructions = `\nDes documents de référence te sont fournis au début de la conversation. Consulte-les systématiquement avant de répondre : tarifs, délais, conditions, informations produits. Si une information s'y trouve, utilise-la directement sans l'inventer. Si elle n'y est pas, indique-le clairement.\n`;
+    const base = `${workflowRule}Tu es l'agent "${agent.name}" (${agent.email}).\n\n${agent.instructions || ''}${knowledgeInstructions}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${emailContext}`;
     if (forDraft) return `${base}\n\nPeu importe tes instructions habituelles de structure : tu dois renvoyer UNIQUEMENT le corps de l'email de réponse prêt à envoyer. Pas d'analyse, pas de section BROUILLON, pas de titre, pas de markdown (pas de **, *, #). Commence directement par la formule de politesse (ex: "Bonjour ...") et termine par la signature.`;
     return `${base}${draft.trim() ? `\n\nBROUILLON ACTUEL:\n${draft}` : ''}`;
-  }, [agent, sharedFiles, subject, draft, buildEmailContext, selectDocuments]);
+  }, [agent, subject, draft, buildEmailContext]);
 
   const cleanDraftContent = (raw: string): string => {
     // Si Claude a inclus une section BROUILLON DE RÉPONSE, extraire uniquement cette partie
@@ -319,11 +321,11 @@ export default function ThreadDetailPage() {
       .replace(/\*([^*\n]+)\*/g, '<em>$1</em>'),
   });
 
-  const streamChat = useCallback(async (sys: string, msgs: { role: string; content: string }[], onChunk: (text: string) => void, model?: string): Promise<string> => {
+  const streamChat = useCallback(async (sys: string, msgs: { role: string; content: string }[], onChunk: (text: string) => void, model?: string, documents?: string): Promise<string> => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
     try {
-      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt: sys, messages: msgs, model }), signal: controller.signal });
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt: sys, messages: msgs, model, documents }), signal: controller.signal });
       if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Erreur serveur'); }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -353,11 +355,12 @@ export default function ThreadDetailPage() {
     setChatMessages((prev) => [...prev, streamMsg]);
     try {
       const sys = buildSystemPrompt(false);
+      const docs = buildDocumentsContext();
       const full = await streamChat(sys, [
         { role: 'user', content: 'ÉTAPE 1' },
       ], (text) => {
         setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: text } : m));
-      }, 'sonnet');
+      }, 'sonnet', docs);
       const extracted = cleanDraftContent(full);
       setDraft(extracted);
       setDraftValidated(false);
@@ -372,7 +375,7 @@ export default function ThreadDetailPage() {
       setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: `Erreur : ${msg}` } : m));
     }
     finally { setIsGeneratingDraft(false); }
-  }, [messages.length, isGeneratingDraft, buildSystemPrompt, streamChat, agentId, threadId]);
+  }, [messages.length, isGeneratingDraft, buildSystemPrompt, buildDocumentsContext, streamChat, agentId, threadId]);
 
   const handleOpenReply = useCallback(async () => {
     setShowReply(true);
@@ -394,11 +397,12 @@ export default function ThreadDetailPage() {
     setChatMessages((prev) => [...prev, streamMsg]);
     try {
       const sys = buildSystemPrompt(false);
+      const docs = buildDocumentsContext();
       // Limiter à 6 derniers messages pour réduire les coûts (le contexte email est dans le system prompt)
       const trimmed = updated.slice(-6).map((m) => ({ role: m.role, content: m.content }));
       const full = await streamChat(sys, trimmed, (text) => {
         setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: text } : m));
-      });
+      }, undefined, docs);
       const extracted = cleanDraftContent(full);
       if (extracted.trim()) { setDraft(extracted); setDraftValidated(false); }
       setDraftReadyToValidate(isDraftReady(full));
@@ -424,7 +428,8 @@ export default function ThreadDetailPage() {
       const check = await fetch(`/api/frontapp/summary?conversation_id=${threadId}`).then((r) => r.json());
       if (!check.quote_ready) { setQuoteError(check.quote_ready_reason || 'Informations insuffisantes.'); setQuoteModal('error'); return; }
       const sys = buildSystemPrompt(false);
-      const rawExtract = await streamChat(sys, [{ role: 'user', content: `Extrais les informations de cette conversation pour créer un devis Pennylane.\n\nRÈGLES :\n- Filets sur mesure : type="product", unitPrice=prix HT/m2, quantity=surface totale m2, description="Quantité : X | Total m2 : Y | Délai : environ 14 jours", label="COULEUR - LxH m - Description"\n- Transport : type="transport", label="Transport sur mesure", unitPrice=prix HT, quantity=1\n- Remise transport : type="transport_discount", unitPrice=prix négatif, quantity=1\n- Accessoires : type="free"\n\nRéponds UNIQUEMENT avec un JSON valide (sans markdown) :\n{"customer":{"type":"individual","firstName":"","lastName":"","email":"","phone":"","address":{"street":"","zipCode":"","city":"","country":"FR"}},"lines":[{"type":"product","label":"","quantity":0,"unitPrice":0,"vatRate":"FR_200","description":""}],"subject":"","freeText":""}` }], () => {});
+      const docs = buildDocumentsContext();
+      const rawExtract = await streamChat(sys, [{ role: 'user', content: `Extrais les informations de cette conversation pour créer un devis Pennylane.\n\nRÈGLES :\n- Filets sur mesure : type="product", unitPrice=prix HT/m2, quantity=surface totale m2, description="Quantité : X | Total m2 : Y | Délai : environ 14 jours", label="COULEUR - LxH m - Description"\n- Transport : type="transport", label="Transport sur mesure", unitPrice=prix HT, quantity=1\n- Remise transport : type="transport_discount", unitPrice=prix négatif, quantity=1\n- Accessoires : type="free"\n\nRéponds UNIQUEMENT avec un JSON valide (sans markdown) :\n{"customer":{"type":"individual","firstName":"","lastName":"","email":"","phone":"","address":{"street":"","zipCode":"","city":"","country":"FR"}},"lines":[{"type":"product","label":"","quantity":0,"unitPrice":0,"vatRate":"FR_200","description":""}],"subject":"","freeText":""}` }], () => {}, undefined, docs);
       let quoteData: Record<string, unknown>;
       try {
         const raw = rawExtract.trim().replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();

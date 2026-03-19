@@ -7,7 +7,7 @@ const anthropic = new Anthropic({
 
 export async function POST(req: NextRequest) {
   try {
-    const { systemPrompt, messages, model: requestedModel } = await req.json();
+    const { systemPrompt, messages, model: requestedModel, documents } = await req.json();
 
     if (!process.env.ANTHROPIC_API_KEY) {
       return new Response(JSON.stringify({ error: 'ANTHROPIC_API_KEY non configurée' }), { status: 500 });
@@ -16,18 +16,32 @@ export async function POST(req: NextRequest) {
     // Sonnet pour brouillon initial (suit les instructions complexes), Haiku pour chat
     const model = requestedModel === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
     const trimmedMessages = messages.slice(-10);
-    const promptSize = (systemPrompt || '').length + trimmedMessages.reduce((n: number, m: { content: string }) => n + m.content.length, 0);
-    console.log(`[chat] model=${model} prompt=${promptSize} chars`);
+
+    // Injecter les documents de référence en prefix (user + assistant ack)
+    const docPrefix: { role: 'user' | 'assistant'; content: string }[] = documents
+      ? [
+          { role: 'user', content: `DOCUMENTS DE RÉFÉRENCE (à consulter pour répondre au client) :\n\n${documents}` },
+          { role: 'assistant', content: 'Bien noté. Je dispose des documents de référence et je suis prêt à analyser le mail du client selon le workflow en 3 étapes.' },
+        ]
+      : [];
+
+    const allMessages = [
+      ...docPrefix,
+      ...trimmedMessages.map((m: { role: string; content: string }) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+    ];
+
+    const promptSize = (systemPrompt || '').length + allMessages.reduce((n: number, m: { content: string }) => n + m.content.length, 0);
+    console.log(`[chat] model=${model} prompt=${promptSize} chars (docs=${documents ? 'yes' : 'no'})`);
     const t0 = Date.now();
 
     const stream = await anthropic.messages.stream({
       model,
       max_tokens: 4096,
       system: systemPrompt || 'Tu es un assistant IA utile.',
-      messages: trimmedMessages.map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
+      messages: allMessages,
     });
 
     const encoder = new TextEncoder();

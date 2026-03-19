@@ -236,6 +236,8 @@ export default function ThreadDetailPage() {
       const data = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then((r) => r.json());
       if (data.error) { alert(`Erreur: ${data.error}`); return; }
       setHasDraft(true);
+      // Invalide le cache draft pour que la liste reflète immédiatement
+      fetch('/api/frontapp/drafts', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversation_id: threadId }) }).catch(() => {});
       setSuccessUrl(data.frontUrl || `https://app.frontapp.com/open/${threadId}`);
       setDraft(''); setCurrentQuote(null);
     } catch { alert('Erreur de connexion.'); }

@@ -40,9 +40,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     await client.query('DELETE FROM agent_files WHERE agent_id = $1', [params.id]);
 
     for (const file of files) {
+      // Supprimer les bytes nuls incompatibles avec PostgreSQL UTF-8
+      const safeContent = (file.content || '').replace(/\0/g, '');
       await client.query(
         'INSERT INTO agent_files (id, agent_id, name, content, created_at) VALUES ($1, $2, $3, $4, $5)',
-        [file.id, params.id, file.name, file.content, file.createdAt || new Date().toISOString()]
+        [file.id, params.id, file.name, safeContent, file.createdAt || new Date().toISOString()]
       );
     }
 

@@ -118,6 +118,16 @@ export default function AgentDetailPage() {
     setFilesSaveStatus('saving');
     setUploadError('');
 
+    // Avertir sur les fichiers binaires
+    const binaryExts = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.zip', '.png', '.jpg', '.jpeg'];
+    const binaryFiles = Array.from(files).filter(f => binaryExts.some(ext => f.name.toLowerCase().endsWith(ext)));
+    if (binaryFiles.length > 0) {
+      setUploadError(`⚠ Fichiers non supportés (format binaire, utilisez .txt ou .md) : ${binaryFiles.map(f => f.name).join(', ')}`);
+      setFilesSaveStatus('idle');
+      e.target.value = '';
+      return;
+    }
+
     try {
       const newFiles = await Promise.all(Array.from(files).map(readFile));
 

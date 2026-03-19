@@ -3,6 +3,7 @@ import { detectStore } from '../hooks/useStore';
 import { useClaude } from '../hooks/useClaude';
 import MailPreview from './MailPreview';
 import ClaudeChat from './ClaudeChat';
+import DraftFinal from './DraftFinal';
 import LoadingState from './LoadingState';
 
 interface PluginMainProps {
@@ -60,6 +61,10 @@ export default function PluginMain({ context }: PluginMainProps) {
   // État initial : pas encore d'analyse
   const hasMessages = claude.messages.length > 0;
 
+  // Détecter si le dernier message assistant contient un brouillon final
+  const lastAssistantMsg = [...claude.messages].reverse().find((m) => m.role === 'assistant');
+  const draftContent = lastAssistantMsg?.content.includes('Bonjour') ? lastAssistantMsg.content : null;
+
   return (
     <div className="plugin-main">
       <MailPreview
@@ -95,6 +100,10 @@ export default function PluginMain({ context }: PluginMainProps) {
           isStreaming={claude.isStreaming}
           onSend={claude.sendMessage}
         />
+      )}
+
+      {draftContent && !claude.isStreaming && (
+        <DraftFinal rawContent={draftContent} context={context} />
       )}
     </div>
   );

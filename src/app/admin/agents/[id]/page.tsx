@@ -124,7 +124,7 @@ export default function AgentDetailPage() {
           canvas.width = viewport.width;
           canvas.height = viewport.height;
           const ctx = canvas.getContext('2d')!;
-          await page.render({ canvasContext: ctx, viewport }).promise;
+          await page.render({ canvasContext: ctx, viewport, canvas }).promise;
           const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
           const res = await fetch('/api/transcribe-image', {
             method: 'POST',

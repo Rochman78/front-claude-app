@@ -116,9 +116,11 @@ export default function ThreadDetailPage() {
     const a = await getAgent(agentId);
     if (!a) return '';
     const shared = await getSharedFilesForAgent(agentId);
+    // Tronquer chaque fichier à 8 000 caractères (~2 000 tokens) pour maîtriser les coûts
+    const truncate = (content: string) => content.length > 8000 ? content.slice(0, 8000) + '\n[... tronqué]' : content;
     const files = [
-      ...a.files.map((f) => `[${f.name}]\n${f.content}`),
-      ...shared.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
+      ...a.files.map((f) => `[${f.name}]\n${truncate(f.content)}`),
+      ...shared.map((f) => `[Partagé: ${f.name}]\n${truncate(f.content)}`),
     ].join('\n\n');
     const knowledgeInstructions = files ? `\nTu as accès à une base de connaissances complète dans ton contexte (section BASE DE CONNAISSANCES). Consulte-la systématiquement avant de répondre : tarifs, délais, conditions, informations produits. Si une information s'y trouve, utilise-la directement sans l'inventer. Si elle n'y est pas, indique-le clairement.\n` : '';
     const base = `Tu es l'agent "${a.name}" (${a.email}).\n\n${a.instructions || ''}${knowledgeInstructions}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${buildEmailContext()}`;
@@ -144,6 +146,14 @@ export default function ThreadDetailPage() {
     return raw.trim();
   };
 
+  // Détecte si le dernier message Claude signale que le brouillon est prêt (pas de questions)
+  const isDraftReady = (content: string): boolean => {
+    const questionsMatch = content.match(/QUESTIONS?\s*:([^\n]*(?:\n(?!ÉTAPE|BROUILLON|##)[^\n]*)*)/i);
+    if (!questionsMatch) return false;
+    const answer = questionsMatch[1].toLowerCase();
+    return /pas de question|aucune question|sans question|pas de questions particulière|aucune question particulière/.test(answer);
+  };
+
   const renderMarkdown = (text: string) => ({
     __html: text
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -151,26 +161,44 @@ export default function ThreadDetailPage() {
       .replace(/\*([^*\n]+)\*/g, '<em>$1</em>'),
   });
 
+  const streamChat = useCallback(async (sys: string, msgs: { role: string; content: string }[], onChunk: (text: string) => void): Promise<string> => {
+    const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt: sys, messages: msgs }) });
+    if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Erreur serveur'); }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let full = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      full += chunk;
+      onChunk(full);
+    }
+    return full;
+  }, []);
+
   const generateDraft = useCallback(async () => {
     if (!messages.length || isGeneratingDraft) return;
     setIsGeneratingDraft(true);
+    const streamId = crypto.randomUUID();
+    const streamMsg: ChatMessage = { id: streamId, role: 'assistant', content: '', timestamp: new Date().toISOString() };
+    setChatMessages((prev) => [...prev, streamMsg]);
     try {
       const sys = await buildSystemPrompt(true);
-      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt: sys, messages: [{ role: 'user', content: 'Rédige le brouillon.' }] }) });
-      const data = await res.json();
-      if (!data.error) {
-        const content = cleanDraftContent(data.content);
-        setDraft(content);
-        setDraftValidated(false);
-        const am: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content, timestamp: new Date().toISOString() };
-        setChatMessages((prev) => {
-          const updated = [...prev, am];
-          saveChatMessages(`thread_${agentId}_${threadId}`, updated);
-          return updated;
-        });
-      }
-    } catch { /**/ } finally { setIsGeneratingDraft(false); }
-  }, [messages.length, isGeneratingDraft, buildSystemPrompt, agentId, threadId]);
+      const full = await streamChat(sys, [{ role: 'user', content: 'Rédige le brouillon.' }], (text) => {
+        setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: text } : m));
+      });
+      const content = cleanDraftContent(full);
+      setDraft(content);
+      setDraftValidated(false);
+      setChatMessages((prev) => {
+        const updated = prev.map((m) => m.id === streamId ? { ...m, content } : m);
+        saveChatMessages(`thread_${agentId}_${threadId}`, updated);
+        return updated;
+      });
+    } catch { setChatMessages((prev) => prev.filter((m) => m.id !== streamId)); }
+    finally { setIsGeneratingDraft(false); }
+  }, [messages.length, isGeneratingDraft, buildSystemPrompt, streamChat, agentId, threadId]);
 
   const handleOpenReply = useCallback(async () => {
     setShowReply(true);
@@ -189,22 +217,29 @@ export default function ThreadDetailPage() {
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: chatInput.trim(), timestamp: new Date().toISOString() };
     const updated = [...chatMessages, userMsg];
     setChatMessages(updated); setChatInput(''); setIsLoading(true);
+    const streamId = crypto.randomUUID();
+    const streamMsg: ChatMessage = { id: streamId, role: 'assistant', content: '', timestamp: new Date().toISOString() };
+    setChatMessages((prev) => [...prev, streamMsg]);
     try {
       const sys = await buildSystemPrompt(false);
-      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt: sys, messages: updated.map((m) => ({ role: m.role, content: m.content })) }) });
-      const data = await res.json();
-      const rawContent = data.error ? `Erreur: ${data.error}` : data.content;
-      const content = data.error ? rawContent : cleanDraftContent(rawContent);
-      if (!data.error && content.trim()) { setDraft(content); setDraftValidated(false); }
-      const am: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content, timestamp: new Date().toISOString() };
-      const final = [...updated, am];
-      setChatMessages(final);
-      await saveChatMessages(`thread_${agentId}_${threadId}`, final);
+      // Limiter à 6 derniers messages pour réduire les coûts (le contexte email est dans le system prompt)
+      const trimmed = updated.slice(-6).map((m) => ({ role: m.role, content: m.content }));
+      const full = await streamChat(sys, trimmed, (text) => {
+        setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: text } : m));
+      });
+      const content = cleanDraftContent(full);
+      if (content.trim()) { setDraft(content); setDraftValidated(false); }
+      setChatMessages((prev) => {
+        const final = prev.map((m) => m.id === streamId ? { ...m, content } : m);
+        saveChatMessages(`thread_${agentId}_${threadId}`, final);
+        return final;
+      });
     } catch {
-      const am: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: 'Erreur de connexion.', timestamp: new Date().toISOString() };
-      const final = [...updated, am];
-      setChatMessages(final);
-      await saveChatMessages(`thread_${agentId}_${threadId}`, final);
+      setChatMessages((prev) => {
+        const final = prev.map((m) => m.id === streamId ? { ...m, content: 'Erreur de connexion.' } : m);
+        saveChatMessages(`thread_${agentId}_${threadId}`, final);
+        return final;
+      });
     } finally { setIsLoading(false); }
   };
 
@@ -439,11 +474,14 @@ export default function ThreadDetailPage() {
               <div className="flex items-center gap-3">
                 <p className="text-xs text-gray-400 italic">Crée un brouillon dans Front — rien n&apos;est envoyé au client</p>
 
-                {/* ✅ Valider le brouillon */}
-                {draft.trim() && !draftValidated && (
+                {/* ✅ Valider le brouillon — visible uniquement quand Claude confirme qu'il n'a pas de questions */}
+                {draft.trim() && !draftValidated && (() => {
+                  const lastAI = [...chatMessages].reverse().find((m) => m.role === 'assistant');
+                  return lastAI && isDraftReady(lastAI.content);
+                })() && (
                   <button
                     onClick={() => setDraftValidated(true)}
-                    className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors"
+                    className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors animate-pulse"
                   >
                     ✓ Valider ce brouillon
                   </button>

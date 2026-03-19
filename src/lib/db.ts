@@ -50,12 +50,29 @@ export async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_chat_messages_key ON chat_messages(chat_key);
   `);
 
-  // Migration: add inbox_id if table already existed without it
+  // Migrations
   await pool.query(`
     DO $$ BEGIN
       ALTER TABLE agents ADD COLUMN inbox_id TEXT NOT NULL DEFAULT '';
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$;
+  `);
+
+  // Cache résumés Claude
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS conversation_summaries (
+      conversation_id TEXT PRIMARY KEY,
+      summary TEXT NOT NULL DEFAULT '',
+      quote_ready BOOLEAN NOT NULL DEFAULT FALSE,
+      quote_ready_reason TEXT NOT NULL DEFAULT '',
+      last_message_ts BIGINT NOT NULL DEFAULT 0,
+      cached_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS conversation_draft_cache (
+      conversation_id TEXT PRIMARY KEY,
+      has_draft BOOLEAN NOT NULL DEFAULT FALSE,
+      cached_at TEXT NOT NULL
+    );
   `);
 
   initialized = true;

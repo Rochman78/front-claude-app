@@ -26,6 +26,23 @@ export async function GET(req: NextRequest) {
 
     if (messagesRes.ok) {
       const data = await messagesRes.json();
+
+      // Also fetch internal comments
+      const commentsRes = await fetch(
+        `${FRONT_API_URL}/conversations/${conversationId}/comments`,
+        { headers }
+      );
+      if (commentsRes.ok) {
+        const commentsData = await commentsRes.json();
+        const comments = (commentsData._results || []).map((c: Record<string, unknown>) => ({
+          ...c,
+          is_comment: true,
+          is_inbound: false,
+          body: c.body || '',
+        }));
+        data._results = [...(data._results || []), ...comments];
+      }
+
       return NextResponse.json(data);
     }
 

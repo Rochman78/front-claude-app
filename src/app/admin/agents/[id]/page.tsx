@@ -96,40 +96,47 @@ export default function AgentDetailPage() {
     showFileSaved();
   };
 
+  const extractFileContent = async (file: File): Promise<AgentFile> => {
+    const name = file.name.toLowerCase();
+
+    if (name.endsWith('.pdf')) {
+      const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
+      GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs`;
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await getDocument({ data: arrayBuffer }).promise;
+      const pages = await Promise.all(
+        Array.from({ length: pdf.numPages }, (_, i) =>
+          pdf.getPage(i + 1).then(p => p.getTextContent()).then(tc => tc.items.map((it: Record<string, unknown>) => it.str).join(' '))
+        )
+      );
+      return { id: crypto.randomUUID(), name: file.name, content: pages.join('\n\n'), createdAt: new Date().toISOString() };
+    }
+
+    if (name.endsWith('.docx') || name.endsWith('.doc')) {
+      const mammoth = await import('mammoth');
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      return { id: crypto.randomUUID(), name: file.name, content: result.value, createdAt: new Date().toISOString() };
+    }
+
+    // Texte brut (.txt, .md, .csv, etc.)
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => resolve({ id: crypto.randomUUID(), name: file.name, content: ev.target?.result as string, createdAt: new Date().toISOString() });
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !agent) return;
 
-    const readFile = (file: File): Promise<AgentFile> =>
-      new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          resolve({
-            id: crypto.randomUUID(),
-            name: file.name,
-            content: ev.target?.result as string,
-            createdAt: new Date().toISOString(),
-          });
-        };
-        reader.onerror = reject;
-        reader.readAsText(file);
-      });
-
     setFilesSaveStatus('saving');
     setUploadError('');
 
-    // Avertir sur les fichiers binaires
-    const binaryExts = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.zip', '.png', '.jpg', '.jpeg'];
-    const binaryFiles = Array.from(files).filter(f => binaryExts.some(ext => f.name.toLowerCase().endsWith(ext)));
-    if (binaryFiles.length > 0) {
-      setUploadError(`⚠ Fichiers non supportés (format binaire, utilisez .txt ou .md) : ${binaryFiles.map(f => f.name).join(', ')}`);
-      setFilesSaveStatus('idle');
-      e.target.value = '';
-      return;
-    }
-
     try {
-      const newFiles = await Promise.all(Array.from(files).map(readFile));
+      const newFiles = await Promise.all(Array.from(files).map(extractFileContent));
 
       const existingNames = new Set(agent.files.map((f) => f.name));
       // Remplacer les doublons (overwrite) + ajouter les nouveaux

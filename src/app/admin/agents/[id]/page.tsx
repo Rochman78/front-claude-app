@@ -25,6 +25,7 @@ export default function AgentDetailPage() {
   const [showFileForm, setShowFileForm] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [filesSaveStatus, setFilesSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [expandedFileId, setExpandedFileId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -318,22 +319,35 @@ export default function AgentDetailPage() {
             ) : (
               <div className="flex flex-col gap-2">
                 {agent.files.map((file) => (
-                  <div key={file.id} className="flex items-center justify-between bg-gray-900 rounded-lg px-4 py-3 border border-gray-700/50">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center text-blue-400 text-xs font-bold">
-                        {file.name.split('.').pop()?.toUpperCase().slice(0, 3) || 'TXT'}
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-white">{file.name}</span>
-                        <span className="ml-2 text-xs text-gray-500">{file.content.length} car.</span>
-                      </div>
+                  <div key={file.id} className="bg-gray-900 rounded-lg border border-gray-700/50 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <button
+                        onClick={() => setExpandedFileId(expandedFileId === file.id ? null : file.id)}
+                        className="flex items-center gap-3 flex-1 text-left"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center text-blue-400 text-xs font-bold flex-shrink-0">
+                          {file.name.split('.').pop()?.toUpperCase().slice(0, 3) || 'TXT'}
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-white">{file.name}</span>
+                          <span className="ml-2 text-xs text-gray-500">{file.content.length} car.</span>
+                        </div>
+                        <span className="ml-2 text-gray-500 text-xs">{expandedFileId === file.id ? '▲' : '▼'}</span>
+                      </button>
+                      <button
+                        onClick={() => deleteFile(file.id)}
+                        className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-600/10 transition-colors flex-shrink-0"
+                      >
+                        Supprimer
+                      </button>
                     </div>
-                    <button
-                      onClick={() => deleteFile(file.id)}
-                      className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded hover:bg-red-600/10 transition-colors"
-                    >
-                      Supprimer
-                    </button>
+                    {expandedFileId === file.id && (
+                      <div className="border-t border-gray-700/50 px-4 py-3">
+                        <pre className="text-xs text-gray-300 whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto font-mono">
+                          {file.content}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -54,3 +54,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ has_draft: false });
   }
 }
+
+export async function PATCH(req: NextRequest) {
+  const { conversation_id } = await req.json();
+  if (!conversation_id) return NextResponse.json({ ok: false });
+  await initDB();
+  await pool.query(
+    `INSERT INTO conversation_draft_cache (conversation_id, has_draft, cached_at)
+     VALUES ($1, true, $2)
+     ON CONFLICT (conversation_id) DO UPDATE SET has_draft = true, cached_at = EXCLUDED.cached_at`,
+    [conversation_id, new Date().toISOString()]
+  );
+  return NextResponse.json({ ok: true });
+}

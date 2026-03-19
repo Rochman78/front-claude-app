@@ -162,6 +162,15 @@ export default function ThreadDetailPage() {
     return () => window.removeEventListener('popstate', onPop);
   }, [chatMessages.length, agentId]);
 
+  // Intercepter le bouton back du navigateur quand il y a des messages
+  useEffect(() => {
+    if (!chatMessages.length) return;
+    window.history.pushState(null, '', window.location.href);
+    const onPop = () => { setShowLeaveModal(true); setPendingNav(`/mailbox/${agentId}`); window.history.pushState(null, '', window.location.href); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [chatMessages.length, agentId]);
+
   const stripHtml = (html: string) => { const d = document.createElement('div'); d.innerHTML = html; return d.textContent || ''; };
 
   const handleNavAway = (dest: string) => {

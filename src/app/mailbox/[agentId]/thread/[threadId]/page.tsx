@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Agent, ChatMessage } from '@/types';
 import { getAgent, getSharedFilesForAgent, getChatMessages, saveChatMessages } from '@/lib/storage';
 
@@ -57,6 +56,8 @@ export default function ThreadDetailPage() {
   const [quoteError, setQuoteError] = useState('');
 
   const [successUrl, setSuccessUrl] = useState('');
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [pendingNav, setPendingNav] = useState('');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -102,7 +103,27 @@ export default function ThreadDetailPage() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
+  // Intercepter le bouton back du navigateur quand il y a des messages
+  useEffect(() => {
+    if (!chatMessages.length) return;
+    window.history.pushState(null, '', window.location.href);
+    const onPop = () => { setShowLeaveModal(true); setPendingNav(`/mailbox/${agentId}`); window.history.pushState(null, '', window.location.href); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [chatMessages.length, agentId]);
+
   const stripHtml = (html: string) => { const d = document.createElement('div'); d.innerHTML = html; return d.textContent || ''; };
+
+  const handleNavAway = (dest: string) => {
+    if (chatMessages.length > 0) { setShowLeaveModal(true); setPendingNav(dest); }
+    else router.push(dest);
+  };
+
+  const confirmLeave = async () => {
+    await saveChatMessages(`thread_${agentId}_${threadId}`, []);
+    setShowLeaveModal(false);
+    router.push(pendingNav || `/mailbox/${agentId}`);
+  };
 
   const buildEmailContext = useCallback(() =>
     messages.map((m) => {
@@ -292,9 +313,9 @@ export default function ThreadDetailPage() {
 
       {/* Header */}
       <div className="mb-5">
-        <Link href={`/mailbox/${agentId}`} className="text-xs text-gray-400 hover:text-gray-600 mb-1 inline-block">
+        <button onClick={() => handleNavAway(`/mailbox/${agentId}`)} className="text-xs text-gray-400 hover:text-gray-600 mb-1 inline-block">
           ← {agent.name}
-        </Link>
+        </button>
         <div className="flex items-start justify-between gap-3">
           <h1 className="text-base font-bold text-gray-900">{subject || '(Sans sujet)'}</h1>
           {showReply && (
@@ -503,6 +524,27 @@ export default function ThreadDetailPage() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODALE QUITTER ── */}
+      {showLeaveModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-8 max-w-sm w-full mx-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4 text-xl">⚠️</div>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Quitter cette conversation ?</h2>
+            <p className="text-sm text-gray-500 mb-6">Le brouillon et la discussion avec Claude seront supprimés. Cette action est irréversible.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowLeaveModal(false)}
+                className="flex-1 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                Rester
+              </button>
+              <button onClick={confirmLeave}
+                className="flex-1 rounded-lg bg-red-500 hover:bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition-colors">
+                Oui, quitter
+              </button>
             </div>
           </div>
         </div>

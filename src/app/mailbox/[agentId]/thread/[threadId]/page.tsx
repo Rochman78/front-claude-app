@@ -281,7 +281,7 @@ export default function ThreadDetailPage() {
       ], (text) => {
         setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: text } : m));
       }, 'sonnet');
-      const extracted = cleanDraftResponse(cleanDraftContent(full));
+      const extracted = cleanDraftContent(full);
       setDraft(extracted);
       setDraftValidated(false);
       setDraftReadyToValidate(isDraftReady(full));
@@ -322,7 +322,7 @@ export default function ThreadDetailPage() {
       const full = await streamChat(sys, trimmed, (text) => {
         setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: text } : m));
       });
-      const extracted = cleanDraftResponse(cleanDraftContent(full));
+      const extracted = cleanDraftContent(full);
       if (extracted.trim()) { setDraft(extracted); setDraftValidated(false); }
       setDraftReadyToValidate(isDraftReady(full));
       setChatMessages((prev) => {
@@ -584,9 +584,9 @@ export default function ThreadDetailPage() {
                 {/* 🟢 Charger dans Front */}
                 <button
                   onClick={handleSendDraft}
-                  disabled={isSending}
+                  disabled={isSending || !draft.trim()}
                   className={`rounded-lg px-5 py-2 text-sm font-bold text-white transition-colors flex-shrink-0 ${
-                    isSending ? 'bg-green-400' : 'bg-green-600 hover:bg-green-700'
+                    isSending || !draft.trim() ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
                   }`}
                 >
                   {isSending ? 'Envoi...' : currentQuote ? '↑ Charger brouillon + devis dans Front' : '↑ Charger dans Front'}

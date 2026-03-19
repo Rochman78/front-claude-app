@@ -101,7 +101,7 @@ export default function AgentDetailPage() {
 
     if (name.endsWith('.pdf')) {
       const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
-      GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs`;
+      GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@5.5.207/build/pdf.worker.min.mjs`;
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await getDocument({ data: arrayBuffer }).promise;
       const pageTexts: string[] = [];

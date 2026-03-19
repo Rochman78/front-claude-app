@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Agent, ChatMessage } from '@/types';
-import { getAgent, getSharedFilesForAgent, saveChatMessages } from '@/lib/storage';
+import { getAgent, getSharedFilesForAgent, getOrCreateConversation, addConversationMessage, clearConversationMessages } from '@/lib/storage';
 import { selectDocumentNames, filterRelevantFiles, buildDocumentsText } from '@/lib/documentSelector';
 import { cleanDraftContent, cleanDraftResponse } from '@/lib/cleanDraft';
 import { isDraftReady, renderMarkdown } from '@/lib/draftUtils';
@@ -60,6 +60,7 @@ export default function ThreadDetailPage() {
   const [showQuoteWarning, setShowQuoteWarning] = useState(false);
   const [quoteError, setQuoteError] = useState('');
 
+  const [conversationId, setConversationId] = useState('');
   const [successUrl, setSuccessUrl] = useState('');
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [pendingNav, setPendingNav] = useState('');
@@ -106,6 +107,30 @@ export default function ThreadDetailPage() {
         .catch(() => {});
       fetch(`/api/frontapp/drafts?conversation_id=${threadId}`)
         .then((r) => r.json()).then((d) => setHasDraft(d.has_draft || false)).catch(() => {});
+
+      // Charger/créer la conversation Claude persistée
+      getOrCreateConversation(agentId, threadId, '')
+        .then((conv) => {
+          setConversationId(conv.id);
+          // Restaurer l'historique si des messages existent
+          if (conv.messages.length > 0) {
+            const restored: ChatMessage[] = conv.messages.map((m) => ({
+              id: m.id,
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+              timestamp: m.created_at,
+            }));
+            setChatMessages(restored);
+            // Extraire le dernier brouillon de la dernière réponse assistant
+            const lastAssistant = [...restored].reverse().find((m) => m.role === 'assistant');
+            if (lastAssistant) {
+              const extracted = cleanDraftContent(lastAssistant.content);
+              if (extracted.trim()) setDraft(extracted);
+            }
+            setShowReply(true);
+          }
+        })
+        .catch(() => {});
     };
     load();
   }, [agentId, threadId]);
@@ -182,7 +207,6 @@ export default function ThreadDetailPage() {
   };
 
   const confirmLeave = async () => {
-    await saveChatMessages(`thread_${agentId}_${threadId}`, []);
     setShowLeaveModal(false);
     router.push(pendingNav || `/mailbox/${agentId}`);
   };
@@ -267,27 +291,33 @@ export default function ThreadDetailPage() {
       setDraft(extracted);
       setDraftValidated(false);
       setDraftReadyToValidate(isDraftReady(full));
-      setChatMessages((prev) => {
-        const updated = prev.map((m) => m.id === streamId ? { ...m, content: full } : m);
-        saveChatMessages(`thread_${agentId}_${threadId}`, updated);
-        return updated;
-      });
+      setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: full } : m));
+      // Persister en BDD
+      if (conversationId) {
+        addConversationMessage(conversationId, 'user', 'ÉTAPE 1').catch(() => {});
+        addConversationMessage(conversationId, 'assistant', full).catch(() => {});
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Erreur de connexion.';
       setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: `Erreur : ${msg}` } : m));
     }
     finally { setIsGeneratingDraft(false); }
-  }, [messages.length, isGeneratingDraft, buildSystemPrompt, buildDocumentsContext, streamChat, agentId, threadId]);
+  }, [messages.length, isGeneratingDraft, buildSystemPrompt, buildDocumentsContext, streamChat, conversationId]);
 
   const handleOpenReply = useCallback(async () => {
     setShowReply(true);
+    // Si on a déjà un historique, ne pas regénérer
+    if (chatMessages.length > 0) return;
     setDraft('');
     setDraftValidated(false);
     setDraftReadyToValidate(false);
-    await saveChatMessages(`thread_${agentId}_${threadId}`, []);
+    // Reset la conversation en BDD pour repartir de zéro
+    if (conversationId) {
+      await clearConversationMessages(conversationId);
+    }
     setChatMessages([]);
     generateDraft();
-  }, [agentId, threadId, generateDraft]);
+  }, [chatMessages.length, conversationId, generateDraft]);
 
   const sendMessage = async () => {
     if (!chatInput.trim() || !agent || isLoading) return;
@@ -308,18 +338,15 @@ export default function ThreadDetailPage() {
       const extracted = cleanDraftContent(full);
       if (extracted.trim()) { setDraft(extracted); setDraftValidated(false); }
       setDraftReadyToValidate(isDraftReady(full));
-      setChatMessages((prev) => {
-        const final = prev.map((m) => m.id === streamId ? { ...m, content: full } : m);
-        saveChatMessages(`thread_${agentId}_${threadId}`, final);
-        return final;
-      });
+      setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: full } : m));
+      // Persister en BDD
+      if (conversationId) {
+        addConversationMessage(conversationId, 'user', userMsg.content).catch(() => {});
+        addConversationMessage(conversationId, 'assistant', full).catch(() => {});
+      }
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : 'Erreur de connexion.';
-      setChatMessages((prev) => {
-        const final = prev.map((m) => m.id === streamId ? { ...m, content: `Erreur : ${errMsg}` } : m);
-        saveChatMessages(`thread_${agentId}_${threadId}`, final);
-        return final;
-      });
+      setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: `Erreur : ${errMsg}` } : m));
     } finally { setIsLoading(false); }
   };
 

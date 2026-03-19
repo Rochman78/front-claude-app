@@ -12,8 +12,6 @@ interface FrontConversation {
   status: string;
   last_message: {
     created_at: number;
-    author?: { email?: string };
-    body?: string;
   };
   recipient: {
     handle: string;
@@ -21,10 +19,18 @@ interface FrontConversation {
   };
 }
 
+interface ConvMeta {
+  summary: string;
+  quote_ready: boolean;
+  has_draft: boolean;
+  loading: boolean;
+}
+
 export default function AgentMailboxPage() {
   const { agentId } = useParams<{ agentId: string }>();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [conversations, setConversations] = useState<FrontConversation[]>([]);
+  const [meta, setMeta] = useState<Record<string, ConvMeta>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -35,7 +41,7 @@ export default function AgentMailboxPage() {
       setAgent(a);
 
       if (!a.inboxId) {
-        setError('Cet agent n\'a pas de boîte mail FrontApp associée.');
+        setError("Cet agent n'a pas de boîte mail FrontApp associée.");
         setLoading(false);
         return;
       }
@@ -46,7 +52,28 @@ export default function AgentMailboxPage() {
         if (data.error) {
           setError(data.error);
         } else {
-          setConversations(data._results || []);
+          const convs: FrontConversation[] = data._results || [];
+          setConversations(convs);
+          // Init meta with loading state
+          const initMeta: Record<string, ConvMeta> = {};
+          convs.forEach((c) => { initMeta[c.id] = { summary: '', quote_ready: false, has_draft: false, loading: true }; });
+          setMeta(initMeta);
+          // Fetch summary + draft for each conversation in parallel
+          convs.forEach(async (conv) => {
+            const [summaryRes, draftRes] = await Promise.all([
+              fetch(`/api/frontapp/summary?conversation_id=${conv.id}`).then((r) => r.json()).catch(() => ({ summary: '', quote_ready: false })),
+              fetch(`/api/frontapp/drafts?conversation_id=${conv.id}`).then((r) => r.json()).catch(() => ({ has_draft: false })),
+            ]);
+            setMeta((prev) => ({
+              ...prev,
+              [conv.id]: {
+                summary: summaryRes.summary || '',
+                quote_ready: summaryRes.quote_ready || false,
+                has_draft: draftRes.has_draft || false,
+                loading: false,
+              },
+            }));
+          });
         }
       } catch {
         setError('Erreur de connexion à FrontApp');
@@ -57,6 +84,9 @@ export default function AgentMailboxPage() {
     load();
   }, [agentId]);
 
+  const formatDate = (ts: number) =>
+    new Date(ts * 1000).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+
   if (!agent) {
     return <div className="py-10 text-center text-gray-500">Agent introuvable</div>;
   }
@@ -64,8 +94,8 @@ export default function AgentMailboxPage() {
   return (
     <div className="max-w-4xl mx-auto py-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Boîte mail — {agent.name}</h1>
-        <p className="text-gray-400">{agent.email}</p>
+        <h1 className="text-xl font-bold text-white">{agent.name}</h1>
+        <p className="text-sm text-gray-500">{agent.email}</p>
       </div>
 
       {loading ? (
@@ -73,41 +103,59 @@ export default function AgentMailboxPage() {
       ) : error ? (
         <div className="text-center py-12 text-red-400">{error}</div>
       ) : conversations.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">Aucune conversation non archivée dans cette boîte mail.</div>
+        <div className="text-center py-12 text-gray-500">Aucune conversation non archivée.</div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {conversations.map((conv) => (
-            <Link
-              key={conv.id}
-              href={`/mailbox/${agentId}/thread/${conv.id}`}
-              className="rounded-xl bg-gray-800 p-4 border border-gray-700 hover:border-blue-500 transition-colors"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="font-semibold text-white">
-                    {conv.subject || '(Sans sujet)'}
+        <div className="flex flex-col divide-y divide-gray-800 rounded-xl overflow-hidden border border-gray-800">
+          {conversations.map((conv) => {
+            const m = meta[conv.id];
+            return (
+              <Link
+                key={conv.id}
+                href={`/mailbox/${agentId}/thread/${conv.id}`}
+                className="bg-gray-900 hover:bg-gray-800 px-5 py-4 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    {/* Subject + badges */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-white text-sm truncate">
+                        {conv.subject || '(Sans sujet)'}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                        conv.status === 'unassigned'
+                          ? 'bg-yellow-500/20 text-yellow-400'
+                          : 'bg-blue-500/20 text-blue-400'
+                      }`}>
+                        {conv.status === 'unassigned' ? 'Non assigné' : 'Assigné'}
+                      </span>
+                      {m?.has_draft && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-medium flex-shrink-0">
+                          brouillon
+                        </span>
+                      )}
+                      {m?.quote_ready && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 font-medium flex-shrink-0">
+                          devis PDF à faire
+                        </span>
+                      )}
+                    </div>
+                    {/* Summary */}
+                    <div className="text-xs text-gray-500 mt-1 truncate">
+                      {m?.loading ? (
+                        <span className="inline-block w-32 h-3 bg-gray-700 rounded animate-pulse" />
+                      ) : (
+                        m?.summary || conv.recipient?.name || conv.recipient?.handle || ''
+                      )}
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-400 mt-1">
-                    {conv.recipient?.name || conv.recipient?.handle || 'Inconnu'}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      conv.status === 'unassigned'
-                        ? 'bg-yellow-600/20 text-yellow-400'
-                        : 'bg-blue-600/20 text-blue-400'
-                    }`}>
-                      {conv.status === 'unassigned' ? 'Non assigné' : 'Assigné'}
-                    </span>
+                  {/* Date */}
+                  <div className="text-xs text-gray-600 flex-shrink-0">
+                    {conv.last_message?.created_at ? formatDate(conv.last_message.created_at) : ''}
                   </div>
                 </div>
-                <div className="text-xs text-gray-500">
-                  {conv.last_message?.created_at
-                    ? new Date(conv.last_message.created_at * 1000).toLocaleDateString('fr-FR')
-                    : ''}
-                </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

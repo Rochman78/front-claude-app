@@ -250,14 +250,10 @@ export default function ThreadDetailPage() {
       const check = await fetch(`/api/frontapp/summary?conversation_id=${threadId}`).then((r) => r.json());
       if (!check.quote_ready) { setQuoteError(check.quote_ready_reason || 'Informations insuffisantes.'); setQuoteModal('error'); return; }
       const sys = await buildSystemPrompt(false);
-      const extract = await fetch('/api/chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt: sys, messages: [{ role: 'user', content: `Extrais les informations de cette conversation pour créer un devis Pennylane.\n\nRÈGLES :\n- Filets sur mesure : type="product", unitPrice=prix HT/m2, quantity=surface totale m2, description="Quantité : X | Total m2 : Y | Délai : environ 14 jours", label="COULEUR - LxH m - Description"\n- Transport : type="transport", label="Transport sur mesure", unitPrice=prix HT, quantity=1\n- Remise transport : type="transport_discount", unitPrice=prix négatif, quantity=1\n- Accessoires : type="free"\n\nRéponds UNIQUEMENT avec un JSON valide (sans markdown) :\n{"customer":{"type":"individual","firstName":"","lastName":"","email":"","phone":"","address":{"street":"","zipCode":"","city":"","country":"FR"}},"lines":[{"type":"product","label":"","quantity":0,"unitPrice":0,"vatRate":"FR_200","description":""}],"subject":"","freeText":""}` }] }),
-      }).then((r) => r.json());
-      if (extract.error) throw new Error(extract.error);
+      const rawExtract = await streamChat(sys, [{ role: 'user', content: `Extrais les informations de cette conversation pour créer un devis Pennylane.\n\nRÈGLES :\n- Filets sur mesure : type="product", unitPrice=prix HT/m2, quantity=surface totale m2, description="Quantité : X | Total m2 : Y | Délai : environ 14 jours", label="COULEUR - LxH m - Description"\n- Transport : type="transport", label="Transport sur mesure", unitPrice=prix HT, quantity=1\n- Remise transport : type="transport_discount", unitPrice=prix négatif, quantity=1\n- Accessoires : type="free"\n\nRéponds UNIQUEMENT avec un JSON valide (sans markdown) :\n{"customer":{"type":"individual","firstName":"","lastName":"","email":"","phone":"","address":{"street":"","zipCode":"","city":"","country":"FR"}},"lines":[{"type":"product","label":"","quantity":0,"unitPrice":0,"vatRate":"FR_200","description":""}],"subject":"","freeText":""}` }], () => {});
       let quoteData: Record<string, unknown>;
       try {
-        const raw = extract.content.trim().replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const raw = rawExtract.trim().replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
         quoteData = JSON.parse(raw);
       } catch { throw new Error("Claude n'a pas retourné un JSON valide."); }
       quoteData.inboxName = inboxName;

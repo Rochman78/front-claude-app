@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Agent, ChatMessage } from '@/types';
 import { getAgent, getSharedFilesForAgent, getChatMessages, saveChatMessages } from '@/lib/storage';
@@ -27,6 +27,7 @@ type QuoteModal = 'hidden' | 'loading' | 'success' | 'error';
 
 export default function ThreadDetailPage() {
   const { agentId, threadId } = useParams<{ agentId: string; threadId: string }>();
+  const router = useRouter();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [inboxName, setInboxName] = useState('');
   const [subject, setSubject] = useState('');
@@ -498,7 +499,7 @@ export default function ThreadDetailPage() {
                 className="rounded-lg bg-green-600 hover:bg-green-700 px-5 py-2.5 text-sm font-bold text-white transition-colors">
                 Voir dans FrontApp →
               </a>
-              <button onClick={() => setSuccessUrl('')}
+              <button onClick={() => router.push(`/mailbox/${agentId}`)}
                 className="rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
                 Fermer
               </button>

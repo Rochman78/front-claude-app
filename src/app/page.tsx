@@ -7,7 +7,6 @@ import { Agent } from '@/types';
 interface Inbox {
   id: string;
   name: string;
-  address?: string;
 }
 
 export default function Home() {
@@ -22,73 +21,57 @@ export default function Home() {
       fetch('/api/agents').then((r) => r.json()),
     ])
       .then(([inboxData, agentData]) => {
-        if (inboxData.error) {
-          setError(inboxData.error);
-        } else {
-          setInboxes(inboxData);
-        }
-        if (Array.isArray(agentData)) {
-          setAgents(agentData);
-        }
+        if (inboxData.error) setError(inboxData.error);
+        else setInboxes(inboxData);
+        if (Array.isArray(agentData)) setAgents(agentData);
       })
-      .catch(() => setError('Erreur de connexion. Vérifiez votre token Front.'))
+      .catch(() => setError('Erreur de connexion.'))
       .finally(() => setLoading(false));
   }, []);
 
   const getInitials = (name: string) =>
-    name
-      .split(/\s+/)
-      .map((w) => w[0])
-      .join('')
-      .substring(0, 2)
-      .toUpperCase();
+    name.split(/\s+/).map((w) => w[0]).join('').substring(0, 2).toUpperCase();
 
   const getAgentForInbox = (inboxId: string) =>
     agents.find((a) => a.inboxId === inboxId);
 
-  return (
-    <div className="py-6">
-      {loading ? (
-        <div className="flex items-center justify-center py-20 text-gray-400">
-          <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          Chargement des boîtes...
-        </div>
-      ) : error ? (
-        <div className="text-center py-20 text-red-400">{error}</div>
-      ) : inboxes.length === 0 ? (
-        <div className="text-center py-20 text-gray-500">Aucune boîte trouvée.</div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {inboxes.map((inbox) => {
-            const agent = getAgentForInbox(inbox.id);
-            const href = agent ? `/mailbox/${agent.id}` : '#';
+  if (loading) return (
+    <div className="flex items-center justify-center py-24 text-gray-400 text-sm">
+      Chargement des boîtes...
+    </div>
+  );
 
-            return (
-              <Link
-                key={inbox.id}
-                href={href}
-                className={`group rounded-xl p-6 border transition-all ${
-                  agent
-                    ? 'bg-gray-800 border-gray-700 hover:border-blue-500 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer'
-                    : 'bg-gray-800/50 border-gray-800 opacity-50 cursor-not-allowed'
-                }`}
-                onClick={(e) => !agent && e.preventDefault()}
-              >
-                <div className="w-11 h-11 rounded-lg bg-blue-600 flex items-center justify-center mb-3 text-white font-bold text-sm">
-                  {getInitials(inbox.name)}
-                </div>
-                <div className="font-semibold text-white">{inbox.name}</div>
-                {!agent && (
-                  <div className="text-xs text-gray-500 mt-1">Agent non configuré</div>
-                )}
-              </Link>
-            );
-          })}
-        </div>
-      )}
+  if (error) return (
+    <div className="text-center py-24 text-red-500 text-sm">{error}</div>
+  );
+
+  return (
+    <div>
+      <p className="text-xs text-gray-400 mb-4">{inboxes.length} boîtes mail</p>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-0 rounded-xl overflow-hidden border border-gray-200">
+        {inboxes.map((inbox, i) => {
+          const agent = getAgentForInbox(inbox.id);
+          const href = agent ? `/mailbox/${agent.id}` : '#';
+          return (
+            <Link
+              key={inbox.id}
+              href={href}
+              onClick={(e) => !agent && e.preventDefault()}
+              className={`bg-white flex flex-col items-center justify-center py-8 px-4 text-center border-gray-200
+                ${i % 2 === 0 ? 'border-r' : ''}
+                ${i < inboxes.length - 2 ? 'border-b' : ''}
+                ${agent ? 'hover:bg-gray-50 cursor-pointer' : 'opacity-40 cursor-not-allowed'}
+                transition-colors`}
+            >
+              <div className="w-10 h-10 rounded-xl bg-gray-900 flex items-center justify-center text-white font-bold text-sm mb-3">
+                {getInitials(inbox.name)}
+              </div>
+              <div className="text-sm font-semibold text-gray-800">{inbox.name}</div>
+              {!agent && <div className="text-xs text-gray-400 mt-1">Non configuré</div>}
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }

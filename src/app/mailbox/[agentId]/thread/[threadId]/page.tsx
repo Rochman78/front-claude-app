@@ -373,12 +373,14 @@ export default function ThreadDetailPage() {
                 <div ref={chatEndRef} />
               </div>
               <div className="border-t border-gray-100 p-3 flex gap-2 flex-shrink-0">
-                <input
-                  type="text" value={chatInput}
+                <textarea
+                  value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                  placeholder="Demandez une modification..."
-                  className="flex-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-400"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                  placeholder="Demandez une modification... (Maj+Entrée pour sauter une ligne)"
+                  rows={1}
+                  className="flex-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-400 resize-none overflow-hidden"
+                  style={{ maxHeight: '120px', overflowY: chatInput.split('\n').length > 4 ? 'auto' : 'hidden' }}
                 />
                 <button
                   onClick={sendMessage} disabled={isLoading || isGeneratingDraft || !chatInput.trim()}

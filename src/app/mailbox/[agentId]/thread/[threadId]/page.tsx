@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Agent, ChatMessage } from '@/types';
@@ -24,7 +24,6 @@ interface QuoteInfo {
 }
 
 type QuoteModal = 'hidden' | 'loading' | 'success' | 'error';
-type View = 'thread' | 'draft';
 
 export default function ThreadDetailPage() {
   const { agentId, threadId } = useParams<{ agentId: string; threadId: string }>();
@@ -36,7 +35,7 @@ export default function ThreadDetailPage() {
   const [loadingThread, setLoadingThread] = useState(true);
   const [threadError, setThreadError] = useState('');
 
-  const [view, setView] = useState<View>('thread');
+  const [showReply, setShowReply] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -47,12 +46,12 @@ export default function ThreadDetailPage() {
 
   // Devis
   const [quoteReady, setQuoteReady] = useState(false);
+  const [quoteReadyReason, setQuoteReadyReason] = useState('');
   const [currentQuote, setCurrentQuote] = useState<QuoteInfo | null>(null);
   const [isGeneratingQuote, setIsGeneratingQuote] = useState(false);
   const [quoteModal, setQuoteModal] = useState<QuoteModal>('hidden');
   const [quoteError, setQuoteError] = useState('');
 
-  // Succès envoi
   const [successUrl, setSuccessUrl] = useState('');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -81,46 +80,35 @@ export default function ThreadDetailPage() {
             .sort((a, b) => a.created_at - b.created_at);
           setMessages(msgs);
           if (data._subject) setSubject(data._subject);
-          else if (msgs[0]?.subject) setSubject(msgs[0].subject);
+          else if (msgs[0]?.subject) setSubject(msgs[0].subject as string);
           if (data._partial) setIsPartial(true);
         }
       } catch { setThreadError('Erreur de chargement'); }
       finally { setLoadingThread(false); }
 
-      // Check quote + draft
       fetch(`/api/frontapp/summary?conversation_id=${threadId}`)
-        .then((r) => r.json()).then((d) => setQuoteReady(d.quote_ready || false)).catch(() => {});
+        .then((r) => r.json())
+        .then((d) => { setQuoteReady(d.quote_ready || false); setQuoteReadyReason(d.quote_ready_reason || ''); })
+        .catch(() => {});
       fetch(`/api/frontapp/drafts?conversation_id=${threadId}`)
         .then((r) => r.json()).then((d) => setHasDraft(d.has_draft || false)).catch(() => {});
     };
     load();
   }, [agentId, threadId]);
 
-  useEffect(() => {
-    if (view === 'draft') {
-      getChatMessages(`thread_${agentId}_${threadId}`).then((msgs) => {
-        setChatMessages(msgs);
-        if (!draft.trim() && msgs.length > 0) {
-          const last = [...msgs].reverse().find((m) => m.role === 'assistant');
-          if (last && !last.content.startsWith('Erreur')) setDraft(last.content);
-        }
-      });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, agentId, threadId]);
-
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
   const stripHtml = (html: string) => { const d = document.createElement('div'); d.innerHTML = html; return d.textContent || ''; };
 
-  const buildEmailContext = () =>
+  const buildEmailContext = useCallback(() =>
     messages.map((m) => {
       const from = m.author?.email || m.author?.name || 'inconnu';
       const date = new Date(m.created_at * 1000).toLocaleString('fr-FR');
       return `De: ${from} — ${date}\n${stripHtml(m.body)}`;
-    }).join('\n\n---\n\n');
+    }).join('\n\n---\n\n'),
+  [messages]);
 
-  const buildSystemPrompt = async (forDraft = false) => {
+  const buildSystemPrompt = useCallback(async (forDraft = false) => {
     const a = await getAgent(agentId);
     if (!a) return '';
     const shared = await getSharedFilesForAgent(agentId);
@@ -128,15 +116,13 @@ export default function ThreadDetailPage() {
       ...a.files.map((f) => `[${f.name}]\n${f.content}`),
       ...shared.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
     ].join('\n\n');
-
     const base = `Tu es l'agent "${a.name}" (${a.email}).\n\n${a.instructions || ''}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${buildEmailContext()}`;
-
     if (forDraft) return `${base}\n\nRédige UNIQUEMENT le corps de l'email de réponse, sans objet ni formule De:/À:.`;
     return `${base}${draft.trim() ? `\n\nBROUILLON ACTUEL:\n${draft}` : ''}\n\nTu aides à rédiger des réponses email. Si on te demande de modifier le brouillon, renvoie la version complète modifiée.`;
-  };
+  }, [agentId, subject, draft, buildEmailContext]);
 
-  const generateDraft = async () => {
-    if (!agent || !messages.length || isGeneratingDraft) return;
+  const generateDraft = useCallback(async () => {
+    if (!messages.length || isGeneratingDraft) return;
     setIsGeneratingDraft(true);
     try {
       const sys = await buildSystemPrompt(true);
@@ -144,7 +130,19 @@ export default function ThreadDetailPage() {
       const data = await res.json();
       if (!data.error) setDraft(data.content);
     } catch { /**/ } finally { setIsGeneratingDraft(false); }
-  };
+  }, [messages.length, isGeneratingDraft, buildSystemPrompt]);
+
+  const handleOpenReply = useCallback(async () => {
+    setShowReply(true);
+    const msgs = await getChatMessages(`thread_${agentId}_${threadId}`);
+    setChatMessages(msgs);
+    const lastAI = [...msgs].reverse().find((m) => m.role === 'assistant');
+    if (lastAI && !lastAI.content.startsWith('Erreur')) {
+      setDraft(lastAI.content);
+    } else if (!draft.trim() && messages.length) {
+      generateDraft();
+    }
+  }, [agentId, threadId, draft, messages.length, generateDraft]);
 
   const sendMessage = async () => {
     if (!chatInput.trim() || !agent || isLoading) return;
@@ -175,24 +173,20 @@ export default function ThreadDetailPage() {
     try {
       const check = await fetch(`/api/frontapp/summary?conversation_id=${threadId}`).then((r) => r.json());
       if (!check.quote_ready) { setQuoteError(check.quote_ready_reason || 'Informations insuffisantes.'); setQuoteModal('error'); return; }
-
       const sys = await buildSystemPrompt(false);
       const extract = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ systemPrompt: sys, messages: [{ role: 'user', content: `Extrais les informations de cette conversation pour créer un devis Pennylane.\n\nRÈGLES :\n- Filets sur mesure : type="product", unitPrice=prix HT/m2, quantity=surface totale m2, description="Quantité : X | Total m2 : Y | Délai : environ 14 jours", label="COULEUR - LxH m - Description"\n- Transport : type="transport", label="Transport sur mesure", unitPrice=prix HT, quantity=1\n- Remise transport : type="transport_discount", unitPrice=prix négatif, quantity=1\n- Accessoires : type="free"\n\nRéponds UNIQUEMENT avec un JSON valide (sans markdown) :\n{"customer":{"type":"individual","firstName":"","lastName":"","email":"","phone":"","address":{"street":"","zipCode":"","city":"","country":"FR"}},"lines":[{"type":"product","label":"","quantity":0,"unitPrice":0,"vatRate":"FR_200","description":""}],"subject":"","freeText":""}` }] }),
       }).then((r) => r.json());
       if (extract.error) throw new Error(extract.error);
-
       let quoteData: Record<string, unknown>;
       try {
         const raw = extract.content.trim().replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
         quoteData = JSON.parse(raw);
       } catch { throw new Error("Claude n'a pas retourné un JSON valide."); }
-
       quoteData.inboxName = inboxName;
       const result = await fetch('/api/pennylane/create-quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(quoteData) }).then((r) => r.json());
       if (result.error) { setQuoteError(result.error); setQuoteModal('error'); return; }
-
       const qi: QuoteInfo = { pdfUrl: result.pdfUrl || '', quoteNumber: result.quoteNumber || '', amount: String(result.amount || '0') };
       setCurrentQuote(qi); setQuoteModal('success');
       setDraft(`Bonjour,\n\nVeuillez trouver ci-joint votre devis n°${qi.quoteNumber}.\n\nPour confirmer votre commande, merci de nous retourner ce devis signé accompagné du règlement par virement bancaire.\n\nNos coordonnées bancaires figurent sur le devis.\n\nNous restons à votre disposition pour toute question.\n\nCordialement`);
@@ -220,14 +214,21 @@ export default function ThreadDetailPage() {
   if (!agent) return <div className="py-10 text-center text-gray-400 text-sm">Agent introuvable</div>;
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className={showReply ? 'max-w-6xl mx-auto' : 'max-w-3xl mx-auto'}>
+
       {/* Header */}
       <div className="mb-5">
         <Link href={`/mailbox/${agentId}`} className="text-xs text-gray-400 hover:text-gray-600 mb-1 inline-block">
           ← {agent.name}
         </Link>
-        <h1 className="text-base font-bold text-gray-900">{subject || '(Sans sujet)'}</h1>
-        {/* Pastilles état */}
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-base font-bold text-gray-900">{subject || '(Sans sujet)'}</h1>
+          {showReply && (
+            <button onClick={() => setShowReply(false)} className="text-xs text-gray-400 hover:text-gray-600 flex-shrink-0 mt-0.5">
+              ← Plein écran
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
           {hasDraft && (
             <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">● brouillon dans Front</span>
@@ -241,24 +242,9 @@ export default function ThreadDetailPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-5 bg-gray-100 rounded-lg p-1 w-fit">
-        <button
-          onClick={() => setView('thread')}
-          className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${view === 'thread' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          Conversation
-        </button>
-        <button
-          onClick={() => setView('draft')}
-          className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${view === 'draft' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          {hasDraft ? 'Modifier le brouillon' : 'Préparer une réponse'}
-        </button>
-      </div>
-
-      {/* ── THREAD VIEW ── */}
-      {view === 'thread' && (
+      {/* ── LAYOUT : thread seul ou split ── */}
+      {!showReply ? (
+        /* ── VUE THREAD SEULE ── */
         <div>
           {loadingThread ? (
             <div className="text-center py-12 text-gray-400 text-sm">Chargement...</div>
@@ -285,126 +271,160 @@ export default function ThreadDetailPage() {
                   <div className="email-body" dangerouslySetInnerHTML={{ __html: msg.body }} />
                 </div>
               ))}
-              {/* CTA bas de thread */}
-              <div className="flex justify-end pt-2">
+
+              {/* CTA centré */}
+              <div className="flex justify-center pt-6 pb-4">
                 <button
-                  onClick={() => setView('draft')}
-                  className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+                  onClick={handleOpenReply}
+                  className="rounded-xl bg-blue-600 px-8 py-3 text-sm font-bold text-white hover:bg-blue-700 transition-colors shadow-sm"
                 >
-                  {hasDraft ? 'Modifier le brouillon →' : 'Préparer une réponse →'}
+                  {hasDraft ? '✏️ Modifier le brouillon avec Claude' : '✦ Préparer une réponse avec Claude'}
                 </button>
               </div>
             </div>
           )}
         </div>
-      )}
+      ) : (
+        /* ── VUE SPLIT : 1/3 conversation | 2/3 chat+brouillon ── */
+        <div className="flex gap-4" style={{ height: 'calc(100vh - 180px)', minHeight: '500px' }}>
 
-      {/* ── DRAFT VIEW ── */}
-      {view === 'draft' && (
-        <div className="flex flex-col gap-4">
-
-          {/* Zone brouillon */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-gray-700">Brouillon</h2>
-              {/* 🟣 Générer avec l'agent */}
-              <button
-                onClick={generateDraft}
-                disabled={isGeneratingDraft || !messages.length}
-                className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-40"
-              >
-                {isGeneratingDraft ? 'Génération...' : draft ? '↺ Régénérer' : '✦ Générer avec l\'agent'}
-              </button>
-            </div>
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              rows={10}
-              placeholder="Le brouillon apparaîtra ici. Vous pouvez aussi le rédiger directement."
-              className="w-full rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-400 resize-y leading-relaxed"
-            />
+          {/* Gauche 1/3 — conversation compacte */}
+          <div className="w-1/3 flex-shrink-0 overflow-y-auto space-y-2 pr-1">
+            {loadingThread ? (
+              <div className="text-center py-8 text-gray-400 text-xs">Chargement...</div>
+            ) : messages.map((msg) => (
+              <div key={msg.id} className={`rounded-lg border px-3 py-2.5 ${msg.is_inbound ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100'}`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-xs px-1.5 py-px rounded font-medium ${msg.is_inbound ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
+                      {msg.is_inbound ? 'Reçu' : 'Envoyé'}
+                    </span>
+                    <span className="text-xs font-semibold text-gray-700 truncate max-w-[100px]">{msg.author?.name || msg.author?.email || 'Inconnu'}</span>
+                  </div>
+                  <span className="text-xs text-gray-400 flex-shrink-0">{new Date(msg.created_at * 1000).toLocaleDateString('fr-FR')}</span>
+                </div>
+                <div className="text-xs text-gray-600 leading-relaxed line-clamp-4">{stripHtml(msg.body).slice(0, 300)}</div>
+              </div>
+            ))}
           </div>
 
-          {/* Chat avec l'agent */}
-          <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden" style={{ height: '320px' }}>
-            <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 bg-gray-50">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Discussion avec l&apos;agent</span>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {!chatMessages.length && !isLoading && (
-                <p className="text-center text-gray-400 text-sm py-6">
-                  Ex : &quot;Rends le ton plus formel&quot;, &quot;Ajoute une mention sur les délais&quot;...
-                </p>
-              )}
-              {chatMessages.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {msg.content}
-                  </div>
-                </div>
-              ))}
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-100 rounded-2xl px-4 py-2.5 text-sm text-gray-400">
-                    <span className="inline-flex gap-1">
+          {/* Droite 2/3 — brouillon + chat */}
+          <div className="flex-1 flex flex-col gap-3 min-w-0 overflow-hidden">
+
+            {/* Brouillon */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-shrink-0">
+              <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Brouillon</span>
+                {isGeneratingDraft && (
+                  <span className="text-xs text-violet-500 flex items-center gap-1">
+                    <span className="inline-flex gap-0.5">
                       <span className="animate-pulse">●</span>
                       <span className="animate-pulse" style={{ animationDelay: '0.15s' }}>●</span>
                       <span className="animate-pulse" style={{ animationDelay: '0.3s' }}>●</span>
                     </span>
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-            <div className="border-t border-gray-100 p-3 flex gap-2 flex-shrink-0">
-              <input
-                type="text" value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder="Demandez une modification..."
-                className="flex-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-400"
+                    Génération en cours...
+                  </span>
+                )}
+              </div>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={7}
+                placeholder={isGeneratingDraft ? '' : 'Le brouillon apparaîtra ici. Vous pouvez aussi le rédiger directement.'}
+                className="w-full px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none resize-none leading-relaxed rounded-b-xl"
               />
-              <button
-                onClick={sendMessage} disabled={isLoading || !chatInput.trim()}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-40"
-              >
-                Envoyer
-              </button>
             </div>
-          </div>
 
-          {/* Barre d'actions */}
-          <div className="flex items-center justify-between gap-3 pt-1">
-            {/* 🟡 Devis PDF — à gauche */}
-            <button
-              onClick={generateQuote}
-              disabled={isGeneratingQuote || !quoteReady}
-              title={quoteReady ? 'Générer le devis Pennylane' : 'Le client doit valider une proposition avant de générer un devis'}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-                quoteReady
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white cursor-pointer'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {isGeneratingQuote ? 'Génération devis...' : currentQuote ? '✓ Devis créé' : '⬡ Générer le devis PDF'}
-            </button>
+            {/* Chat avec l'agent */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-gray-100 flex-shrink-0 bg-gray-50 rounded-t-xl">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Discussion avec Claude</span>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+                {!chatMessages.length && !isLoading && !isGeneratingDraft && (
+                  <p className="text-center text-gray-400 text-sm py-4">
+                    Ex : &quot;Rends le ton plus formel&quot;, &quot;Ajoute une mention sur les délais&quot;...
+                  </p>
+                )}
+                {chatMessages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                      msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-100 rounded-2xl px-3.5 py-2 text-sm text-gray-400">
+                      <span className="inline-flex gap-1">
+                        <span className="animate-pulse">●</span>
+                        <span className="animate-pulse" style={{ animationDelay: '0.15s' }}>●</span>
+                        <span className="animate-pulse" style={{ animationDelay: '0.3s' }}>●</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+              <div className="border-t border-gray-100 p-3 flex gap-2 flex-shrink-0">
+                <input
+                  type="text" value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                  placeholder="Demandez une modification..."
+                  className="flex-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-400"
+                />
+                <button
+                  onClick={sendMessage} disabled={isLoading || !chatInput.trim()}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-40"
+                >
+                  Envoyer
+                </button>
+              </div>
+            </div>
 
-            <div className="flex items-center gap-3">
-              <p className="text-xs text-gray-400 italic">Crée un brouillon dans Front — rien n&apos;est envoyé au client</p>
-              {/* 🟢 Envoyer dans Front — à droite */}
-              <button
-                onClick={handleSendDraft}
-                disabled={isSending || !draft.trim()}
-                className={`rounded-lg px-5 py-2 text-sm font-bold text-white transition-colors flex-shrink-0 ${
-                  !draft.trim() ? 'bg-gray-300 cursor-not-allowed'
-                  : isSending ? 'bg-green-400'
-                  : 'bg-green-600 hover:bg-green-700'
-                }`}
+            {/* Barre d'actions */}
+            <div className="flex items-center justify-between gap-3 py-1 flex-shrink-0">
+              {/* 🟡 Devis PDF */}
+              <span
+                title={!quoteReady ? (quoteReadyReason || 'Le client doit valider une proposition chiffrée avant de générer un devis') : undefined}
+                className={!quoteReady ? 'cursor-not-allowed' : undefined}
               >
-                {isSending ? 'Envoi...' : currentQuote ? '↑ Charger brouillon + devis dans Front' : '↑ Charger dans Front'}
-              </button>
+                <button
+                  onClick={generateQuote}
+                  disabled={isGeneratingQuote || !quoteReady}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors pointer-events-auto ${
+                    quoteReady
+                      ? 'bg-amber-500 hover:bg-amber-600 text-white cursor-pointer'
+                      : 'bg-gray-100 text-gray-400 pointer-events-none'
+                  }`}
+                >
+                  {isGeneratingQuote ? 'Génération devis...' : currentQuote ? '✓ Devis créé' : '⬡ Générer le devis PDF'}
+                </button>
+              </span>
+
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-gray-400 italic">Crée un brouillon dans Front — rien n&apos;est envoyé au client</p>
+                {/* 🟢 Charger dans Front */}
+                <span
+                  title={!draft.trim() ? 'Rédigez ou générez un brouillon avant de charger dans Front' : undefined}
+                  className={!draft.trim() ? 'cursor-not-allowed' : undefined}
+                >
+                  <button
+                    onClick={handleSendDraft}
+                    disabled={isSending || !draft.trim()}
+                    className={`rounded-lg px-5 py-2 text-sm font-bold text-white transition-colors flex-shrink-0 pointer-events-auto ${
+                      !draft.trim() ? 'bg-gray-300 pointer-events-none'
+                      : isSending ? 'bg-green-400'
+                      : 'bg-green-600 hover:bg-green-700'
+                    }`}
+                  >
+                    {isSending ? 'Envoi...' : currentQuote ? '↑ Charger brouillon + devis dans Front' : '↑ Charger dans Front'}
+                  </button>
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -437,7 +457,7 @@ export default function ThreadDetailPage() {
                       Voir le PDF →
                     </a>
                   )}
-                  <button onClick={() => { setQuoteModal('hidden'); setView('draft'); }}
+                  <button onClick={() => setQuoteModal('hidden')}
                     className="rounded-lg bg-amber-500 hover:bg-amber-600 px-5 py-2.5 text-sm font-bold text-white transition-colors">
                     Préparer le brouillon avec le devis →
                   </button>

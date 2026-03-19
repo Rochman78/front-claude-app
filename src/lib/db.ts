@@ -56,6 +56,10 @@ export async function initDB() {
       ALTER TABLE agents ADD COLUMN inbox_id TEXT NOT NULL DEFAULT '';
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$;
+    DO $$ BEGIN
+      ALTER TABLE agents ADD COLUMN store_code TEXT DEFAULT '';
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
   `);
 
   // Utilisateurs

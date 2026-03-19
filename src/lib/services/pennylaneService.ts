@@ -2,19 +2,9 @@
  * Service Pennylane — centralise la logique de création de devis.
  */
 
-const PENNYLANE_API_URL = 'https://app.pennylane.com/api/external/v2';
+import { getStoreByInboxName } from '@/lib/stores';
 
-const STORE_CONFIG: Record<string, [string, number]> = {
-  'le filet':      ['LFC',  253634],
-  'le voile':      ['LVO',  877143],
-  'tarnnetz':      ['TAR',  257174],
-  'ma toile coco': ['COCO', 257180],
-  'het':           ['HET',  257162],
-  'red':           ['RED',  257168],
-  'rete':          ['RETE', 861190],
-  'mon ombrage':   ['MON',  883869],
-  'univers':       ['UNI',  883875],
-};
+const PENNYLANE_API_URL = 'https://app.pennylane.com/api/external/v2';
 
 const PRODUCT_ID_FILET   = 14369303;
 const PRODUCT_ID_GENERIC = 16822267;
@@ -27,12 +17,9 @@ function pennylaneHeaders(): Record<string, string> {
   };
 }
 
-export function getStoreConfig(inboxName: string): [string, number] {
-  const lower = (inboxName || '').toLowerCase();
-  for (const [key, val] of Object.entries(STORE_CONFIG)) {
-    if (lower.includes(key)) return val;
-  }
-  return ['LFC', 253634];
+function getTemplateId(inboxName: string): number {
+  const store = getStoreByInboxName(inboxName);
+  return store?.pennylaneTemplateId || 253634; // fallback LFC
 }
 
 export async function findCustomerByEmail(email: string): Promise<string | null> {
@@ -134,7 +121,7 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
 
   if (!params.lines.length) throw new Error('Au moins une ligne de devis requise');
 
-  const [, templateId] = getStoreConfig(params.inboxName || '');
+  const templateId = getTemplateId(params.inboxName || '');
 
   const invoiceLines = params.lines.map((line) => {
     const isProduct = (line.type || 'free') === 'product';

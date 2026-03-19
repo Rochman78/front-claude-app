@@ -8,4 +8,14 @@ export default defineConfig({
     outDir: '../public/plugin',
     emptyOutDir: true,
   },
+  server: {
+    port: 5173,
+    // Proxy les appels /api vers le backend Next.js en dev
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
+  },
 });

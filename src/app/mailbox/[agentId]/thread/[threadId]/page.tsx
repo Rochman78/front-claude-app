@@ -4,6 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Agent, ChatMessage } from '@/types';
 import { getAgent, getSharedFilesForAgent, saveChatMessages } from '@/lib/storage';
+import { selectDocumentNames, filterRelevantFiles, buildDocumentsText } from '@/lib/documentSelector';
+import { cleanDraftContent, cleanDraftResponse } from '@/lib/cleanDraft';
+import { isDraftReady, renderMarkdown } from '@/lib/draftUtils';
 
 interface FrontMessage {
   id: string;
@@ -192,86 +195,21 @@ export default function ThreadDetailPage() {
     }).join('\n\n---\n\n'),
   [messages]);
 
-  const selectDocuments = useCallback((emailContent: string): string[] => {
-    const text = emailContent.toLowerCase();
-
-    const categories: { keywords: string[]; docs: string[] }[] = [
-      {
-        keywords: ['devis', 'sur mesure', 'sur-mesure', 'dimensions', 'personnalisé', 'taille spéciale', 'mesure', 'mètres', 'm²', 'quote', 'custom', 'custom-made', 'bespoke'],
-        docs: ['devis-sur-mesure-base-documentaire.txt', 'obligations-tva-zephyr.docx', 'format-json-devis.txt'],
-      },
-      {
-        keywords: ['retour', 'retourner', 'rembourser', 'remboursement', 'échange', 'échanger', 'rétractation', 'annuler', 'return', 'refund', 'exchange'],
-        docs: ['POLITIQUE DE RETOURS.docx', 'template-echange-erreur-client.txt'],
-      },
-      {
-        keywords: ['livraison', 'colis', 'suivi', 'expédition', 'reçu', 'pas reçu', 'transporteur', 'mondial relay', 'colissimo', 'chronopost', 'tracking', 'delivery', 'shipping', 'parcel'],
-        docs: ['POLITIQUE EXPEDITION.docx', 'template-colis-non-recu.txt'],
-      },
-      {
-        keywords: ['garantie', 'défaut', 'endommagé', 'cassé', 'déchiré', 'abîmé', 'usure', 'usé', 'décoloré', 'troué', 'warranty', 'damaged', 'broken', 'torn'],
-        docs: ['template-garantie-diagnostic.txt'],
-      },
-      {
-        keywords: ['produit', 'filet', 'voile', 'taille', 'couleur', 'installation', 'fixer', 'fixation', 'mât', 'corde', 'accessoire', 'product', 'net', 'sail', 'size', 'color'],
-        docs: ['catalogue-LFC.txt', 'FT-Filets-LFC.pdf', 'FT-Coco-LFC.pdf', 'Fiches_Techniques_Accessoires.pdf'],
-      },
-      {
-        keywords: ['tva', 'facture', 'ht', 'hors taxe', 'professionnel', 'entreprise', 'société', 'siret', 'intracommunautaire', 'vat', 'invoice', 'tax'],
-        docs: ['obligations-tva-zephyr.docx'],
-      },
-      {
-        keywords: ['cgv', 'conditions', 'droit', 'légal', 'rétractation', 'médiation', 'terms', 'legal'],
-        docs: ['CGV.docx'],
-      },
-    ];
-
-    const matched = new Set<string>();
-    for (const cat of categories) {
-      if (cat.keywords.some((kw) => text.includes(kw))) {
-        cat.docs.forEach((d) => matched.add(d));
-      }
-    }
-
-    // Fallback : si aucun mot-clé détecté, inclure catalogue + CGV
-    if (matched.size === 0) {
-      ['catalogue-LFC.txt', 'CGV.docx'].forEach((d) => matched.add(d));
-    }
-
-    return Array.from(matched);
-  }, []);
-
   const buildDocumentsContext = useCallback((): string => {
     if (!agent) return '';
 
     const emailContext = buildEmailContext();
     const fullEmailText = `${subject} ${emailContext}`;
-    const relevantDocNames = selectDocuments(fullEmailText);
+    const relevantDocNames = selectDocumentNames(fullEmailText);
 
     const allFiles = [
       ...agent.files.map((f) => ({ name: f.name, content: f.content, shared: false })),
       ...sharedFiles.map((f) => ({ name: f.name, content: f.content, shared: true })),
     ];
 
-    const selectedFiles = allFiles.filter((f) =>
-      relevantDocNames.some((docName) => f.name.toLowerCase().includes(docName.toLowerCase()) || docName.toLowerCase().includes(f.name.toLowerCase()))
-    );
-
-    const knownDocNames = [
-      'devis-sur-mesure-base-documentaire.txt', 'obligations-tva-zephyr.docx', 'format-json-devis.txt',
-      'POLITIQUE DE RETOURS.docx', 'template-echange-erreur-client.txt',
-      'POLITIQUE EXPEDITION.docx', 'template-colis-non-recu.txt',
-      'template-garantie-diagnostic.txt',
-      'catalogue-LFC.txt', 'FT-Filets-LFC.pdf', 'FT-Coco-LFC.pdf', 'Fiches_Techniques_Accessoires.pdf',
-      'CGV.docx',
-    ];
-    const unknownFiles = allFiles.filter((f) =>
-      !knownDocNames.some((docName) => f.name.toLowerCase().includes(docName.toLowerCase()) || docName.toLowerCase().includes(f.name.toLowerCase()))
-    );
-
-    const filesToInclude = [...unknownFiles, ...selectedFiles];
-    return filesToInclude.map((f) => f.shared ? `[Partagé: ${f.name}]\n${f.content}` : `[${f.name}]\n${f.content}`).join('\n\n');
-  }, [agent, sharedFiles, subject, buildEmailContext, selectDocuments]);
+    const filesToInclude = filterRelevantFiles(allFiles, relevantDocNames);
+    return buildDocumentsText(filesToInclude);
+  }, [agent, sharedFiles, subject, buildEmailContext]);
 
   const buildSystemPrompt = useCallback((forDraft = false): string => {
     if (!agent) return '';
@@ -284,60 +222,6 @@ export default function ThreadDetailPage() {
     return `${base}${draft.trim() ? `\n\nBROUILLON ACTUEL:\n${draft}` : ''}`;
   }, [agent, subject, draft, buildEmailContext]);
 
-  const cleanDraftContent = (raw: string): string => {
-    // Si Claude a inclus une section BROUILLON DE RÉPONSE, extraire uniquement cette partie
-    const brouillonMatch = raw.match(/\*?\*?BROUILLON\s+DE\s+R[EÉ]PONSE\s*:?\*?\*?\s*\n+([\s\S]+)/i);
-    if (brouillonMatch) return brouillonMatch[1].trim();
-    // Si le message est identifié comme mail final (étape 3), couper tout avant "Bonjour"
-    const isFinalEmail = /[EÉ]TAPE\s*3|MAIL\s+FINAL|R[EÉ]PONSE\s+FINALE/i.test(raw);
-    if (isFinalEmail) {
-      const bonjourIdx = raw.search(/bonjour/i);
-      if (bonjourIdx !== -1) return raw.slice(bonjourIdx).trim();
-    }
-    // Supprimer section d'analyse en tête si présente
-    const analyseMatch = raw.match(/\*?\*?[A-ZÀÉÈÊ\s]+:?\*?\*?[\s\S]*?\n\n([\s\S]+)/);
-    if (analyseMatch && /^(bonjour|chère|cher|madame|monsieur|hello)/i.test(analyseMatch[1])) {
-      return analyseMatch[1].trim();
-    }
-    return raw.trim();
-  };
-
-  const cleanDraftResponse = (text: string): string => {
-    let result = text;
-
-    // 1. ÉTAPE : si mail final, supprimer tout ce qui précède "Bonjour"
-    const isFinalEmail = /[EÉ]TAPE\s*3|MAIL\s+FINAL|R[EÉ]PONSE\s+FINALE/i.test(result);
-    if (isFinalEmail) {
-      const idx = result.search(/bonjour/i);
-      if (idx !== -1) result = result.slice(idx);
-    }
-
-    // 2. SIGNATURE : supprimer la ligne de signature et les lignes vides qui suivent
-    const sigPattern = /\n[^\n]*(cordialement|bien à vous|bien cordialement|l'équipe|le service client|à votre disposition|belle journée|bonne journée|excellente journée|nous vous souhaitons|à bientôt)[^\n]*(\n\s*)*/i;
-    result = result.replace(sigPattern, '');
-
-    return result.trim();
-  };
-
-  // Détecte si le dernier message Claude signale que le brouillon est prêt (pas de questions)
-  const isDraftReady = (content: string): boolean => {
-    const lower = content.toLowerCase();
-    // Avec header "QUESTIONS :"
-    const questionsMatch = content.match(/QUESTIONS?\s*:([^\n]*(?:\n(?!ÉTAPE|BROUILLON|##)[^\n]*)*)/i);
-    if (questionsMatch) {
-      const answer = questionsMatch[1].toLowerCase();
-      if (/pas de question|aucune question|sans question|pas de questions particulière|aucune question particulière/.test(answer)) return true;
-    }
-    // Sans header — Claude dit directement "Pas de question supplémentaire"
-    return /pas de question suppl|aucune question suppl|pas de questions suppl|tu valides ce brouillon/.test(lower);
-  };
-
-  const renderMarkdown = (text: string) => ({
-    __html: text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*\n]+)\*/g, '<em>$1</em>'),
-  });
 
   const streamChat = useCallback(async (sys: string, msgs: { role: string; content: string }[], onChunk: (text: string) => void, model?: string, documents?: string): Promise<string> => {
     const controller = new AbortController();

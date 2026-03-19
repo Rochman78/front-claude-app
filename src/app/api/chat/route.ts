@@ -17,15 +17,37 @@ export async function POST(req: NextRequest) {
     const model = requestedModel === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
     const trimmedMessages = messages.slice(-10);
 
-    // Injecter les documents de référence en prefix (user + assistant ack)
-    const docPrefix: { role: 'user' | 'assistant'; content: string }[] = documents
+    // System prompt avec cache_control (instructions stables entre appels)
+    const systemBlock: Anthropic.Messages.TextBlockParam[] = [
+      {
+        type: 'text' as const,
+        text: systemPrompt || 'Tu es un assistant IA utile.',
+        cache_control: { type: 'ephemeral' as const },
+      },
+    ];
+
+    // Injecter les documents de référence en prefix avec cache_control
+    type MessageParam = Anthropic.Messages.MessageParam;
+    const docPrefix: MessageParam[] = documents
       ? [
-          { role: 'user', content: `DOCUMENTS DE RÉFÉRENCE (à consulter pour répondre au client) :\n\n${documents}` },
-          { role: 'assistant', content: 'Bien noté. Je dispose des documents de référence et je suis prêt à analyser le mail du client selon le workflow en 3 étapes.' },
+          {
+            role: 'user' as const,
+            content: [
+              {
+                type: 'text' as const,
+                text: `DOCUMENTS DE RÉFÉRENCE (à consulter pour répondre au client) :\n\n${documents}`,
+                cache_control: { type: 'ephemeral' as const },
+              },
+            ],
+          },
+          {
+            role: 'assistant' as const,
+            content: 'Bien noté. Je dispose des documents de référence et je suis prêt à analyser le mail du client selon le workflow en 3 étapes.',
+          },
         ]
       : [];
 
-    const allMessages = [
+    const allMessages: MessageParam[] = [
       ...docPrefix,
       ...trimmedMessages.map((m: { role: string; content: string }) => ({
         role: m.role as 'user' | 'assistant',
@@ -33,14 +55,14 @@ export async function POST(req: NextRequest) {
       })),
     ];
 
-    const promptSize = (systemPrompt || '').length + allMessages.reduce((n: number, m: { content: string }) => n + m.content.length, 0);
-    console.log(`[chat] model=${model} prompt=${promptSize} chars (docs=${documents ? 'yes' : 'no'})`);
+    const promptSize = (systemPrompt || '').length + (documents || '').length + trimmedMessages.reduce((n: number, m: { content: string }) => n + m.content.length, 0);
+    console.log(`[chat] model=${model} prompt=${promptSize} chars (docs=${documents ? 'yes' : 'no'}, cache=on)`);
     const t0 = Date.now();
 
     const stream = await anthropic.messages.stream({
       model,
       max_tokens: 4096,
-      system: systemPrompt || 'Tu es un assistant IA utile.',
+      system: systemBlock,
       messages: allMessages,
     });
 
@@ -55,7 +77,9 @@ export async function POST(req: NextRequest) {
               controller.enqueue(encoder.encode(chunk.delta.text));
             }
           }
-          console.log(`[chat] done in ${Date.now() - t0}ms`);
+          const finalMessage = await stream.finalMessage();
+          const usage = finalMessage.usage as unknown as Record<string, number>;
+          console.log(`[chat] done in ${Date.now() - t0}ms | input=${usage.input_tokens} cache_create=${usage.cache_creation_input_tokens ?? 0} cache_read=${usage.cache_read_input_tokens ?? 0} output=${usage.output_tokens}`);
         } catch (streamErr) {
           const msg = streamErr instanceof Error ? streamErr.message : 'Erreur stream';
           console.error('Stream error:', msg);

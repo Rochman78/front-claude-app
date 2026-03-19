@@ -117,7 +117,7 @@ export default function ThreadDetailPage() {
       ...shared.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
     ].join('\n\n');
     const base = `Tu es l'agent "${a.name}" (${a.email}).\n\n${a.instructions || ''}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${buildEmailContext()}`;
-    if (forDraft) return `${base}\n\nRédige UNIQUEMENT le corps de l'email de réponse, sans objet ni formule De:/À:.`;
+    if (forDraft) return `${base}\n\nRédige UNIQUEMENT le corps de l'email de réponse, sans objet ni formule De:/À:. Écris en texte plain SANS AUCUN markdown (pas de **, *, #, ou autre formatage). Juste le texte brut de l'email.`;
     return `${base}${draft.trim() ? `\n\nBROUILLON ACTUEL:\n${draft}` : ''}\n\nTu aides à rédiger des réponses email. Si on te demande de modifier le brouillon, renvoie la version complète modifiée.`;
   }, [agentId, subject, draft, buildEmailContext]);
 
@@ -387,42 +387,46 @@ export default function ThreadDetailPage() {
             {/* Barre d'actions */}
             <div className="flex items-center justify-between gap-3 py-1 flex-shrink-0">
               {/* 🟡 Devis PDF */}
-              <span
-                title={!quoteReady ? (quoteReadyReason || 'Le client doit valider une proposition chiffrée avant de générer un devis') : undefined}
-                className={!quoteReady ? 'cursor-not-allowed' : undefined}
-              >
+              <div className="relative group inline-block">
                 <button
-                  onClick={generateQuote}
-                  disabled={isGeneratingQuote || !quoteReady}
-                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors pointer-events-auto ${
+                  onClick={quoteReady ? generateQuote : undefined}
+                  disabled={isGeneratingQuote}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
                     quoteReady
                       ? 'bg-amber-500 hover:bg-amber-600 text-white cursor-pointer'
-                      : 'bg-gray-100 text-gray-400 pointer-events-none'
+                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   }`}
                 >
                   {isGeneratingQuote ? 'Génération devis...' : currentQuote ? '✓ Devis créé' : '⬡ Générer le devis PDF'}
                 </button>
-              </span>
+                {!quoteReady && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 max-w-xs text-center">
+                    {quoteReadyReason || 'Le client doit valider une proposition chiffrée avant de générer un devis'}
+                  </div>
+                )}
+              </div>
 
               <div className="flex items-center gap-3">
                 <p className="text-xs text-gray-400 italic">Crée un brouillon dans Front — rien n&apos;est envoyé au client</p>
                 {/* 🟢 Charger dans Front */}
-                <span
-                  title={!draft.trim() ? 'Rédigez ou générez un brouillon avant de charger dans Front' : undefined}
-                  className={!draft.trim() ? 'cursor-not-allowed' : undefined}
-                >
+                <div className="relative group inline-block">
                   <button
-                    onClick={handleSendDraft}
-                    disabled={isSending || !draft.trim()}
-                    className={`rounded-lg px-5 py-2 text-sm font-bold text-white transition-colors flex-shrink-0 pointer-events-auto ${
-                      !draft.trim() ? 'bg-gray-300 pointer-events-none'
+                    onClick={draft.trim() ? handleSendDraft : undefined}
+                    disabled={isSending}
+                    className={`rounded-lg px-5 py-2 text-sm font-bold text-white transition-colors flex-shrink-0 ${
+                      !draft.trim() ? 'bg-gray-300 cursor-not-allowed'
                       : isSending ? 'bg-green-400'
                       : 'bg-green-600 hover:bg-green-700'
                     }`}
                   >
                     {isSending ? 'Envoi...' : currentQuote ? '↑ Charger brouillon + devis dans Front' : '↑ Charger dans Front'}
                   </button>
-                </span>
+                  {!draft.trim() && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+                      Rédigez ou générez un brouillon d&apos;abord
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

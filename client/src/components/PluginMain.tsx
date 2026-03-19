@@ -8,34 +8,31 @@ import QuoteBlock from './QuoteBlock';
 import LoadingState from './LoadingState';
 import { detectQuoteJson } from '../utils/detectQuoteJson';
 
-/**
- * Extrait le texte brut d'un message Front SDK.
- * body peut être : string, { body: string, type: string }, ou autre objet.
- */
-function extractText(msg: Record<string, unknown>): string {
-  const body = msg.body;
+/** Structure réelle d'un message Front SDK */
+interface FrontMessage {
+  id: string;
+  date: number;
+  content?: { body?: string; type?: string };
+  author?: { name?: string; email?: string };
+  replyTo?: { handle?: string; contact?: { name?: string } };
+}
 
-  // Cas 1 : body est déjà une string (HTML ou texte)
-  if (typeof body === 'string') {
-    return body.replace(/<[^>]+>/g, '').trim();
-  }
+/** Extrait le texte brut d'un message Front SDK. */
+function extractText(msg: FrontMessage): string {
+  // Le contenu est dans msg.content.body (HTML)
+  const html = msg.content?.body || '';
+  if (!html) return '';
+  return html.replace(/<[^>]+>/g, '').trim();
+}
 
-  // Cas 2 : body est un objet { body: "...", type: "html" }
-  if (body && typeof body === 'object') {
-    const obj = body as Record<string, unknown>;
-    const inner = obj.body || obj.text || obj.html || obj.content || '';
-    if (typeof inner === 'string') {
-      return inner.replace(/<[^>]+>/g, '').trim();
-    }
-  }
+/** Extrait le vrai email client (pas l'adresse Shopify/intermédiaire). */
+function extractCustomerEmail(msg: FrontMessage, fallback: string): string {
+  return msg.replyTo?.handle || fallback;
+}
 
-  // Cas 3 : pas de body, essayer d'autres champs
-  const fallback = msg.text || msg.content || msg.blurb || '';
-  if (typeof fallback === 'string') {
-    return fallback.replace(/<[^>]+>/g, '').trim();
-  }
-
-  return '';
+/** Extrait le vrai nom client. */
+function extractCustomerName(msg: FrontMessage, fallback: string): string {
+  return msg.replyTo?.contact?.name || fallback;
 }
 
 interface PluginMainProps {
@@ -89,27 +86,49 @@ export default function PluginMain({ context }: PluginMainProps) {
         }
       }
 
+      // Cast les messages vers la structure réelle du SDK
+      const frontMessages = messages as unknown as FrontMessage[];
+
+      // Extraire le vrai email/nom client depuis le premier message entrant
+      const firstIncoming = frontMessages.find((m) => m.replyTo?.handle);
+      const customerEmail = extractCustomerEmail(
+        firstIncoming || frontMessages[0],
+        recipient?.handle || ''
+      );
+      const customerName = extractCustomerName(
+        firstIncoming || frontMessages[0],
+        recipient?.name || ''
+      );
+
       // Formater le fil de mails
-      const mailContent = messages
+      const mailContent = frontMessages
         .map((msg) => {
           const author = msg.author?.name || msg.author?.email || 'Inconnu';
           const date = new Date(msg.date * 1000).toLocaleString('fr-FR');
           const text = extractText(msg);
-          return `[${date}] ${author} :\n${text}`;
+          return text ? `[${date}] ${author} :\n${text}` : '';
         })
-        .filter((entry) => entry.includes('\n') && entry.split('\n')[1]?.trim())
+        .filter(Boolean)
         .join('\n\n---\n\n');
 
-      console.log('[plugin] calling claude.analyze...');
-
-      await claude.analyze({
+      const payload = {
         storeCode: store!.code,
-        customerEmail: recipient?.handle || '',
-        customerName: recipient?.name || '',
+        customerEmail,
+        customerName,
         mailContent,
         frontConversationId: context.conversation.id,
         subject,
+      };
+      console.log('[plugin] payload preview:', {
+        storeCode: payload.storeCode,
+        customerEmail: payload.customerEmail,
+        customerName: payload.customerName,
+        mailContentLength: payload.mailContent.length,
+        mailContentPreview: payload.mailContent.substring(0, 200),
+        frontConversationId: payload.frontConversationId,
       });
+
+      await claude.analyze(payload);
     } catch (err) {
       console.error('[plugin] handleAnalyze error:', err);
       // Remonter l'erreur à l'UI au lieu de l'avaler

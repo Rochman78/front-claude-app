@@ -28,11 +28,15 @@ export async function deleteAgent(id: string): Promise<void> {
 }
 
 export async function updateAgent(agent: Agent): Promise<void> {
-  await fetch(`/api/agents/${agent.id}`, {
+  const res = await fetch(`/api/agents/${agent.id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(agent),
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Erreur serveur ${res.status}`);
+  }
 }
 
 // Shared Files

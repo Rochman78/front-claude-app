@@ -12,7 +12,7 @@ export interface FrontSingleConversationContext {
     recipient?: { handle: string; name?: string };
     inboxes?: { id: string; name: string; address?: string }[];
   };
-  listMessages: () => Promise<{ results: { id: string; body: string; author?: { name?: string; email?: string }; date: number }[] }>;
+  listMessages: () => Promise<{ results: { id: string; body?: string; text?: string; content?: string; author?: { name?: string; email?: string }; date: number }[] }>;
   createDraft: (options: {
     content: { body: string; type: 'html' | 'text' };
     replyOptions?: { type: 'reply' | 'replyAll'; originalMessageId: string };

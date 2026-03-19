@@ -38,10 +38,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Boutique inconnue : ${storeCode}` }, { status: 400 });
     }
 
-    const { rows: agents } = await pool.query(
+    // Chercher par store_code d'abord, puis fallback par email ou nom
+    let { rows: agents } = await pool.query(
       'SELECT * FROM agents WHERE store_code = $1 LIMIT 1',
       [storeCode]
     );
+
+    if (agents.length === 0) {
+      // Fallback : chercher par email de la boutique dans le champ email de l'agent
+      const fallback = await pool.query(
+        'SELECT * FROM agents WHERE LOWER(name) LIKE $1 LIMIT 1',
+        [`%${store.inboxMatchPattern}%`]
+      );
+      agents = fallback.rows;
+    }
 
     if (agents.length === 0) {
       return NextResponse.json({ error: `Aucun agent configuré pour la boutique ${storeCode}` }, { status: 404 });

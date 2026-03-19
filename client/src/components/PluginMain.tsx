@@ -28,13 +28,28 @@ export default function PluginMain({ context }: PluginMainProps) {
   }
 
   async function handleAnalyze() {
+    console.log('[plugin] handleAnalyze called');
+    console.log('[plugin] store:', store);
+    console.log('[plugin] context.conversation:', context.conversation);
+
     try {
       // Récupérer les messages du fil via le SDK Front
+      console.log('[plugin] calling context.listMessages()...');
       const messagesResponse = await context.listMessages();
+      console.log('[plugin] listMessages response:', messagesResponse);
       const messages = messagesResponse.results;
 
-      if (messages.length === 0) {
+      if (!messages || messages.length === 0) {
+        console.warn('[plugin] No messages found in conversation');
+        claude.clearError();
         return;
+      }
+
+      console.log(`[plugin] ${messages.length} messages found`);
+      // Log la structure du premier message pour debug
+      if (messages[0]) {
+        console.log('[plugin] first message keys:', Object.keys(messages[0]));
+        console.log('[plugin] first message sample:', JSON.stringify(messages[0]).substring(0, 500));
       }
 
       // Formater le fil de mails
@@ -42,10 +57,15 @@ export default function PluginMain({ context }: PluginMainProps) {
         .map((msg) => {
           const author = msg.author?.name || msg.author?.email || 'Inconnu';
           const date = new Date(msg.date * 1000).toLocaleString('fr-FR');
-          const text = msg.body.replace(/<[^>]+>/g, '').trim();
+          // Le SDK Front peut exposer body, text, ou content selon la version
+          const rawBody = msg.body || (msg as Record<string, unknown>).text || (msg as Record<string, unknown>).content || '';
+          const text = String(rawBody).replace(/<[^>]+>/g, '').trim();
           return `[${date}] ${author} :\n${text}`;
         })
+        .filter((entry) => entry.includes('\n') && entry.split('\n')[1]?.trim())
         .join('\n\n---\n\n');
+
+      console.log('[plugin] calling claude.analyze...');
 
       await claude.analyze({
         storeCode: store!.code,
@@ -55,8 +75,10 @@ export default function PluginMain({ context }: PluginMainProps) {
         frontConversationId: context.conversation.id,
         subject,
       });
-    } catch {
-      // L'erreur est gérée dans useClaude
+    } catch (err) {
+      console.error('[plugin] handleAnalyze error:', err);
+      // Remonter l'erreur à l'UI au lieu de l'avaler
+      claude.setError(err instanceof Error ? err.message : 'Erreur lors de la récupération des messages');
     }
   }
 

@@ -18,6 +18,7 @@ interface UseClaudeReturn {
     subject?: string;
   }) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
+  setError: (error: string) => void;
   clearError: () => void;
 }
 
@@ -69,6 +70,7 @@ export function useClaude(): UseClaudeReturn {
     setError(null);
 
     try {
+      console.log('[useClaude] fetching /api/plugin/analyze', { API_BASE, params });
       const response = await fetch(`${API_BASE}/api/plugin/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -139,6 +141,7 @@ export function useClaude(): UseClaudeReturn {
     }
   }, [conversationId]);
 
+  const exposedSetError = useCallback((msg: string) => setError(msg), []);
   const clearError = useCallback(() => setError(null), []);
 
   return {
@@ -149,6 +152,7 @@ export function useClaude(): UseClaudeReturn {
     error,
     analyze,
     sendMessage,
+    setError: exposedSetError,
     clearError,
   };
 }

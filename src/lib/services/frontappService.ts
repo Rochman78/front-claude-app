@@ -2,12 +2,9 @@
  * Service FrontApp — centralise tous les appels à l'API Front App.
  */
 
-const FRONT_API_URL = 'https://api2.frontapp.com';
+import { EXCLUDED_INBOX_NAMES } from '@/lib/stores';
 
-const EXCLUDED_INBOX_NAMES = [
-  'zephyr o.s.c', 'c bamy', 'factures', 'to keep',
-  'bamybox', 'quems box', 'rochman box', 'camouflage net',
-];
+const FRONT_API_URL = 'https://api2.frontapp.com';
 
 function headers(): Record<string, string> {
   return {

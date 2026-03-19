@@ -56,6 +56,21 @@ export async function initDB() {
       ALTER TABLE agents ADD COLUMN inbox_id TEXT NOT NULL DEFAULT '';
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$;
+    DO $$ BEGIN
+      ALTER TABLE agents ADD COLUMN store_code TEXT DEFAULT '';
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
+  `);
+
+  // Utilisateurs
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL DEFAULT '',
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
 
   // Utilisateurs

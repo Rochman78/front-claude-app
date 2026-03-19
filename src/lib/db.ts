@@ -58,6 +58,31 @@ export async function initDB() {
     END $$;
   `);
 
+  // Conversations Claude persistées (historique par client/agent)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS claude_conversations (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+      front_conversation_id TEXT NOT NULL,
+      subject TEXT DEFAULT '',
+      status TEXT DEFAULT 'open',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, front_conversation_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS claude_messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES claude_conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_claude_messages_conv ON claude_messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_claude_conversations_front ON claude_conversations(front_conversation_id);
+  `);
+
   // Cache résumés Claude
   await pool.query(`
     CREATE TABLE IF NOT EXISTS conversation_summaries (

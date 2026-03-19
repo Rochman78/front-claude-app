@@ -66,7 +66,7 @@ export async function getSharedFilesForAgent(agentId: string): Promise<SharedFil
   return res.json();
 }
 
-// Chat
+// Chat (legacy key-based — kept for backward compat)
 export async function getChatMessages(key: string): Promise<ChatMessage[]> {
   const res = await fetch(`/api/chat-messages?key=${encodeURIComponent(key)}`);
   return res.json();
@@ -77,5 +77,41 @@ export async function saveChatMessages(key: string, messages: ChatMessage[]): Pr
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key, messages }),
+  });
+}
+
+// Conversations Claude (persistées en BDD)
+export interface ClaudeConversation {
+  id: string;
+  agent_id: string;
+  front_conversation_id: string;
+  subject: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  messages: { id: string; role: string; content: string; created_at: string }[];
+}
+
+export async function getOrCreateConversation(agentId: string, frontConvId: string, subject?: string): Promise<ClaudeConversation> {
+  const params = new URLSearchParams({ agent_id: agentId, front_conversation_id: frontConvId });
+  if (subject) params.set('subject', subject);
+  const res = await fetch(`/api/conversations?${params}`);
+  return res.json();
+}
+
+export async function addConversationMessage(conversationId: string, role: string, content: string): Promise<{ id: string; role: string; content: string; created_at: string }> {
+  const res = await fetch('/api/conversations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversation_id: conversationId, role, content }),
+  });
+  return res.json();
+}
+
+export async function clearConversationMessages(conversationId: string): Promise<void> {
+  await fetch('/api/conversations', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversation_id: conversationId }),
   });
 }

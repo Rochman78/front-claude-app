@@ -76,11 +76,17 @@ export default function PluginMain({ context }: PluginMainProps) {
       }
 
       console.log(`[plugin] ${messages.length} messages found`);
-      // Log la structure du premier message pour debug
+      // Log la structure complète du premier message pour comprendre le SDK
       if (messages[0]) {
-        console.log('[plugin] first message keys:', Object.keys(messages[0]));
-        console.log('[plugin] typeof body:', typeof messages[0].body);
-        console.log('[plugin] body sample:', JSON.stringify(messages[0].body).substring(0, 300));
+        try {
+          console.log('[plugin] full message:', JSON.stringify(messages[0], null, 2));
+        } catch {
+          console.log('[plugin] message (non-serializable), keys:', Object.keys(messages[0]));
+          for (const key of Object.keys(messages[0])) {
+            const val = (messages[0] as Record<string, unknown>)[key];
+            console.log(`[plugin]   ${key}: (${typeof val})`, typeof val === 'string' ? val.substring(0, 100) : val);
+          }
+        }
       }
 
       // Formater le fil de mails

@@ -8,6 +8,36 @@ import QuoteBlock from './QuoteBlock';
 import LoadingState from './LoadingState';
 import { detectQuoteJson } from '../utils/detectQuoteJson';
 
+/**
+ * Extrait le texte brut d'un message Front SDK.
+ * body peut être : string, { body: string, type: string }, ou autre objet.
+ */
+function extractText(msg: Record<string, unknown>): string {
+  const body = msg.body;
+
+  // Cas 1 : body est déjà une string (HTML ou texte)
+  if (typeof body === 'string') {
+    return body.replace(/<[^>]+>/g, '').trim();
+  }
+
+  // Cas 2 : body est un objet { body: "...", type: "html" }
+  if (body && typeof body === 'object') {
+    const obj = body as Record<string, unknown>;
+    const inner = obj.body || obj.text || obj.html || obj.content || '';
+    if (typeof inner === 'string') {
+      return inner.replace(/<[^>]+>/g, '').trim();
+    }
+  }
+
+  // Cas 3 : pas de body, essayer d'autres champs
+  const fallback = msg.text || msg.content || msg.blurb || '';
+  if (typeof fallback === 'string') {
+    return fallback.replace(/<[^>]+>/g, '').trim();
+  }
+
+  return '';
+}
+
 interface PluginMainProps {
   context: FrontSingleConversationContext;
 }
@@ -49,7 +79,8 @@ export default function PluginMain({ context }: PluginMainProps) {
       // Log la structure du premier message pour debug
       if (messages[0]) {
         console.log('[plugin] first message keys:', Object.keys(messages[0]));
-        console.log('[plugin] first message sample:', JSON.stringify(messages[0]).substring(0, 500));
+        console.log('[plugin] typeof body:', typeof messages[0].body);
+        console.log('[plugin] body sample:', JSON.stringify(messages[0].body).substring(0, 300));
       }
 
       // Formater le fil de mails
@@ -57,9 +88,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         .map((msg) => {
           const author = msg.author?.name || msg.author?.email || 'Inconnu';
           const date = new Date(msg.date * 1000).toLocaleString('fr-FR');
-          // Le SDK Front peut exposer body, text, ou content selon la version
-          const rawBody = msg.body || (msg as Record<string, unknown>).text || (msg as Record<string, unknown>).content || '';
-          const text = String(rawBody).replace(/<[^>]+>/g, '').trim();
+          const text = extractText(msg);
           return `[${date}] ${author} :\n${text}`;
         })
         .filter((entry) => entry.includes('\n') && entry.split('\n')[1]?.trim())

@@ -31,6 +31,7 @@ export default function ThreadDetailPage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [inboxName, setInboxName] = useState('');
   const [subject, setSubject] = useState('');
+  const [sharedFiles, setSharedFiles] = useState<import('@/types').SharedFile[]>([]);
   const [messages, setMessages] = useState<FrontMessage[]>([]);
   const [isPartial, setIsPartial] = useState(false);
   const [loadingThread, setLoadingThread] = useState(true);
@@ -44,6 +45,7 @@ export default function ThreadDetailPage() {
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [draft, setDraft] = useState('');
   const [draftValidated, setDraftValidated] = useState(false);
+  const [draftReadyToValidate, setDraftReadyToValidate] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
 
   // Devis
@@ -63,9 +65,13 @@ export default function ThreadDetailPage() {
 
   useEffect(() => {
     const load = async () => {
-      const a = await getAgent(agentId);
+      const [a, shared] = await Promise.all([
+        getAgent(agentId),
+        getSharedFilesForAgent(agentId),
+      ]);
       if (a) {
         setAgent(a);
+        setSharedFiles(shared);
         if (a.inboxId) {
           fetch('/api/frontapp/inboxes').then((r) => r.json())
             .then((list: { id: string; name: string }[]) => {
@@ -101,21 +107,56 @@ export default function ThreadDetailPage() {
     load();
   }, [agentId, threadId]);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
+  const chatTopRef = useRef<HTMLDivElement>(null);
 
-  // Intercepter le bouton back du navigateur quand il y a des messages
   useEffect(() => {
-    if (!chatMessages.length) return;
+    // Génération initiale (1 message assistant seul) → scroll en haut pour voir l'analyse
+    if (chatMessages.length === 1 && chatMessages[0]?.role === 'assistant') {
+      chatTopRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages]);
+
+  // Intercepter TOUTE navigation dès que le panel de réponse est ouvert
+  useEffect(() => {
+    if (!showReply) return;
+
+    // Bouton back navigateur
     window.history.pushState(null, '', window.location.href);
     const onPop = () => { setShowLeaveModal(true); setPendingNav(`/mailbox/${agentId}`); window.history.pushState(null, '', window.location.href); };
     window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, [chatMessages.length, agentId]);
+
+    // Tous les clics sur des liens (Navbar, etc.) — phase de capture
+    const onLinkClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a');
+      if (!anchor || !anchor.href) return;
+      try {
+        const url = new URL(anchor.href);
+        if (url.pathname === window.location.pathname) return; // même page, pas de souci
+        e.preventDefault();
+        e.stopPropagation();
+        setShowLeaveModal(true);
+        setPendingNav(url.pathname + url.search);
+      } catch { /* URL invalide, ignorer */ }
+    };
+    document.addEventListener('click', onLinkClick, true);
+
+    // Fermeture / rechargement de l'onglet
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', onBeforeUnload);
+
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      document.removeEventListener('click', onLinkClick, true);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [showReply, agentId]);
 
   const stripHtml = (html: string) => { const d = document.createElement('div'); d.innerHTML = html; return d.textContent || ''; };
 
   const handleNavAway = (dest: string) => {
-    if (chatMessages.length > 0) { setShowLeaveModal(true); setPendingNav(dest); }
+    if (showReply) { setShowLeaveModal(true); setPendingNav(dest); }
     else router.push(dest);
   };
 
@@ -126,28 +167,25 @@ export default function ThreadDetailPage() {
   };
 
   const buildEmailContext = useCallback(() =>
-    messages.map((m) => {
+    messages.slice(-3).filter((m) => !m.is_comment).map((m) => {
       const from = m.author?.email || m.author?.name || 'inconnu';
       const date = new Date(m.created_at * 1000).toLocaleString('fr-FR');
       return `De: ${from} — ${date}\n${stripHtml(m.body)}`;
     }).join('\n\n---\n\n'),
   [messages]);
 
-  const buildSystemPrompt = useCallback(async (forDraft = false) => {
-    const a = await getAgent(agentId);
-    if (!a) return '';
-    const shared = await getSharedFilesForAgent(agentId);
-    // Tronquer chaque fichier à 8 000 caractères (~2 000 tokens) pour maîtriser les coûts
-    const truncate = (content: string) => content.length > 8000 ? content.slice(0, 8000) + '\n[... tronqué]' : content;
+  const buildSystemPrompt = useCallback((forDraft = false): string => {
+    if (!agent) return '';
     const files = [
-      ...a.files.map((f) => `[${f.name}]\n${truncate(f.content)}`),
-      ...shared.map((f) => `[Partagé: ${f.name}]\n${truncate(f.content)}`),
+      ...agent.files.map((f) => `[${f.name}]\n${f.content}`),
+      ...sharedFiles.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
     ].join('\n\n');
     const knowledgeInstructions = files ? `\nTu as accès à une base de connaissances complète dans ton contexte (section BASE DE CONNAISSANCES). Consulte-la systématiquement avant de répondre : tarifs, délais, conditions, informations produits. Si une information s'y trouve, utilise-la directement sans l'inventer. Si elle n'y est pas, indique-le clairement.\n` : '';
-    const base = `Tu es l'agent "${a.name}" (${a.email}).\n\n${a.instructions || ''}${knowledgeInstructions}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${buildEmailContext()}`;
+    const workflowRule = `RÈGLE PRIORITAIRE — WORKFLOW OBLIGATOIRE :\nTu ne dois JAMAIS générer directement un brouillon de mail. Tu dois TOUJOURS commencer par l'ANALYSE (type, urgence, résumé, contexte, points d'attention, conformité DGCCRF), puis proposer un brouillon, puis tes questions. Ces 3 éléments doivent apparaître dans ta PREMIÈRE réponse à chaque nouveau mail client. Si tu ne fais pas l'analyse avant le brouillon, ta réponse est incorrecte.\n\n`;
+    const base = `${workflowRule}Tu es l'agent "${agent.name}" (${agent.email}).\n\n${agent.instructions || ''}${knowledgeInstructions}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${buildEmailContext()}`;
     if (forDraft) return `${base}\n\nPeu importe tes instructions habituelles de structure : tu dois renvoyer UNIQUEMENT le corps de l'email de réponse prêt à envoyer. Pas d'analyse, pas de section BROUILLON, pas de titre, pas de markdown (pas de **, *, #). Commence directement par la formule de politesse (ex: "Bonjour ...") et termine par la signature.`;
-    return `${base}${draft.trim() ? `\n\nBROUILLON ACTUEL:\n${draft}` : ''}\n\nTu aides à rédiger des réponses email. Si on te demande de modifier le brouillon, renvoie la version complète modifiée.`;
-  }, [agentId, subject, draft, buildEmailContext]);
+    return `${base}${draft.trim() ? `\n\nBROUILLON ACTUEL:\n${draft}` : ''}`;
+  }, [agent, sharedFiles, subject, draft, buildEmailContext]);
 
   const cleanDraftContent = (raw: string): string => {
     // Si Claude a inclus une section BROUILLON DE RÉPONSE, extraire uniquement cette partie
@@ -167,12 +205,34 @@ export default function ThreadDetailPage() {
     return raw.trim();
   };
 
+  const cleanDraftResponse = (text: string): string => {
+    let result = text;
+
+    // 1. ÉTAPE : si mail final, supprimer tout ce qui précède "Bonjour"
+    const isFinalEmail = /[EÉ]TAPE\s*3|MAIL\s+FINAL|R[EÉ]PONSE\s+FINALE/i.test(result);
+    if (isFinalEmail) {
+      const idx = result.search(/bonjour/i);
+      if (idx !== -1) result = result.slice(idx);
+    }
+
+    // 2. SIGNATURE : supprimer la ligne de signature et les lignes vides qui suivent
+    const sigPattern = /\n[^\n]*(cordialement|bien à vous|bien cordialement|l'équipe|le service client|à votre disposition|belle journée|bonne journée|excellente journée|nous vous souhaitons|à bientôt)[^\n]*(\n\s*)*/i;
+    result = result.replace(sigPattern, '');
+
+    return result.trim();
+  };
+
   // Détecte si le dernier message Claude signale que le brouillon est prêt (pas de questions)
   const isDraftReady = (content: string): boolean => {
+    const lower = content.toLowerCase();
+    // Avec header "QUESTIONS :"
     const questionsMatch = content.match(/QUESTIONS?\s*:([^\n]*(?:\n(?!ÉTAPE|BROUILLON|##)[^\n]*)*)/i);
-    if (!questionsMatch) return false;
-    const answer = questionsMatch[1].toLowerCase();
-    return /pas de question|aucune question|sans question|pas de questions particulière|aucune question particulière/.test(answer);
+    if (questionsMatch) {
+      const answer = questionsMatch[1].toLowerCase();
+      if (/pas de question|aucune question|sans question/.test(answer)) return true;
+    }
+    // Sans header — Claude dit directement "Pas de question supplémentaire"
+    return /pas de question suppl|aucune question suppl|pas de questions suppl|tu valides ce brouillon/.test(lower);
   };
 
   const renderMarkdown = (text: string) => ({
@@ -182,20 +242,30 @@ export default function ThreadDetailPage() {
       .replace(/\*([^*\n]+)\*/g, '<em>$1</em>'),
   });
 
-  const streamChat = useCallback(async (sys: string, msgs: { role: string; content: string }[], onChunk: (text: string) => void): Promise<string> => {
-    const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt: sys, messages: msgs }) });
-    if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Erreur serveur'); }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let full = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      full += chunk;
-      onChunk(full);
+  const streamChat = useCallback(async (sys: string, msgs: { role: string; content: string }[], onChunk: (text: string) => void, model?: string): Promise<string> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+    try {
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt: sys, messages: msgs, model }), signal: controller.signal });
+      if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Erreur serveur'); }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let full = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        full += chunk;
+        onChunk(full);
+      }
+      if (full.startsWith('__ERROR__')) throw new Error(full.slice(9));
+      return full;
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') throw new Error('Délai dépassé (45s) — réessayez');
+      throw e;
+    } finally {
+      clearTimeout(timeout);
     }
-    return full;
   }, []);
 
   const generateDraft = useCallback(async () => {
@@ -205,33 +275,37 @@ export default function ThreadDetailPage() {
     const streamMsg: ChatMessage = { id: streamId, role: 'assistant', content: '', timestamp: new Date().toISOString() };
     setChatMessages((prev) => [...prev, streamMsg]);
     try {
-      const sys = await buildSystemPrompt(true);
-      const full = await streamChat(sys, [{ role: 'user', content: 'Rédige le brouillon.' }], (text) => {
+      const sys = buildSystemPrompt(false);
+      const full = await streamChat(sys, [
+        { role: 'user', content: 'ÉTAPE 1' },
+      ], (text) => {
         setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: text } : m));
-      });
-      const content = cleanDraftContent(full);
-      setDraft(content);
+      }, 'sonnet');
+      const extracted = cleanDraftResponse(cleanDraftContent(full));
+      setDraft(extracted);
       setDraftValidated(false);
+      setDraftReadyToValidate(isDraftReady(full));
       setChatMessages((prev) => {
-        const updated = prev.map((m) => m.id === streamId ? { ...m, content } : m);
+        const updated = prev.map((m) => m.id === streamId ? { ...m, content: full } : m);
         saveChatMessages(`thread_${agentId}_${threadId}`, updated);
         return updated;
       });
-    } catch { setChatMessages((prev) => prev.filter((m) => m.id !== streamId)); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Erreur de connexion.';
+      setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: `Erreur : ${msg}` } : m));
+    }
     finally { setIsGeneratingDraft(false); }
   }, [messages.length, isGeneratingDraft, buildSystemPrompt, streamChat, agentId, threadId]);
 
   const handleOpenReply = useCallback(async () => {
     setShowReply(true);
-    const msgs = await getChatMessages(`thread_${agentId}_${threadId}`);
-    setChatMessages(msgs);
-    const lastAI = [...msgs].reverse().find((m) => m.role === 'assistant');
-    if (lastAI && !lastAI.content.startsWith('Erreur')) {
-      setDraft(lastAI.content);
-    } else if (!draft.trim() && messages.length) {
-      generateDraft();
-    }
-  }, [agentId, threadId, draft, messages.length, generateDraft]);
+    setDraft('');
+    setDraftValidated(false);
+    setDraftReadyToValidate(false);
+    await saveChatMessages(`thread_${agentId}_${threadId}`, []);
+    setChatMessages([]);
+    generateDraft();
+  }, [agentId, threadId, generateDraft]);
 
   const sendMessage = async () => {
     if (!chatInput.trim() || !agent || isLoading) return;
@@ -242,22 +316,24 @@ export default function ThreadDetailPage() {
     const streamMsg: ChatMessage = { id: streamId, role: 'assistant', content: '', timestamp: new Date().toISOString() };
     setChatMessages((prev) => [...prev, streamMsg]);
     try {
-      const sys = await buildSystemPrompt(false);
+      const sys = buildSystemPrompt(false);
       // Limiter à 6 derniers messages pour réduire les coûts (le contexte email est dans le system prompt)
       const trimmed = updated.slice(-6).map((m) => ({ role: m.role, content: m.content }));
       const full = await streamChat(sys, trimmed, (text) => {
         setChatMessages((prev) => prev.map((m) => m.id === streamId ? { ...m, content: text } : m));
       });
-      const content = cleanDraftContent(full);
-      if (content.trim()) { setDraft(content); setDraftValidated(false); }
+      const extracted = cleanDraftResponse(cleanDraftContent(full));
+      if (extracted.trim()) { setDraft(extracted); setDraftValidated(false); }
+      setDraftReadyToValidate(isDraftReady(full));
       setChatMessages((prev) => {
-        const final = prev.map((m) => m.id === streamId ? { ...m, content } : m);
+        const final = prev.map((m) => m.id === streamId ? { ...m, content: full } : m);
         saveChatMessages(`thread_${agentId}_${threadId}`, final);
         return final;
       });
-    } catch {
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : 'Erreur de connexion.';
       setChatMessages((prev) => {
-        const final = prev.map((m) => m.id === streamId ? { ...m, content: 'Erreur de connexion.' } : m);
+        const final = prev.map((m) => m.id === streamId ? { ...m, content: `Erreur : ${errMsg}` } : m);
         saveChatMessages(`thread_${agentId}_${threadId}`, final);
         return final;
       });
@@ -270,7 +346,7 @@ export default function ThreadDetailPage() {
     try {
       const check = await fetch(`/api/frontapp/summary?conversation_id=${threadId}`).then((r) => r.json());
       if (!check.quote_ready) { setQuoteError(check.quote_ready_reason || 'Informations insuffisantes.'); setQuoteModal('error'); return; }
-      const sys = await buildSystemPrompt(false);
+      const sys = buildSystemPrompt(false);
       const rawExtract = await streamChat(sys, [{ role: 'user', content: `Extrais les informations de cette conversation pour créer un devis Pennylane.\n\nRÈGLES :\n- Filets sur mesure : type="product", unitPrice=prix HT/m2, quantity=surface totale m2, description="Quantité : X | Total m2 : Y | Délai : environ 14 jours", label="COULEUR - LxH m - Description"\n- Transport : type="transport", label="Transport sur mesure", unitPrice=prix HT, quantity=1\n- Remise transport : type="transport_discount", unitPrice=prix négatif, quantity=1\n- Accessoires : type="free"\n\nRéponds UNIQUEMENT avec un JSON valide (sans markdown) :\n{"customer":{"type":"individual","firstName":"","lastName":"","email":"","phone":"","address":{"street":"","zipCode":"","city":"","country":"FR"}},"lines":[{"type":"product","label":"","quantity":0,"unitPrice":0,"vatRate":"FR_200","description":""}],"subject":"","freeText":""}` }], () => {});
       let quoteData: Record<string, unknown>;
       try {
@@ -290,11 +366,12 @@ export default function ThreadDetailPage() {
   const handleSendDraft = async () => {
     if (!draft.trim()) return;
     setIsSending(true);
+    const cleanedDraft = cleanDraftResponse(draft);
     try {
       const endpoint = currentQuote ? '/api/frontapp/draft-with-quote' : '/api/frontapp/send';
       const payload = currentQuote
-        ? { conversation_id: threadId, body: draft, pdf_url: currentQuote.pdfUrl, quote_number: currentQuote.quoteNumber }
-        : { conversationId: threadId, body: draft };
+        ? { conversation_id: threadId, body: cleanedDraft, pdf_url: currentQuote.pdfUrl, quote_number: currentQuote.quoteNumber }
+        : { conversationId: threadId, body: cleanedDraft };
       const data = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then((r) => r.json());
       if (data.error) { alert(`Erreur: ${data.error}`); return; }
       setHasDraft(true);
@@ -395,7 +472,17 @@ export default function ThreadDetailPage() {
           <div className="w-2/5 flex-shrink-0 overflow-y-auto space-y-2 pr-1">
             {loadingThread ? (
               <div className="text-center py-8 text-gray-400 text-xs">Chargement...</div>
-            ) : messages.map((msg) => (
+            ) : (() => {
+              const displayed = messages.slice(-3);
+              const hidden = messages.length - displayed.length;
+              return (<>
+                {hidden > 0 && (
+                  <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-600 text-center">
+                    {hidden} message{hidden > 1 ? 's' : ''} plus ancien{hidden > 1 ? 's' : ''} non affiché{hidden > 1 ? 's' : ''} —{' '}
+                    <a href={`https://app.frontapp.com/open/${threadId}`} target="_blank" rel="noopener noreferrer" className="underline font-medium">voir dans FrontApp →</a>
+                  </div>
+                )}
+                {displayed.map((msg) => (
               <div key={msg.id} className={`rounded-lg border px-3 py-3 ${
                 msg.is_comment ? 'bg-amber-50 border-amber-200'
                 : msg.is_inbound ? 'bg-white border-gray-200'
@@ -417,6 +504,8 @@ export default function ThreadDetailPage() {
                 <div className="email-body text-xs" dangerouslySetInnerHTML={{ __html: msg.body }} />
               </div>
             ))}
+              </>);
+            })()}
           </div>
 
           {/* Droite — brouillon (2/3) + chat (1/3) */}
@@ -425,6 +514,7 @@ export default function ThreadDetailPage() {
             {/* Discussion unifiée — pleine hauteur */}
             <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <div ref={chatTopRef} />
                 {!chatMessages.length && !isLoading && !isGeneratingDraft && (
                   <p className="text-center text-gray-400 text-sm py-8">
                     Génération du brouillon en cours...
@@ -443,7 +533,7 @@ export default function ThreadDetailPage() {
                     </div>
                   </div>
                 ))}
-                {(isLoading || isGeneratingDraft) && (
+                {(isLoading || isGeneratingDraft) && chatMessages[chatMessages.length - 1]?.role !== 'assistant' && (
                   <div className="flex justify-start">
                     <div className="bg-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-400 flex items-center gap-1">
                       <span className="animate-pulse">●</span>
@@ -491,38 +581,16 @@ export default function ThreadDetailPage() {
               <div className="flex items-center gap-3">
                 <p className="text-xs text-gray-400 italic">Crée un brouillon dans Front — rien n&apos;est envoyé au client</p>
 
-                {/* ✅ Valider le brouillon — visible uniquement quand Claude confirme qu'il n'a pas de questions */}
-                {draft.trim() && !draftValidated && (() => {
-                  const lastAI = [...chatMessages].reverse().find((m) => m.role === 'assistant');
-                  return lastAI && isDraftReady(lastAI.content);
-                })() && (
-                  <button
-                    onClick={() => setDraftValidated(true)}
-                    className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-sm font-bold text-white transition-colors animate-pulse"
-                  >
-                    ✓ Valider ce brouillon
-                  </button>
-                )}
-
                 {/* 🟢 Charger dans Front */}
-                <div className="relative group inline-block">
-                  <button
-                    onClick={draftValidated ? handleSendDraft : undefined}
-                    disabled={isSending}
-                    className={`rounded-lg px-5 py-2 text-sm font-bold text-white transition-colors flex-shrink-0 ${
-                      !draftValidated ? 'bg-gray-300 cursor-not-allowed'
-                      : isSending ? 'bg-green-400'
-                      : 'bg-green-600 hover:bg-green-700'
-                    }`}
-                  >
-                    {isSending ? 'Envoi...' : currentQuote ? '↑ Charger brouillon + devis dans Front' : '↑ Charger dans Front'}
-                  </button>
-                  {!draftValidated && (
-                    <div className="absolute bottom-full right-0 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 text-center">
-                      {!draft.trim() ? 'Générez un brouillon d\'abord' : 'Validez le brouillon avant d\'envoyer dans Front'}
-                    </div>
-                  )}
-                </div>
+                <button
+                  onClick={handleSendDraft}
+                  disabled={isSending}
+                  className={`rounded-lg px-5 py-2 text-sm font-bold text-white transition-colors flex-shrink-0 ${
+                    isSending ? 'bg-green-400' : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                >
+                  {isSending ? 'Envoi...' : currentQuote ? '↑ Charger brouillon + devis dans Front' : '↑ Charger dans Front'}
+                </button>
               </div>
             </div>
           </div>

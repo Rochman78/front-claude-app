@@ -3,7 +3,7 @@ import './globals.css';
 import Navbar from '@/components/Navbar';
 
 export const metadata: Metadata = {
-  title: 'FrontApp AI Agents',
+  title: 'FrontappAI by ZEPHYR OSC',
   description: 'Gestion des agents IA connectés à FrontApp',
 };
 

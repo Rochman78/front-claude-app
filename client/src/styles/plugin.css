@@ -350,3 +350,66 @@ body {
   margin-bottom: 8px;
   text-transform: uppercase;
 }
+
+.quote-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.quote-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.quote-line-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-line-detail {
+  color: var(--text-secondary);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.quote-totals {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.quote-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.quote-total-row.total-ttc {
+  font-weight: 700;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.quote-result {
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--success-bg);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+
+.quote-result p {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.quote-pdf-link {
+  color: var(--primary);
+  text-decoration: underline;
+  font-size: 12px;
+}

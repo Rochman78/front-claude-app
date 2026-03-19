@@ -4,7 +4,9 @@ import { useClaude } from '../hooks/useClaude';
 import MailPreview from './MailPreview';
 import ClaudeChat from './ClaudeChat';
 import DraftFinal from './DraftFinal';
+import QuoteBlock from './QuoteBlock';
 import LoadingState from './LoadingState';
+import { detectQuoteJson } from '../utils/detectQuoteJson';
 
 interface PluginMainProps {
   context: FrontSingleConversationContext;
@@ -61,9 +63,10 @@ export default function PluginMain({ context }: PluginMainProps) {
   // État initial : pas encore d'analyse
   const hasMessages = claude.messages.length > 0;
 
-  // Détecter si le dernier message assistant contient un brouillon final
+  // Détecter si le dernier message assistant contient un brouillon final et/ou un devis
   const lastAssistantMsg = [...claude.messages].reverse().find((m) => m.role === 'assistant');
   const draftContent = lastAssistantMsg?.content.includes('Bonjour') ? lastAssistantMsg.content : null;
+  const quoteData = lastAssistantMsg ? detectQuoteJson(lastAssistantMsg.content) : null;
 
   return (
     <div className="plugin-main">
@@ -104,6 +107,10 @@ export default function PluginMain({ context }: PluginMainProps) {
 
       {draftContent && !claude.isStreaming && (
         <DraftFinal rawContent={draftContent} context={context} />
+      )}
+
+      {quoteData && !claude.isStreaming && (
+        <QuoteBlock quoteData={quoteData} inboxName={store.inboxName} />
       )}
     </div>
   );

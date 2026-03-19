@@ -122,20 +122,23 @@ export default function ThreadDetailPage() {
   }, [agentId, subject, draft, buildEmailContext]);
 
   const cleanDraftContent = (raw: string): string => {
-    // Si Claude a quand même inclus une section BROUILLON DE RÉPONSE, extraire uniquement cette partie
+    // Si Claude a inclus une section BROUILLON DE RÉPONSE, extraire uniquement cette partie
     const brouillonMatch = raw.match(/\*?\*?BROUILLON\s+DE\s+R[EÉ]PONSE\s*:?\*?\*?\s*\n+([\s\S]+)/i);
     if (brouillonMatch) return brouillonMatch[1].trim();
-    // Sinon supprimer toute section d'analyse en tête (jusqu'à la première ligne vide après un bloc **)
+    // Supprimer section d'analyse en tête si présente
     const analyseMatch = raw.match(/\*?\*?[A-ZÀÉÈÊ\s]+:?\*?\*?[\s\S]*?\n\n([\s\S]+)/);
     if (analyseMatch && /^(bonjour|chère|cher|madame|monsieur|hello)/i.test(analyseMatch[1])) {
       return analyseMatch[1].trim();
     }
-    // Nettoyer le markdown bold/italic restant
-    return raw
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/\*([^*]+)\*/g, '$1')
-      .trim();
+    return raw.trim();
   };
+
+  const renderMarkdown = (text: string) => ({
+    __html: text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*\n]+)\*/g, '<em>$1</em>'),
+  });
 
   const generateDraft = useCallback(async () => {
     if (!messages.length || isGeneratingDraft) return;
@@ -144,9 +147,18 @@ export default function ThreadDetailPage() {
       const sys = await buildSystemPrompt(true);
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemPrompt: sys, messages: [{ role: 'user', content: 'Rédige le brouillon.' }] }) });
       const data = await res.json();
-      if (!data.error) setDraft(cleanDraftContent(data.content));
+      if (!data.error) {
+        const content = cleanDraftContent(data.content);
+        setDraft(content);
+        const am: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content, timestamp: new Date().toISOString() };
+        setChatMessages((prev) => {
+          const updated = [...prev, am];
+          saveChatMessages(`thread_${agentId}_${threadId}`, updated);
+          return updated;
+        });
+      }
     } catch { /**/ } finally { setIsGeneratingDraft(false); }
-  }, [messages.length, isGeneratingDraft, buildSystemPrompt]);
+  }, [messages.length, isGeneratingDraft, buildSystemPrompt, agentId, threadId]);
 
   const handleOpenReply = useCallback(async () => {
     setShowReply(true);
@@ -327,57 +339,33 @@ export default function ThreadDetailPage() {
           {/* Droite — brouillon (2/3) + chat (1/3) */}
           <div className="flex-1 flex flex-col gap-3 min-w-0 overflow-visible">
 
-            {/* Brouillon — 2/3 hauteur */}
-            <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-[2] min-h-0 overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Brouillon</span>
-                {isGeneratingDraft && (
-                  <span className="text-xs text-violet-500 flex items-center gap-1">
-                    <span className="inline-flex gap-0.5">
-                      <span className="animate-pulse">●</span>
-                      <span className="animate-pulse" style={{ animationDelay: '0.15s' }}>●</span>
-                      <span className="animate-pulse" style={{ animationDelay: '0.3s' }}>●</span>
-                    </span>
-                    Génération en cours...
-                  </span>
-                )}
-              </div>
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder={isGeneratingDraft ? '' : 'Le brouillon apparaîtra ici. Vous pouvez aussi le rédiger directement.'}
-                className="w-full flex-1 px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none resize-none leading-relaxed rounded-b-xl"
-              />
-            </div>
-
-            {/* Chat avec l'agent — 1/3 hauteur */}
-            <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-[1] min-h-0 overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-gray-100 flex-shrink-0 bg-gray-50 rounded-t-xl">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Discussion avec Claude</span>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+            {/* Discussion unifiée — pleine hauteur */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {!chatMessages.length && !isLoading && !isGeneratingDraft && (
-                  <p className="text-center text-gray-400 text-sm py-4">
-                    Ex : &quot;Rends le ton plus formel&quot;, &quot;Ajoute une mention sur les délais&quot;...
+                  <p className="text-center text-gray-400 text-sm py-8">
+                    Génération du brouillon en cours...
                   </p>
                 )}
                 {chatMessages.map((msg) => (
                   <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
-                      msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {msg.content}
+                    <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+                      msg.role === 'user'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}
+                      dangerouslySetInnerHTML={msg.role === 'assistant' ? renderMarkdown(msg.content) : undefined}
+                    >
+                      {msg.role === 'user' ? msg.content : undefined}
                     </div>
                   </div>
                 ))}
-                {isLoading && (
+                {(isLoading || isGeneratingDraft) && (
                   <div className="flex justify-start">
-                    <div className="bg-gray-100 rounded-2xl px-3.5 py-2 text-sm text-gray-400">
-                      <span className="inline-flex gap-1">
-                        <span className="animate-pulse">●</span>
-                        <span className="animate-pulse" style={{ animationDelay: '0.15s' }}>●</span>
-                        <span className="animate-pulse" style={{ animationDelay: '0.3s' }}>●</span>
-                      </span>
+                    <div className="bg-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-400 flex items-center gap-1">
+                      <span className="animate-pulse">●</span>
+                      <span className="animate-pulse" style={{ animationDelay: '0.15s' }}>●</span>
+                      <span className="animate-pulse" style={{ animationDelay: '0.3s' }}>●</span>
                     </div>
                   </div>
                 )}
@@ -392,7 +380,7 @@ export default function ThreadDetailPage() {
                   className="flex-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-blue-400"
                 />
                 <button
-                  onClick={sendMessage} disabled={isLoading || !chatInput.trim()}
+                  onClick={sendMessage} disabled={isLoading || isGeneratingDraft || !chatInput.trim()}
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-40"
                 >
                   Envoyer

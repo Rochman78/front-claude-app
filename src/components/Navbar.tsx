@@ -10,7 +10,7 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 flex items-center justify-between bg-gray-900 border-b border-gray-700 px-6 py-3">
       <div className="flex items-center gap-6">
         <Link href="/" className="text-xl font-bold text-white">
-          FrontApp AI
+          FrontappAI <span className="text-sm font-normal text-gray-400">by ZEPHYR OSC</span>
         </Link>
         <Link
           href="/mailbox"
@@ -25,9 +25,9 @@ export default function Navbar() {
       </div>
       <Link
         href="/admin"
-        className="rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 transition-colors"
+        className="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
       >
-        ADMIN
+        Administration
       </Link>
     </nav>
   );

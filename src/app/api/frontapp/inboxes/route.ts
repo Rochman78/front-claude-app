@@ -34,6 +34,7 @@ export async function GET() {
       'bamybox',
       'quems box',
       'rochman box',
+      'camouflage net',
     ];
 
     const inboxes = (data._results || [])

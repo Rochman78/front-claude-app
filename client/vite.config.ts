@@ -6,6 +6,6 @@ export default defineConfig({
   base: '/plugin/',
   build: {
     outDir: '../public/plugin',
-    emptyDirBeforeWrite: true,
+    emptyOutDir: true,
   },
 });

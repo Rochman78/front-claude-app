@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Agent, ChatMessage } from '@/types';
-import { getAgent, getSharedFilesForAgent, getChatMessages, saveChatMessages } from '@/lib/storage';
+import { getAgent, getSharedFilesForAgent, saveChatMessages } from '@/lib/storage';
 
 interface FrontMessage {
   id: string;
@@ -44,8 +44,8 @@ export default function ThreadDetailPage() {
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [draft, setDraft] = useState('');
-  const [draftValidated, setDraftValidated] = useState(false);
-  const [draftReadyToValidate, setDraftReadyToValidate] = useState(false);
+  const [, setDraftValidated] = useState(false);
+  const [, setDraftReadyToValidate] = useState(false);
   const [hasDraft, setHasDraft] = useState(false);
 
   // Devis
@@ -174,18 +174,95 @@ export default function ThreadDetailPage() {
     }).join('\n\n---\n\n'),
   [messages]);
 
+  const selectDocuments = useCallback((emailContent: string): string[] => {
+    const text = emailContent.toLowerCase();
+
+    const categories: { keywords: string[]; docs: string[] }[] = [
+      {
+        keywords: ['devis', 'sur mesure', 'sur-mesure', 'dimensions', 'personnalisé', 'taille spéciale', 'mesure', 'mètres', 'm²', 'quote', 'custom', 'custom-made', 'bespoke'],
+        docs: ['devis-sur-mesure-base-documentaire.txt', 'obligations-tva-zephyr.docx', 'format-json-devis.txt'],
+      },
+      {
+        keywords: ['retour', 'retourner', 'rembourser', 'remboursement', 'échange', 'échanger', 'rétractation', 'annuler', 'return', 'refund', 'exchange'],
+        docs: ['POLITIQUE DE RETOURS.docx', 'template-echange-erreur-client.txt'],
+      },
+      {
+        keywords: ['livraison', 'colis', 'suivi', 'expédition', 'reçu', 'pas reçu', 'transporteur', 'mondial relay', 'colissimo', 'chronopost', 'tracking', 'delivery', 'shipping', 'parcel'],
+        docs: ['POLITIQUE EXPEDITION.docx', 'template-colis-non-recu.txt'],
+      },
+      {
+        keywords: ['garantie', 'défaut', 'endommagé', 'cassé', 'déchiré', 'abîmé', 'usure', 'usé', 'décoloré', 'troué', 'warranty', 'damaged', 'broken', 'torn'],
+        docs: ['template-garantie-diagnostic.txt'],
+      },
+      {
+        keywords: ['produit', 'filet', 'voile', 'taille', 'couleur', 'installation', 'fixer', 'fixation', 'mât', 'corde', 'accessoire', 'product', 'net', 'sail', 'size', 'color'],
+        docs: ['catalogue-LFC.txt', 'FT-Filets-LFC.pdf', 'FT-Coco-LFC.pdf', 'Fiches_Techniques_Accessoires.pdf'],
+      },
+      {
+        keywords: ['tva', 'facture', 'ht', 'hors taxe', 'professionnel', 'entreprise', 'société', 'siret', 'intracommunautaire', 'vat', 'invoice', 'tax'],
+        docs: ['obligations-tva-zephyr.docx'],
+      },
+      {
+        keywords: ['cgv', 'conditions', 'droit', 'légal', 'rétractation', 'médiation', 'terms', 'legal'],
+        docs: ['CGV.docx'],
+      },
+    ];
+
+    const matched = new Set<string>();
+    for (const cat of categories) {
+      if (cat.keywords.some((kw) => text.includes(kw))) {
+        cat.docs.forEach((d) => matched.add(d));
+      }
+    }
+
+    // Fallback : si aucun mot-clé détecté, inclure catalogue + CGV
+    if (matched.size === 0) {
+      ['catalogue-LFC.txt', 'CGV.docx'].forEach((d) => matched.add(d));
+    }
+
+    return Array.from(matched);
+  }, []);
+
   const buildSystemPrompt = useCallback((forDraft = false): string => {
     if (!agent) return '';
-    const files = [
-      ...agent.files.map((f) => `[${f.name}]\n${f.content}`),
-      ...sharedFiles.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
-    ].join('\n\n');
-    const knowledgeInstructions = files ? `\nTu as accès à une base de connaissances complète dans ton contexte (section BASE DE CONNAISSANCES). Consulte-la systématiquement avant de répondre : tarifs, délais, conditions, informations produits. Si une information s'y trouve, utilise-la directement sans l'inventer. Si elle n'y est pas, indique-le clairement.\n` : '';
+
+    // Contenu email pour détection de mots-clés
+    const emailContext = buildEmailContext();
+    const fullEmailText = `${subject} ${emailContext}`;
+    const relevantDocNames = selectDocuments(fullEmailText);
+
+    // Filtrer les fichiers : ne garder que ceux dont le nom matche un doc pertinent
+    const allFiles = [
+      ...agent.files.map((f) => ({ name: f.name, content: f.content, shared: false })),
+      ...sharedFiles.map((f) => ({ name: f.name, content: f.content, shared: true })),
+    ];
+
+    const selectedFiles = allFiles.filter((f) =>
+      relevantDocNames.some((docName) => f.name.toLowerCase().includes(docName.toLowerCase()) || docName.toLowerCase().includes(f.name.toLowerCase()))
+    );
+
+    // Fichiers non reconnus (pas dans les catégories connues) → toujours inclus (instructions custom, etc.)
+    const knownDocNames = [
+      'devis-sur-mesure-base-documentaire.txt', 'obligations-tva-zephyr.docx', 'format-json-devis.txt',
+      'POLITIQUE DE RETOURS.docx', 'template-echange-erreur-client.txt',
+      'POLITIQUE EXPEDITION.docx', 'template-colis-non-recu.txt',
+      'template-garantie-diagnostic.txt',
+      'catalogue-LFC.txt', 'FT-Filets-LFC.pdf', 'FT-Coco-LFC.pdf', 'Fiches_Techniques_Accessoires.pdf',
+      'CGV.docx',
+    ];
+    const unknownFiles = allFiles.filter((f) =>
+      !knownDocNames.some((docName) => f.name.toLowerCase().includes(docName.toLowerCase()) || docName.toLowerCase().includes(f.name.toLowerCase()))
+    );
+
+    const filesToInclude = [...unknownFiles, ...selectedFiles];
+    const files = filesToInclude.map((f) => f.shared ? `[Partagé: ${f.name}]\n${f.content}` : `[${f.name}]\n${f.content}`).join('\n\n');
+
+    const knowledgeInstructions = files ? `\nTu as accès à une base de connaissances ciblée dans ton contexte (section BASE DE CONNAISSANCES). Consulte-la systématiquement avant de répondre : tarifs, délais, conditions, informations produits. Si une information s'y trouve, utilise-la directement sans l'inventer. Si elle n'y est pas, indique-le clairement.\n` : '';
     const workflowRule = `RÈGLE PRIORITAIRE — WORKFLOW OBLIGATOIRE :\nTu ne dois JAMAIS générer directement un brouillon de mail. Tu dois TOUJOURS commencer par l'ANALYSE (type, urgence, résumé, contexte, points d'attention, conformité DGCCRF), puis proposer un brouillon, puis tes questions. Ces 3 éléments doivent apparaître dans ta PREMIÈRE réponse à chaque nouveau mail client. Si tu ne fais pas l'analyse avant le brouillon, ta réponse est incorrecte.\n\n`;
-    const base = `${workflowRule}Tu es l'agent "${agent.name}" (${agent.email}).\n\n${agent.instructions || ''}${knowledgeInstructions}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${buildEmailContext()}`;
+    const base = `${workflowRule}Tu es l'agent "${agent.name}" (${agent.email}).\n\n${agent.instructions || ''}${knowledgeInstructions}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${emailContext}`;
     if (forDraft) return `${base}\n\nPeu importe tes instructions habituelles de structure : tu dois renvoyer UNIQUEMENT le corps de l'email de réponse prêt à envoyer. Pas d'analyse, pas de section BROUILLON, pas de titre, pas de markdown (pas de **, *, #). Commence directement par la formule de politesse (ex: "Bonjour ...") et termine par la signature.`;
     return `${base}${draft.trim() ? `\n\nBROUILLON ACTUEL:\n${draft}` : ''}`;
-  }, [agent, sharedFiles, subject, draft, buildEmailContext]);
+  }, [agent, sharedFiles, subject, draft, buildEmailContext, selectDocuments]);
 
   const cleanDraftContent = (raw: string): string => {
     // Si Claude a inclus une section BROUILLON DE RÉPONSE, extraire uniquement cette partie

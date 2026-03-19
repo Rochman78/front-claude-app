@@ -7,17 +7,19 @@ export default function Navbar() {
   const pathname = usePathname();
 
   return (
-    <nav className="sticky top-0 z-50 flex items-center justify-between bg-gray-900 border-b border-gray-700 px-6 py-3">
-      <div className="flex items-center gap-6">
-        <Link href="/" className="text-xl font-bold text-white">
-          FrontappAI <span className="text-sm font-normal text-gray-400">by ZEPHYR OSC</span>
+    <nav className="sticky top-0 z-50 bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="flex items-center gap-8">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-gray-900 flex items-center justify-center text-white font-bold text-xs">Z</div>
+          <div>
+            <div className="text-sm font-bold text-gray-900 leading-tight">FrontappAI</div>
+            <div className="text-xs text-gray-400 leading-tight">by Zephyr O.S.C</div>
+          </div>
         </Link>
         <Link
           href="/mailbox"
           className={`text-sm font-medium transition-colors ${
-            pathname.startsWith('/mailbox')
-              ? 'text-blue-400'
-              : 'text-gray-300 hover:text-white'
+            pathname.startsWith('/mailbox') ? 'text-blue-600' : 'text-gray-500 hover:text-gray-800'
           }`}
         >
           Boîte Mail
@@ -25,7 +27,7 @@ export default function Navbar() {
       </div>
       <Link
         href="/admin"
-        className="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 transition-colors"
+        className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
       >
         Administration
       </Link>

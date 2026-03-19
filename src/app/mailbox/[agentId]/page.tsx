@@ -127,7 +127,7 @@ export default function AgentMailboxPage() {
                     {m?.loading ? (
                       <span className="inline-block w-40 h-2.5 bg-gray-100 rounded animate-pulse" />
                     ) : (
-                      m?.summary || conv.recipient?.name || conv.recipient?.handle
+                      m?.summary || conv.recipient?.name || (conv.recipient?.handle?.includes('@in.frontapp.com') ? '' : conv.recipient?.handle)
                     )}
                   </div>
                 </div>

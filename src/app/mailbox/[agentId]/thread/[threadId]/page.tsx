@@ -15,6 +15,7 @@ interface FrontMessage {
   created_at: number;
   is_inbound: boolean;
   is_draft?: boolean;
+  is_comment?: boolean;
 }
 
 interface QuoteInfo {
@@ -117,7 +118,8 @@ export default function ThreadDetailPage() {
       ...a.files.map((f) => `[${f.name}]\n${f.content}`),
       ...shared.map((f) => `[Partagé: ${f.name}]\n${f.content}`),
     ].join('\n\n');
-    const base = `Tu es l'agent "${a.name}" (${a.email}).\n\n${a.instructions || ''}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${buildEmailContext()}`;
+    const knowledgeInstructions = files ? `\nTu as accès à une base de connaissances complète dans ton contexte (section BASE DE CONNAISSANCES). Consulte-la systématiquement avant de répondre : tarifs, délais, conditions, informations produits. Si une information s'y trouve, utilise-la directement sans l'inventer. Si elle n'y est pas, indique-le clairement.\n` : '';
+    const base = `Tu es l'agent "${a.name}" (${a.email}).\n\n${a.instructions || ''}${knowledgeInstructions}\n\nBASE DE CONNAISSANCES:\n${files || '(vide)'}\n\nCONVERSATION EMAIL — Sujet: ${subject}\n\n${buildEmailContext()}`;
     if (forDraft) return `${base}\n\nPeu importe tes instructions habituelles de structure : tu dois renvoyer UNIQUEMENT le corps de l'email de réponse prêt à envoyer. Pas d'analyse, pas de section BROUILLON, pas de titre, pas de markdown (pas de **, *, #). Commence directement par la formule de politesse (ex: "Bonjour ...") et termine par la signature.`;
     return `${base}${draft.trim() ? `\n\nBROUILLON ACTUEL:\n${draft}` : ''}\n\nTu aides à rédiger des réponses email. Si on te demande de modifier le brouillon, renvoie la version complète modifiée.`;
   }, [agentId, subject, draft, buildEmailContext]);
@@ -287,11 +289,19 @@ export default function ThreadDetailPage() {
                 </div>
               )}
               {messages.map((msg) => (
-                <div key={msg.id} className={`rounded-xl border p-5 ${msg.is_inbound ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100'}`}>
+                <div key={msg.id} className={`rounded-xl border p-5 ${
+                  msg.is_comment ? 'bg-amber-50 border-amber-200'
+                  : msg.is_inbound ? 'bg-white border-gray-200'
+                  : 'bg-gray-50 border-gray-100'
+                }`}>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${msg.is_inbound ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
-                        {msg.is_inbound ? 'Reçu' : 'Envoyé'}
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                        msg.is_comment ? 'bg-amber-100 text-amber-700'
+                        : msg.is_inbound ? 'bg-blue-50 text-blue-600'
+                        : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {msg.is_comment ? '💬 Note interne' : msg.is_inbound ? 'Reçu' : 'Envoyé'}
                       </span>
                       <span className="text-sm font-semibold text-gray-800">{msg.author?.name || msg.author?.email || 'Inconnu'}</span>
                     </div>
@@ -322,11 +332,19 @@ export default function ThreadDetailPage() {
             {loadingThread ? (
               <div className="text-center py-8 text-gray-400 text-xs">Chargement...</div>
             ) : messages.map((msg) => (
-              <div key={msg.id} className={`rounded-lg border px-3 py-3 ${msg.is_inbound ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100'}`}>
+              <div key={msg.id} className={`rounded-lg border px-3 py-3 ${
+                msg.is_comment ? 'bg-amber-50 border-amber-200'
+                : msg.is_inbound ? 'bg-white border-gray-200'
+                : 'bg-gray-50 border-gray-100'
+              }`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
-                    <span className={`text-xs px-1.5 py-px rounded font-medium ${msg.is_inbound ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
-                      {msg.is_inbound ? 'Reçu' : 'Envoyé'}
+                    <span className={`text-xs px-1.5 py-px rounded font-medium ${
+                      msg.is_comment ? 'bg-amber-100 text-amber-700'
+                      : msg.is_inbound ? 'bg-blue-50 text-blue-600'
+                      : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {msg.is_comment ? '💬' : msg.is_inbound ? 'Reçu' : 'Envoyé'}
                     </span>
                     <span className="text-xs font-semibold text-gray-700 truncate max-w-[120px]">{msg.author?.name || msg.author?.email || 'Inconnu'}</span>
                   </div>

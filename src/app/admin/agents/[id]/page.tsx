@@ -96,7 +96,7 @@ export default function AgentDetailPage() {
     showFileSaved();
   };
 
-  const extractFileContent = async (file: File): Promise<AgentFile> => {
+  const extractFileContent = async (file: File, onProgress?: (msg: string) => void): Promise<AgentFile> => {
     const name = file.name.toLowerCase();
 
     if (name.endsWith('.pdf')) {
@@ -104,12 +104,39 @@ export default function AgentDetailPage() {
       GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs`;
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await getDocument({ data: arrayBuffer }).promise;
-      const pages = await Promise.all(
-        Array.from({ length: pdf.numPages }, (_, i) =>
-          pdf.getPage(i + 1).then(p => p.getTextContent()).then(tc => tc.items.map((it: Record<string, unknown>) => it.str).join(' '))
-        )
-      );
-      return { id: crypto.randomUUID(), name: file.name, content: pages.join('\n\n'), createdAt: new Date().toISOString() };
+      const pageTexts: string[] = [];
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        onProgress?.(`${file.name} — page ${i}/${pdf.numPages}...`);
+        const page = await pdf.getPage(i);
+
+        // Essayer extraction texte d'abord
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((it: Record<string, unknown>) => it.str as string).join(' ').trim();
+
+        if (pageText.length > 80) {
+          pageTexts.push(pageText);
+        } else {
+          // Page image → Claude Vision
+          onProgress?.(`${file.name} — page ${i}/${pdf.numPages} (vision)...`);
+          const viewport = page.getViewport({ scale: 2 });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d')!;
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+          const res = await fetch('/api/transcribe-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: base64 }),
+          });
+          const data = await res.json();
+          pageTexts.push(data.text || pageText);
+        }
+      }
+
+      return { id: crypto.randomUUID(), name: file.name, content: pageTexts.join('\n\n'), createdAt: new Date().toISOString() };
     }
 
     if (name.endsWith('.docx') || name.endsWith('.doc')) {
@@ -136,7 +163,10 @@ export default function AgentDetailPage() {
     setUploadError('');
 
     try {
-      const newFiles = await Promise.all(Array.from(files).map(extractFileContent));
+      const newFiles: AgentFile[] = [];
+      for (const file of Array.from(files)) {
+        await extractFileContent(file, (msg) => setUploadError(`⏳ ${msg}`)).then(f => newFiles.push(f));
+      }
 
       const existingNames = new Set(agent.files.map((f) => f.name));
       // Remplacer les doublons (overwrite) + ajouter les nouveaux

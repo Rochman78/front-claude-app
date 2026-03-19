@@ -3,8 +3,6 @@ import pool, { initDB } from '@/lib/db';
 
 export const maxDuration = 30;
 export const dynamic = 'force-dynamic';
-// Augmente la limite body à 10MB pour les fichiers volumineux
-export const fetchCache = 'force-no-store';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   await initDB();

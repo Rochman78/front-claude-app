@@ -138,8 +138,8 @@ export default function AgentDetailPage() {
       if (msgs.length) setUploadError(`✓ ${msgs.join(' · ')}`);
 
       showFileSaved();
-    } catch {
-      setUploadError('Erreur lors de l\'upload. Réessayez.');
+    } catch (err) {
+      setUploadError(`Erreur : ${err instanceof Error ? err.message : String(err)}`);
       setFilesSaveStatus('idle');
     }
 

@@ -73,17 +73,6 @@ export async function initDB() {
     );
   `);
 
-  // Utilisateurs
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT NOT NULL UNIQUE,
-      name TEXT NOT NULL DEFAULT '',
-      password_hash TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-  `);
-
   // Conversations Claude persistées (historique par client/agent)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS claude_conversations (

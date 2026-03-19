@@ -115,24 +115,32 @@ export default function AgentDetailPage() {
         reader.readAsText(file);
       });
 
-    const newFiles = await Promise.all(Array.from(files).map(readFile));
+    setFilesSaveStatus('saving');
+    setUploadError('');
 
-    const existingNames = new Set(agent.files.map((f) => f.name));
-    const duplicates = newFiles.filter((f) => existingNames.has(f.name));
-    const unique = newFiles.filter((f) => !existingNames.has(f.name));
+    try {
+      const newFiles = await Promise.all(Array.from(files).map(readFile));
 
-    if (duplicates.length > 0) {
-      setUploadError(`Fichiers ignorés (déjà existants) : ${duplicates.map((f) => f.name).join(', ')}`);
-    } else {
-      setUploadError('');
-    }
+      const existingNames = new Set(agent.files.map((f) => f.name));
+      // Remplacer les doublons (overwrite) + ajouter les nouveaux
+      const existingKept = agent.files.filter((f) => !newFiles.some((nf) => nf.name === f.name));
+      const overwritten = newFiles.filter((f) => existingNames.has(f.name));
+      const allFiles = [...existingKept, ...newFiles];
 
-    if (unique.length > 0) {
-      setFilesSaveStatus('saving');
-      const updated = { ...agent, files: [...agent.files, ...unique] };
+      const updated = { ...agent, files: allFiles };
       await updateAgent(updated);
       setAgent(updated);
+
+      const msgs = [];
+      const added = newFiles.length - overwritten.length;
+      if (added > 0) msgs.push(`${added} fichier${added > 1 ? 's' : ''} ajouté${added > 1 ? 's' : ''}`);
+      if (overwritten.length > 0) msgs.push(`${overwritten.length} remplacé${overwritten.length > 1 ? 's' : ''} (${overwritten.map((f) => f.name).join(', ')})`);
+      if (msgs.length) setUploadError(`✓ ${msgs.join(' · ')}`);
+
       showFileSaved();
+    } catch {
+      setUploadError('Erreur lors de l\'upload. Réessayez.');
+      setFilesSaveStatus('idle');
     }
 
     e.target.value = '';
@@ -286,7 +294,11 @@ export default function AgentDetailPage() {
             </div>
 
             {uploadError && (
-              <div className="mb-4 rounded-lg bg-red-900/20 border border-red-700/40 px-4 py-3 text-sm text-red-400">
+              <div className={`mb-4 rounded-lg px-4 py-3 text-sm border ${
+                uploadError.startsWith('✓')
+                  ? 'bg-green-900/20 border-green-700/40 text-green-400'
+                  : 'bg-red-900/20 border-red-700/40 text-red-400'
+              }`}>
                 {uploadError}
               </div>
             )}

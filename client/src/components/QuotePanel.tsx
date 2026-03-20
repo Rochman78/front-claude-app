@@ -221,10 +221,10 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
         `Le devis PDF ${quoteResult.quoteNumber} est créé et sera joint au mail en pièce jointe. ` +
         `Rédige un nouveau brouillon qui dit au client que son devis est en pièce jointe. ` +
         `Récapitule la commande (produit, dimensions, prix). ` +
-        `Le texte de fin du mail doit indiquer : pour donner suite, retourner le devis signé ou accord par retour de mail. ` +
-        `Le règlement s'effectue par virement bancaire aux coordonnées indiquées sur le devis. ` +
-        `La fabrication sera lancée dès réception des fonds, avec un délai de production d'environ 14 jours. ` +
-        `Proposer de nous contacter pour toute question.`
+        `IMPORTANT — utilise EXACTEMENT cette formulation pour la fin du mail (en paragraphes, pas de tirets ni listes à puces) :\n\n` +
+        `"Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
+        `La mise en production sera lancée dès réception du règlement, avec un délai de fabrication et de livraison d'environ 14 jours.\n\n` +
+        `N'hésitez pas à nous contacter si vous avez la moindre question."`
       );
     } catch (err) {
       console.error('[plugin] create-quote error:', err);

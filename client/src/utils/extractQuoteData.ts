@@ -44,13 +44,21 @@ export interface MissingField {
  */
 export function hasQuoteContent(text: string): boolean {
   const lower = text.toLowerCase();
-  // Mots-clés devis
-  if (
-    (lower.includes('devis') || lower.includes('chiffrage')) &&
-    (lower.includes('total ht') || lower.includes('total ttc') || lower.includes('prix unitaire') || lower.includes('€/m') || lower.includes('m²') || lower.includes('€ ht'))
-  ) {
-    return true;
-  }
+
+  // Groupe A : mots-clés contexte devis
+  const hasContext = lower.includes('devis') || lower.includes('chiffrage') || lower.includes('voici le chiffrage');
+
+  // Groupe B : mots-clés prix/montant
+  const hasPrice =
+    lower.includes('total ht') || lower.includes('total ttc') ||
+    lower.includes('prix unitaire') || lower.includes('€/m') ||
+    lower.includes('m²') || lower.includes('€ ht') ||
+    lower.includes('hors tva') || lower.includes('hors taxe') ||
+    /\d+[.,]\d+\s*€/.test(lower) || // "45,00 €" ou "45.00 €"
+    lower.includes('ttc');
+
+  if (hasContext && hasPrice) return true;
+
   // JSON devis détecté
   return extractQuoteData(text) !== null;
 }

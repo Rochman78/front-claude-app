@@ -159,7 +159,10 @@ export default function PluginMain({ context }: PluginMainProps) {
     : false;
   const quoteData = lastAssistantMsg ? extractQuoteData(lastAssistantMsg.content) : null;
 
-  console.log('[PluginMain] quote detection:', { showQuote, hasJson: !!quoteData });
+  if (lastAssistantMsg) {
+    const preview = lastAssistantMsg.content.substring(0, 200);
+    console.log('[PluginMain] quote detection:', { showQuote, hasJson: !!quoteData, isStreaming: claude.isStreaming, preview });
+  }
 
   return (
     <div className="plugin-main">

@@ -20,12 +20,43 @@ interface FrontMessage {
   replyTo?: { handle?: string; contact?: { name?: string } };
 }
 
-/** Extrait le texte brut d'un message Front SDK. */
+/** Extrait le texte brut d'un message Front SDK. Nettoie le HTML Shopify. */
 function extractText(msg: FrontMessage): string {
-  // Le contenu est dans msg.content.body (HTML)
   const html = msg.content?.body || '';
   if (!html) return '';
-  return html.replace(/<[^>]+>/g, '').trim();
+  return stripHtml(html);
+}
+
+/** Nettoie le HTML complet (Shopify, etc.) en texte brut propre. */
+function stripHtml(html: string): string {
+  let text = html;
+  // 1. Supprimer les commentaires HTML
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+  // 2. Supprimer les blocs <style>...</style>
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+  // 3. Supprimer les blocs <script>...</script>
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+  // 4. Supprimer les blocs <head>...</head>
+  text = text.replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '');
+  // 5. Convertir <br>, <p>, <div>, <tr>, <li> en sauts de ligne
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/(?:p|div|tr|li|h[1-6])>/gi, '\n');
+  text = text.replace(/<(?:p|div|tr|li|h[1-6])[^>]*>/gi, '\n');
+  // 6. Supprimer toutes les balises restantes
+  text = text.replace(/<[^>]+>/g, '');
+  // 7. Décoder les entités HTML courantes
+  text = text.replace(/&nbsp;/gi, ' ');
+  text = text.replace(/&amp;/gi, '&');
+  text = text.replace(/&lt;/gi, '<');
+  text = text.replace(/&gt;/gi, '>');
+  text = text.replace(/&quot;/gi, '"');
+  text = text.replace(/&#39;/gi, "'");
+  // 8. Nettoyer les espaces multiples et lignes vides
+  text = text.replace(/[ \t]+/g, ' ');           // espaces multiples → un seul
+  text = text.replace(/\n[ \t]+/g, '\n');         // espaces en début de ligne
+  text = text.replace(/[ \t]+\n/g, '\n');         // espaces en fin de ligne
+  text = text.replace(/\n{3,}/g, '\n\n');         // max 2 sauts de ligne consécutifs
+  return text.trim();
 }
 
 /** Extrait le vrai email client (pas l'adresse Shopify/intermédiaire). */

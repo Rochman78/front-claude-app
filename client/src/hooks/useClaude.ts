@@ -47,8 +47,10 @@ export function useClaude(): UseClaudeReturn {
       const { done, value } = await reader.read();
       if (done) break;
       const chunk = decoder.decode(value, { stream: true });
-      if (chunk.startsWith('__ERROR__')) {
-        throw new Error(chunk.replace('__ERROR__', ''));
+      if (chunk.includes('__ERROR__')) {
+        const errorMsg = chunk.replace(/.*__ERROR__/, '');
+        console.error('[useClaude] stream error received:', errorMsg);
+        throw new Error(errorMsg);
       }
       full += chunk;
       onChunk(full);

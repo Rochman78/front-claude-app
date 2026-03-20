@@ -84,11 +84,17 @@ export async function POST(req: NextRequest) {
     const filteredFiles = filterRelevantFiles(allFiles, relevantDocNames);
     const documents = buildDocumentsText(filteredFiles);
 
-    // 3. Charger l'historique complet
-    const { rows: history } = await pool.query(
+    // 3. Charger l'historique (limité si trop long)
+    const { rows: historyRaw } = await pool.query(
       'SELECT role, content FROM claude_messages WHERE conversation_id = $1 ORDER BY created_at',
       [conversationId]
     );
+    // Si > 50 messages, garder le premier + les 20 derniers
+    let history = historyRaw;
+    if (history.length > 50) {
+      console.warn(`[plugin/message] historique trop long (${history.length} msgs), trim à 21`);
+      history = [history[0], ...history.slice(-20)];
+    }
 
     // 4. Sauvegarder le message user
     const userMsgId = crypto.randomUUID();

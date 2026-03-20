@@ -119,6 +119,10 @@ export function createChatStream(options: StreamChatOptions): { stream: Readable
       } catch (streamErr) {
         const msg = streamErr instanceof Error ? streamErr.message : 'Erreur stream';
         console.error('[claude] Stream error:', msg);
+        // Erreurs billing/crédit : signaler clairement, pas de retry
+        if (msg.includes('credit') || msg.includes('billing') || msg.includes('balance')) {
+          console.error('[claude] BILLING ERROR — ne pas réessayer');
+        }
         controller.enqueue(encoder.encode(`__ERROR__${msg}`));
       } finally {
         controller.close();

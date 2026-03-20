@@ -126,8 +126,15 @@ export async function POST(req: NextRequest) {
       [userMsgId, conversation.id, 'user', userMessage, now]
     );
 
+    // Limiter l'historique : si > 50 messages, garder le premier + les 20 derniers
+    let trimmedHistory = existingMessages.map((m) => ({ role: m.role, content: m.content }));
+    if (trimmedHistory.length > 50) {
+      console.warn(`[plugin/analyze] historique trop long (${trimmedHistory.length} msgs), trim à 21`);
+      trimmedHistory = [trimmedHistory[0], ...trimmedHistory.slice(-20)];
+    }
+
     const messages = [
-      ...existingMessages.map((m) => ({ role: m.role, content: m.content })),
+      ...trimmedHistory,
       { role: 'user', content: userMessage },
     ];
 

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { FrontSingleConversationContext } from '../providers/FrontContext';
 import { detectStore } from '../hooks/useStore';
 import { useClaude } from '../hooks/useClaude';
@@ -7,6 +8,7 @@ import DraftFinal from './DraftFinal';
 import QuoteBlock from './QuoteBlock';
 import LoadingState from './LoadingState';
 import { detectQuoteJson } from '../utils/detectQuoteJson';
+import { isDraftReady } from '../utils/cleanDraft';
 
 /** Structure réelle d'un message Front SDK */
 interface FrontMessage {
@@ -42,6 +44,7 @@ interface PluginMainProps {
 export default function PluginMain({ context }: PluginMainProps) {
   const store = detectStore(context);
   const claude = useClaude();
+  const [manualValidation, setManualValidation] = useState(false);
 
   const recipient = context.conversation.recipient;
   const subject = context.conversation.subject;
@@ -139,9 +142,12 @@ export default function PluginMain({ context }: PluginMainProps) {
   // État initial : pas encore d'analyse
   const hasMessages = claude.messages.length > 0;
 
-  // Détecter si le dernier message assistant contient un brouillon final et/ou un devis
+  // Détecter si le brouillon est prêt (Claude dit "pas de question" / "tu peux valider")
   const lastAssistantMsg = [...claude.messages].reverse().find((m) => m.role === 'assistant');
-  const draftContent = lastAssistantMsg?.content.includes('Bonjour') ? lastAssistantMsg.content : null;
+  const autoReady = lastAssistantMsg ? isDraftReady(lastAssistantMsg.content) : false;
+  const showDraft = !claude.isStreaming && lastAssistantMsg?.content.includes('Bonjour') && (autoReady || manualValidation);
+
+  // Détecter un JSON devis dans la réponse
   const quoteData = lastAssistantMsg ? detectQuoteJson(lastAssistantMsg.content) : null;
 
   return (
@@ -181,8 +187,17 @@ export default function PluginMain({ context }: PluginMainProps) {
         />
       )}
 
-      {draftContent && !claude.isStreaming && (
-        <DraftFinal rawContent={draftContent} context={context} />
+      {/* Bouton "Valider le brouillon" : visible quand il y a un brouillon mais pas encore validé */}
+      {hasMessages && !claude.isStreaming && !showDraft && lastAssistantMsg?.content.includes('Bonjour') && (
+        <div className="plugin-actions">
+          <button className="btn-primary" onClick={() => setManualValidation(true)}>
+            Valider le brouillon
+          </button>
+        </div>
+      )}
+
+      {showDraft && lastAssistantMsg && (
+        <DraftFinal rawContent={lastAssistantMsg.content} context={context} />
       )}
 
       {quoteData && !claude.isStreaming && (

@@ -38,6 +38,25 @@ export default function DraftFinal({ rawContent, context }: DraftFinalProps) {
 
       const latestMessageId = messages[messages.length - 1].id;
 
+      // Supprimer les brouillons existants via le backend (API REST Front)
+      // pour éviter les doublons — le SDK ne permet pas de les supprimer
+      try {
+        const deleteRes = await fetch(`${window.location.origin}/api/plugin/delete-drafts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId: context.conversation.id }),
+        });
+        if (deleteRes.ok) {
+          const result = await deleteRes.json();
+          if (result.deleted > 0) {
+            console.log(`[plugin] deleted ${result.deleted} existing draft(s)`);
+          }
+        }
+      } catch (delErr) {
+        // Non bloquant : on continue même si la suppression échoue
+        console.warn('[plugin] delete-drafts failed:', delErr);
+      }
+
       await context.createDraft({
         content: {
           body: textToHtml(cleaned),

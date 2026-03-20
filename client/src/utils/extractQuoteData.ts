@@ -230,9 +230,20 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   // Construire le sujet
   const subject = `Devis ${matiere ? matiere.toLowerCase() + ' ' : ''}${couleur ? couleur.toLowerCase() + ' ' : ''}${dimensions || 'sur mesure'}`.trim();
 
-  // Construire le customer depuis le contexte
+  // Construire le customer depuis le contexte + texte
   let customer: QuoteCustomer | undefined;
-  if (context?.customerEmail || context?.customerName) {
+
+  // Chercher "Nom et prénom : Jérôme Muratore" dans le texte (notre mail ou réponse client)
+  const nomPrenomMatch = text.match(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom)\s*[:=]?\s*([A-Za-zÀ-ÿ]+)\s+([A-Za-zÀ-ÿ]+)/i);
+
+  if (nomPrenomMatch) {
+    customer = {
+      type: 'individual',
+      firstName: nomPrenomMatch[1],
+      lastName: nomPrenomMatch[2],
+      email: context?.customerEmail || '',
+    };
+  } else if (context?.customerEmail || context?.customerName) {
     const nameParts = (context.customerName || '').split(/\s+/);
     customer = {
       type: 'individual',
@@ -242,23 +253,40 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     };
   }
 
-  // Extraire l'adresse depuis le texte (mails client + réponses Claude)
-  // Chercher un code postal + ville (pattern le plus fiable)
-  const cpVilleMatch = text.match(/(\d{5})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s-]{1,30})(?:\n|$|,)/);
+  // Extraire l'adresse depuis le texte (format libre français)
+  // 1. Code postal + ville : "13500 Martigues" (5 chiffres + mot(s) sur la même ligne)
+  // Split par lignes pour extraire CP+ville proprement (éviter que \s matche \n)
+  const cpVilleMatch = (() => {
+    for (const line of text.split('\n')) {
+      const m = line.match(/\b(\d{5})\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/);
+      if (m) return m;
+    }
+    return null;
+  })();
 
-  // Chercher une rue : ligne précédant le code postal, ou pattern "adresse :"
-  const adresseMatch =
-    text.match(/(?:adresse(?:\s*(?:de\s*facturation|postale|complète))?)\s*[:=]?\s*(.+?)(?:\n|$)/i) ||
-    text.match(/(\d+[\s,]+(?:rue|avenue|boulevard|impasse|chemin|allée|place|cours|passage|voie|route)\s+[^\n]{3,50})(?:\n|$)/i);
+  // 2. Rue : ligne contenant un numéro + type de voie
+  const rueMatch = text.match(/(\d+[\s,]+(?:rue|avenue|boulevard|impasse|chemin|allée|place|cours|passage|voie|route)\s+[^\n]{2,50})/i);
 
-  // Chercher un téléphone
+  // 3. Fallback : pattern "adresse :" suivi du contenu
+  const adresseLabelMatch = text.match(/(?:adresse(?:\s*(?:de\s*facturation|postale|complète))?)\s*[:=]\s*([^\n]+)/i);
+
+  // 4. Téléphone
   const phoneMatch = text.match(/(?:tél(?:éphone)?|portable|mobile|tel)\s*[:=]?\s*([\d\s.+-]{10,})/i)
-    || text.match(/(0[67]\s*[\d\s.]{8,})/);
+    || text.match(/(0[67][\s.]?[\d\s.]{8,})/);
+
+  console.log('[extractQuoteData] address matches:', {
+    cpVille: cpVilleMatch ? cpVilleMatch[1] + ' ' + cpVilleMatch[2] : null,
+    rue: rueMatch?.[1]?.trim() || null,
+    adresseLabel: adresseLabelMatch?.[1]?.trim() || null,
+    phone: phoneMatch?.[1] || null,
+    nomPrenom: nomPrenomMatch ? nomPrenomMatch[1] + ' ' + nomPrenomMatch[2] : null,
+  });
 
   if (customer) {
-    if (adresseMatch || cpVilleMatch) {
+    const rue = rueMatch?.[1]?.trim() || adresseLabelMatch?.[1]?.trim() || '';
+    if (rue || cpVilleMatch) {
       customer.address = {
-        address: adresseMatch ? adresseMatch[1].trim() : '',
+        address: rue,
         postalCode: cpVilleMatch ? cpVilleMatch[1] : '',
         city: cpVilleMatch ? cpVilleMatch[2].trim() : '',
       };

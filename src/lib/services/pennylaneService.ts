@@ -160,11 +160,13 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
 
   if (res.status === 200 || res.status === 201) {
     const d = await res.json();
+    console.log('[pennylane] quote response keys:', Object.keys(d));
     return {
       success: true,
       quoteId: d.id,
       quoteNumber: d.quote_number || d.label,
       pdfUrl: d.public_file_url,
+      pennylaneUrl: `https://app.pennylane.com/companies/21942122/customer_invoices/quotes/${d.id}`,
       amount: d.currency_amount_before_tax,
       amountTTC: d.currency_amount,
     };

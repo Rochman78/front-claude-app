@@ -46,6 +46,8 @@ export default function PluginMain({ context }: PluginMainProps) {
   const store = detectStore(context);
   const claude = useClaude();
   const [manualValidation, setManualValidation] = useState(false);
+  const [quotePdfUrl, setQuotePdfUrl] = useState<string | null>(null);
+  const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
 
   const recipient = context.conversation.recipient;
   const subject = context.conversation.subject;
@@ -203,10 +205,6 @@ export default function PluginMain({ context }: PluginMainProps) {
         </div>
       )}
 
-      {showDraft && lastAssistantMsg && (
-        <DraftFinal rawContent={lastAssistantMsg.content} context={context} />
-      )}
-
       {showQuote && quoteData && (
         <ErrorBoundary>
           <QuotePanel
@@ -214,8 +212,21 @@ export default function PluginMain({ context }: PluginMainProps) {
             storeCode={store.code}
             inboxName={store.inboxName}
             onSendMessage={claude.sendMessage}
+            onQuoteCreated={(pdfUrl, qNumber) => {
+              setQuotePdfUrl(pdfUrl);
+              setQuoteNumber(qNumber);
+            }}
           />
         </ErrorBoundary>
+      )}
+
+      {showDraft && lastAssistantMsg && (
+        <DraftFinal
+          rawContent={lastAssistantMsg.content}
+          context={context}
+          pdfUrl={quotePdfUrl || undefined}
+          quoteNumber={quoteNumber || undefined}
+        />
       )}
     </div>
   );

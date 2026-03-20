@@ -13,15 +13,17 @@ interface QuotePanelProps {
   storeCode: string;
   inboxName: string;
   onSendMessage: (message: string) => void;
+  onQuoteCreated?: (pdfUrl: string, quoteNumber: string) => void;
 }
 
 interface QuoteResult {
   pdfUrl: string;
+  pennylaneUrl: string;
   quoteNumber: string;
   amountTTC: number;
 }
 
-export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage }: QuotePanelProps) {
+export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage, onQuoteCreated }: QuotePanelProps) {
   const [creating, setCreating] = useState(false);
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,12 +42,12 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage 
         <div className="quote-panel-header">Devis créé</div>
         <div className="quote-panel-result">
           <p>Devis {result.quoteNumber} — {Number(result.amountTTC || 0).toFixed(2)} € TTC</p>
-          <a href={result.pdfUrl} target="_blank" rel="noopener noreferrer" className="quote-pdf-link">
-            Voir le PDF
-          </a>
+          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            Le PDF sera joint automatiquement au brouillon lors du push.
+          </p>
         </div>
         <a
-          href={result.pdfUrl}
+          href={result.pennylaneUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="btn-primary"
@@ -120,8 +122,7 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage 
           <button
             className="btn-primary"
             onClick={() => {
-              // Le re-render va recalculer missingFields avec les nouvelles données
-              // Si tout est rempli, on passera à l'état 1
+              // Re-render recalcule missingFields avec les données saisies
             }}
             style={{ width: 'auto' }}
           >
@@ -142,7 +143,7 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage 
           <div key={i} className="quote-line">
             <span className="quote-line-label">{line.label}</span>
             <span className="quote-line-detail">
-              {line.quantity} x {parseFloat(line.unitPrice).toFixed(2)} €
+              {line.quantity} x {parseFloat(line.unitPrice || '0').toFixed(2)} €
             </span>
           </div>
         ))}
@@ -191,11 +192,23 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage 
       }
 
       const data = await response.json();
-      setResult({
+      const quoteResult: QuoteResult = {
         pdfUrl: data.pdfUrl || '',
+        pennylaneUrl: data.pennylaneUrl || '',
         quoteNumber: data.quoteNumber || '',
         amountTTC: Number(data.amountTTC || data.amount || 0),
-      });
+      };
+      setResult(quoteResult);
+
+      // Remonter le PDF au parent pour le DraftFinal
+      onQuoteCreated?.(quoteResult.pdfUrl, quoteResult.quoteNumber);
+
+      // Envoyer un message auto à Claude pour rédiger le brouillon avec le devis
+      onSendMessage(
+        `Le devis PDF ${quoteResult.quoteNumber} est créé et sera joint au mail en pièce jointe. ` +
+        `Rédige un nouveau brouillon qui dit au client que son devis est en pièce jointe. ` +
+        `Récapitule la commande et indique les prochaines étapes.`
+      );
     } catch (err) {
       console.error('[plugin] create-quote error:', err);
       setError(err instanceof Error ? err.message : 'Erreur inconnue');

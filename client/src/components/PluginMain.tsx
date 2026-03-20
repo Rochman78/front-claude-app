@@ -153,16 +153,17 @@ export default function PluginMain({ context }: PluginMainProps) {
   const autoReady = lastAssistantMsg ? isDraftReady(lastAssistantMsg.content) : false;
   const showDraft = !claude.isStreaming && hasDraft && (autoReady || manualValidation);
 
-  // Détecter un devis dans la réponse (mots-clés ou JSON)
+  // Détecter un devis dans la réponse (mots-clés ou texte parsable)
   const showQuote = !claude.isStreaming && lastAssistantMsg
     ? hasQuoteContent(lastAssistantMsg.content)
     : false;
-  const quoteData = lastAssistantMsg ? extractQuoteData(lastAssistantMsg.content) : null;
-
-  if (lastAssistantMsg) {
-    const preview = lastAssistantMsg.content.substring(0, 200);
-    console.log('[PluginMain] quote detection:', { showQuote, hasJson: !!quoteData, isStreaming: claude.isStreaming, preview });
-  }
+  const quoteData = lastAssistantMsg
+    ? extractQuoteData(lastAssistantMsg.content, {
+        customerEmail: recipient?.handle,
+        customerName: recipient?.name,
+        storeCode: store.code,
+      })
+    : null;
 
   return (
     <div className="plugin-main">
@@ -210,7 +211,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         </div>
       )}
 
-      {showQuote && (
+      {showQuote && quoteData && (
         <ErrorBoundary>
           <QuotePanel
             quote={quoteData}

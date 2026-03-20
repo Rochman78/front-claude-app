@@ -9,7 +9,7 @@ import {
 const API_BASE = window.location.origin;
 
 interface QuotePanelProps {
-  quote: ExtractedQuote | null;
+  quote: ExtractedQuote;
   storeCode: string;
   inboxName: string;
   onSendMessage: (message: string) => void;
@@ -30,35 +30,12 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
 
-  console.log('[QuotePanel] state:', { hasQuote: !!quote, hasResult: !!result, showForm });
-
-  // --- État 0 : Devis détecté par mots-clés mais pas de JSON structuré ---
-  if (!quote && !result) {
-    return (
-      <div className="quote-panel">
-        <div className="quote-panel-header">Générer devis PDF</div>
-        <p style={{ fontSize: '12px', marginBottom: '10px' }}>
-          Un devis a été détecté dans la conversation. Demandez à Claude de formater le JSON pour créer le PDF.
-        </p>
-        <button
-          className="btn-primary"
-          onClick={() => onSendMessage(
-            'Formate le JSON du devis selon le format-json-devis.txt pour que je puisse générer le PDF Pennylane. ' +
-            'Inclus toutes les infos client et les lignes du devis.'
-          )}
-        >
-          Demander le JSON à Claude
-        </button>
-      </div>
-    );
-  }
-
   // Merger les données du formulaire dans le quote
-  const mergedQuote = mergeFormData(quote || { lines: [] }, formData);
+  const mergedQuote = mergeFormData(quote, formData);
   const missingFields = getMissingFields(mergedQuote);
   const { totalHT, totalTTC } = computeTotals(mergedQuote.lines);
 
-  // --- État 3 : Devis créé ---
+  // --- Devis créé ---
   if (result) {
     return (
       <div className="quote-panel">
@@ -78,7 +55,7 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
     );
   }
 
-  // --- État 2 : Infos manquantes (sans formulaire) ---
+  // --- Infos manquantes (sans formulaire) ---
   if (missingFields.length > 0 && !showForm) {
     return (
       <div className="quote-panel">
@@ -116,7 +93,7 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
     );
   }
 
-  // --- État 2b : Formulaire infos manquantes ---
+  // --- Formulaire infos manquantes ---
   if (missingFields.length > 0 && showForm) {
     return (
       <div className="quote-panel">
@@ -152,7 +129,7 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
     );
   }
 
-  // --- État 1 : Tout est complet → bouton créer ---
+  // --- Tout est complet → bouton créer ---
   return (
     <div className="quote-panel">
       <div className="quote-panel-header">Générer devis PDF</div>
@@ -219,10 +196,8 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
       };
       setResult(quoteResult);
 
-      // Remonter le PDF au parent pour le DraftFinal
       onQuoteCreated?.(quoteResult.pdfUrl, quoteResult.quoteNumber);
 
-      // Envoyer un message auto à Claude pour rédiger le brouillon avec le devis
       onSendMessage(
         `Le devis PDF ${quoteResult.quoteNumber} est créé et sera joint au mail en pièce jointe. ` +
         `Rédige un nouveau brouillon qui dit au client que son devis est en pièce jointe. ` +
@@ -241,9 +216,6 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
   }
 }
 
-/**
- * Merge les données du formulaire dans le quote extrait.
- */
 function mergeFormData(quote: ExtractedQuote, formData: Record<string, string>): ExtractedQuote {
   if (Object.keys(formData).length === 0) return quote;
 

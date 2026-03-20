@@ -9,8 +9,10 @@ import {
 const API_BASE = window.location.origin;
 
 interface QuotePanelProps {
-  /** Texte brut de la dernière réponse Claude */
+  /** Texte brut de tous les messages Claude */
   claudeText: string;
+  /** Fil de mails Front App (texte brut) */
+  mailThread: string;
   /** Contexte client depuis Front App */
   customerEmail: string;
   customerName: string;
@@ -29,7 +31,7 @@ interface QuoteResult {
 type PanelState = 'idle' | 'missing' | 'form' | 'creating' | 'done';
 
 export default function QuotePanel({
-  claudeText, customerEmail, customerName, storeCode, inboxName, onSendMessage, onQuoteCreated,
+  claudeText, mailThread, customerEmail, customerName, storeCode, inboxName, onSendMessage, onQuoteCreated,
 }: QuotePanelProps) {
   const [state, setState] = useState<PanelState>('idle');
   const [result, setResult] = useState<QuoteResult | null>(null);
@@ -159,8 +161,10 @@ export default function QuotePanel({
   function handleClick() {
     setError(null);
 
-    // Extraire les données du chiffrage depuis le texte de Claude
-    const quote = extractQuoteData(claudeText, { customerEmail, customerName, storeCode });
+    // Extraire les données : chiffrage depuis Claude, infos client depuis le fil de mails
+    // mailThread en premier pour prioriser les infos les plus récentes du client
+    const fullText = mailThread + '\n\n---\n\n' + claudeText;
+    const quote = extractQuoteData(fullText, { customerEmail, customerName, storeCode });
 
     if (!quote) {
       setError('Aucun chiffrage détecté dans la réponse de Claude. Demandez-lui d\'abord de calculer le devis.');

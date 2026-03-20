@@ -242,15 +242,30 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     };
   }
 
-  // Essayer d'extraire l'adresse depuis le texte
-  const adresseMatch = text.match(/(?:adresse|adresse\s*de\s*facturation)\s*[:=]?\s*(.+?)(?:\n|$)/i);
-  const cpVilleMatch = text.match(/(\d{5})\s+([A-Za-zÀ-ÿ\s-]+?)(?:\n|$|,)/);
-  if (customer && (adresseMatch || cpVilleMatch)) {
-    customer.address = {
-      address: adresseMatch ? adresseMatch[1].trim() : '',
-      postalCode: cpVilleMatch ? cpVilleMatch[1] : '',
-      city: cpVilleMatch ? cpVilleMatch[2].trim() : '',
-    };
+  // Extraire l'adresse depuis le texte (mails client + réponses Claude)
+  // Chercher un code postal + ville (pattern le plus fiable)
+  const cpVilleMatch = text.match(/(\d{5})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s-]{1,30})(?:\n|$|,)/);
+
+  // Chercher une rue : ligne précédant le code postal, ou pattern "adresse :"
+  const adresseMatch =
+    text.match(/(?:adresse(?:\s*(?:de\s*facturation|postale|complète))?)\s*[:=]?\s*(.+?)(?:\n|$)/i) ||
+    text.match(/(\d+[\s,]+(?:rue|avenue|boulevard|impasse|chemin|allée|place|cours|passage|voie|route)\s+[^\n]{3,50})(?:\n|$)/i);
+
+  // Chercher un téléphone
+  const phoneMatch = text.match(/(?:tél(?:éphone)?|portable|mobile|tel)\s*[:=]?\s*([\d\s.+-]{10,})/i)
+    || text.match(/(0[67]\s*[\d\s.]{8,})/);
+
+  if (customer) {
+    if (adresseMatch || cpVilleMatch) {
+      customer.address = {
+        address: adresseMatch ? adresseMatch[1].trim() : '',
+        postalCode: cpVilleMatch ? cpVilleMatch[1] : '',
+        city: cpVilleMatch ? cpVilleMatch[2].trim() : '',
+      };
+    }
+    if (phoneMatch && !customer.phone) {
+      customer.phone = phoneMatch[1].replace(/[\s.]/g, '');
+    }
   }
 
   return {

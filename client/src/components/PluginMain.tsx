@@ -47,6 +47,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [manualValidation, setManualValidation] = useState(false);
   const [quotePdfUrl, setQuotePdfUrl] = useState<string | null>(null);
   const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
+  const [mailThread, setMailThread] = useState<string>('');
 
   const recipient = context.conversation.recipient;
   const subject = context.conversation.subject;
@@ -133,6 +134,9 @@ export default function PluginMain({ context }: PluginMainProps) {
         frontConversationId: payload.frontConversationId,
       });
 
+      // Stocker le fil de mails pour le QuotePanel
+      setMailThread(mailContent);
+
       await claude.analyze(payload);
     } catch (err) {
       console.error('[plugin] handleAnalyze error:', err);
@@ -205,6 +209,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         <ErrorBoundary>
           <QuotePanel
             claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
+            mailThread={mailThread}
             customerEmail={recipient?.handle || ''}
             customerName={recipient?.name || ''}
             storeCode={store.code}

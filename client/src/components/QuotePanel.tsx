@@ -25,6 +25,7 @@ interface QuoteResult {
 
 export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage, onQuoteCreated }: QuotePanelProps) {
   const [creating, setCreating] = useState(false);
+  const [creatingStep, setCreatingStep] = useState('');
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -165,13 +166,14 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
         disabled={creating}
         style={{ marginTop: '10px' }}
       >
-        {creating ? 'Création en cours...' : 'Générer devis PDF'}
+        {creating ? creatingStep || 'Génération en cours...' : 'Générer devis PDF'}
       </button>
     </div>
   );
 
   async function handleCreate(q: ExtractedQuote) {
     setCreating(true);
+    setCreatingStep('Génération en cours...');
     setError(null);
 
     try {
@@ -194,24 +196,23 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
         quoteNumber: data.quoteNumber || '',
         amountTTC: Number(data.amountTTC || data.amount || 0),
       };
-      setResult(quoteResult);
 
+      setCreatingStep('Devis créé ! Mise à jour du brouillon...');
+      setResult(quoteResult);
       onQuoteCreated?.(quoteResult.pdfUrl, quoteResult.quoteNumber);
 
       onSendMessage(
-        `Le devis PDF ${quoteResult.quoteNumber} est créé et sera joint au mail en pièce jointe. ` +
-        `Rédige un nouveau brouillon qui dit au client que son devis est en pièce jointe. ` +
-        `Récapitule la commande (produit, dimensions, prix). ` +
-        `IMPORTANT — utilise EXACTEMENT cette formulation pour la fin du mail (en paragraphes, pas de tirets ni listes à puces) :\n\n` +
-        `"Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
-        `La mise en production sera lancée dès réception du règlement, avec un délai de fabrication et de livraison d'environ 14 jours.\n\n` +
-        `N'hésitez pas à nous contacter si vous avez la moindre question."`
+        `Le devis PDF ${quoteResult.quoteNumber} a été créé et sera joint au mail. ` +
+        `Réécris le brouillon en 4 lignes max : salutation, ci-joint le devis, ` +
+        `retourner le devis signé + virement aux coordonnées du devis, ` +
+        `délai fabrication et livraison environ 14 jours dès réception du règlement.`
       );
     } catch (err) {
       console.error('[plugin] create-quote error:', err);
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
       setCreating(false);
+      setCreatingStep('');
     }
   }
 }

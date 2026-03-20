@@ -38,7 +38,6 @@ B) Tu consultes les documents de référence pertinents :
 - obligations-tva-zephyr.docx — Régimes TVA
 - catalogue-LFC.txt — Catalogue produits
 - devis-sur-mesure-base-documentaire.txt — Grille de prix sur mesure + templates
-- format-json-devis.txt — Format JSON devis Pennylane
 - FT-Filets-LFC.pdf, FT-Coco-LFC.pdf, Fiches_Techniques_Accessoires.pdf — Fiches techniques
 - template-colis-non-recu.txt, template-echange-erreur-client.txt, template-garantie-diagnostic.txt — Templates
 
@@ -224,8 +223,7 @@ Si les coordonnées manquent → les demander dans tes QUESTIONS :
 
 EXCLUSION RÉTRACTATION : les produits sur mesure sont exclus du droit de rétractation et du satisfait/remboursé. Ne JAMAIS le mentionner en première intention.
 
-APRÈS VALIDATION CLIENT :
-Formater le JSON selon format-json-devis.txt pour création du devis Pennylane.
+IMPORTANT : Ne JAMAIS formater de JSON dans ta réponse. Ne JAMAIS demander si le devis PDF a été créé. La création du devis PDF est gérée automatiquement par l'application. Ton rôle se limite à calculer le chiffrage et rédiger le brouillon du mail.
 
 ═══════════════════════════════════════
 11. RÈGLE ABSOLUE — SOURCES D'INFO

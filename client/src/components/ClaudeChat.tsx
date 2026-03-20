@@ -17,10 +17,27 @@ export default function ClaudeChat({ messages, streamingContent, isStreaming, on
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, streamingContent]);
 
+  // Filtrer les messages techniques (contexte mail envoyé au backend)
+  const visibleMessages = messages.filter((msg) => {
+    if (msg.role === 'user') {
+      const text = msg.content.toLowerCase();
+      if (
+        text.includes('voici le fil de mails du client') ||
+        text.includes('[analyse demandée pour') ||
+        text.includes('analyse demandée pour')
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  console.log('[chat] messages:', messages.length, 'visible:', visibleMessages.length);
+
   return (
     <>
       <div className="chat-messages">
-        {messages.map((msg) => (
+        {visibleMessages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
 

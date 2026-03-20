@@ -204,7 +204,7 @@ export default function PluginMain({ context }: PluginMainProps) {
       {showQuotePanel && lastAssistantMsg && (
         <ErrorBoundary>
           <QuotePanel
-            claudeText={lastAssistantMsg.content}
+            claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
             customerEmail={recipient?.handle || ''}
             customerName={recipient?.name || ''}
             storeCode={store.code}

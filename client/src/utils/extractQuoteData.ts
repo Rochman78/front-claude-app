@@ -126,24 +126,50 @@ function tryParseJsonQuote(raw: string): ExtractedQuote | null {
 
 /**
  * Parse le texte naturel de Claude pour extraire les données du devis.
- * Cherche : dimensions, matière, couleur, surface, prix unitaire, total HT/TTC.
+ * Cherche dans tout le texte (tous les messages concaténés) :
+ * dimensions, matière, couleur, surface, prix unitaire, total HT/TTC.
  */
 function extractFromText(text: string, context?: { customerEmail?: string; customerName?: string; storeCode?: string }): ExtractedQuote | null {
-  // Extraire le prix unitaire HT
-  const prixUnitaireMatch = text.match(/(?:prix\s*(?:unitaire)?(?:\s*ht)?|tarif)\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:ht)?(?:\s*\/\s*m[²2])?/i)
-    || text.match(/(\d+[.,]\d+)\s*€\s*(?:ht\s*)?(?:\/\s*m[²2]|par\s*m[²2])/i);
+  console.log('[extractQuoteData] input text (500 chars):', text.substring(0, 500));
 
-  // Extraire la surface
-  const surfaceMatch = text.match(/(?:surface(?:\s*totale)?)\s*[:=]?\s*(\d+[.,]\d+)\s*m[²2]/i);
+  // Extraire le prix unitaire HT — patterns variés
+  const prixUnitaireMatch =
+    text.match(/prix\s*unitaire\s*(?:hors\s*(?:tva|taxe)|ht)\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:\/\s*m[²2])?/i) ||
+    text.match(/(?:prix\s*(?:unitaire)?(?:\s*ht)?|tarif)\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:ht)?\s*(?:\/\s*m[²2])?/i) ||
+    text.match(/(\d+[.,]\d+)\s*€\s*(?:ht\s*)?(?:\/\s*m[²2]|par\s*m[²2])/i) ||
+    text.match(/(\d+[.,]\d+)\s*€\s*\/\s*m[²2]/i);
 
-  // Extraire le total HT
-  const totalHTMatch = text.match(/(?:total\s*ht|montant\s*ht)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i);
+  // Extraire la surface — patterns variés
+  const surfaceMatch =
+    text.match(/surface\s*(?:totale|unitaire)?\s*[:=]?\s*(\d+[.,]\d+)\s*m[²2]/i) ||
+    text.match(/(\d+[.,]\d+)\s*m[²2]\s*(?:au total|total)?/i);
 
-  // Si on n'a ni prix unitaire + surface, ni total HT, on ne peut pas construire de ligne
-  if (!totalHTMatch && !(prixUnitaireMatch && surfaceMatch)) return null;
+  // Extraire le total HT — patterns variés
+  const totalHTMatch =
+    text.match(/(?:total|montant)\s*(?:hors\s*(?:tva|taxe)|ht)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    text.match(/(?:total|montant)\s*ht\s*[:=]?\s*(\d+[.,]\d+)\s*€/i);
 
-  // Extraire les dimensions
-  const dimMatch = text.match(/(\d+[.,]\d+)\s*x\s*(\d+[.,]\d+)\s*m/i);
+  // Extraire le montant TTC — patterns variés
+  const totalTTCMatch =
+    text.match(/(?:total|montant)\s*ttc\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    text.match(/ttc\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    text.match(/montant\s*ttc\s*[:=—–-]\s*(\d+[.,]\d+)\s*€/i);
+
+  console.log('[extractQuoteData] matches:', {
+    prixUnitaire: prixUnitaireMatch?.[1],
+    surface: surfaceMatch?.[1],
+    totalHT: totalHTMatch?.[1],
+    totalTTC: totalTTCMatch?.[1],
+  });
+
+  // On peut construire une ligne si on a :
+  // - prix unitaire + surface, OU
+  // - total HT, OU
+  // - total TTC (on calcule le HT en divisant par 1.2)
+  if (!totalHTMatch && !totalTTCMatch && !(prixUnitaireMatch && surfaceMatch)) return null;
+
+  // Extraire les dimensions — supporte × et x
+  const dimMatch = text.match(/(\d+[.,]\d+)\s*[x×]\s*(\d+[.,]\d+)\s*m/i);
 
   // Extraire matière et couleur
   const matiereMatch = text.match(/(?:matière|finition|type)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
@@ -170,6 +196,17 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   } else if (totalHTMatch) {
     quantity = 1;
     unitPrice = parseNumber(totalHTMatch[1]).toFixed(2);
+  } else if (totalTTCMatch) {
+    // Calculer le HT depuis le TTC (TVA 20%)
+    const ttc = parseNumber(totalTTCMatch[1]);
+    const ht = ttc / 1.2;
+    if (surfaceMatch) {
+      quantity = parseNumber(surfaceMatch[1]);
+      unitPrice = (ht / quantity).toFixed(2);
+    } else {
+      quantity = 1;
+      unitPrice = ht.toFixed(2);
+    }
   } else {
     return null;
   }

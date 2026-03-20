@@ -41,8 +41,6 @@ __pycache__/
 *.tsbuildinfo
 next-env.d.ts
 
-# plugin build (généré par Vite)
-/public/plugin/
 
 # client dependencies
 /client/node_modules

@@ -157,7 +157,9 @@ export async function POST(req: NextRequest) {
     });
 
     // 7. Collecter la réponse pour la sauvegarder en BDD, tout en streamant au client
+    // Si le client se déconnecte (change de mail), le backend CONTINUE à lire Claude et sauvegarde
     let fullResponse = '';
+    let clientDisconnected = false;
 
     const passthrough = new ReadableStream({
       async start(controller) {
@@ -169,10 +171,18 @@ export async function POST(req: NextRequest) {
             if (done) break;
             const text = decoder.decode(value, { stream: true });
             fullResponse += text;
-            controller.enqueue(value);
+            // Envoyer au client, ignorer si déconnecté
+            if (!clientDisconnected) {
+              try {
+                controller.enqueue(value);
+              } catch {
+                clientDisconnected = true;
+                console.log(`[plugin/analyze] client disconnected, continuing Claude stream for BDD save`);
+              }
+            }
           }
         } finally {
-          // Sauvegarder la réponse complète de Claude en BDD
+          // Sauvegarder la réponse complète de Claude en BDD (même si client déconnecté)
           if (fullResponse && !fullResponse.startsWith('__ERROR__')) {
             const assistantMsgId = crypto.randomUUID();
             const savedAt = new Date().toISOString();
@@ -184,8 +194,9 @@ export async function POST(req: NextRequest) {
               'UPDATE claude_conversations SET updated_at = $1 WHERE id = $2',
               [savedAt, conversation.id]
             );
+            console.log(`[plugin/analyze] response saved (${fullResponse.length} chars, clientDisconnected=${clientDisconnected})`);
           }
-          controller.close();
+          try { controller.close(); } catch { /* already closed */ }
         }
       },
     });

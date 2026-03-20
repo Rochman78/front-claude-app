@@ -120,7 +120,9 @@ export async function POST(req: NextRequest) {
     });
 
     // 6. Passthrough : streamer au client + sauvegarder en BDD
+    // Continue même si le client se déconnecte
     let fullResponse = '';
+    let clientDisconnected = false;
 
     const passthrough = new ReadableStream({
       async start(controller) {
@@ -132,7 +134,14 @@ export async function POST(req: NextRequest) {
             if (done) break;
             const text = decoder.decode(value, { stream: true });
             fullResponse += text;
-            controller.enqueue(value);
+            if (!clientDisconnected) {
+              try {
+                controller.enqueue(value);
+              } catch {
+                clientDisconnected = true;
+                console.log(`[plugin/message] client disconnected, continuing for BDD save`);
+              }
+            }
           }
         } finally {
           if (fullResponse && !fullResponse.startsWith('__ERROR__')) {
@@ -147,7 +156,7 @@ export async function POST(req: NextRequest) {
               [savedAt, conversationId]
             );
           }
-          controller.close();
+          try { controller.close(); } catch { /* already closed */ }
         }
       },
     });

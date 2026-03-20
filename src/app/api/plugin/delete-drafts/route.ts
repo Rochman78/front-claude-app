@@ -28,18 +28,35 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    const drafts = (data._results || []).filter((m: Record<string, unknown>) => m.is_draft === true);
+    const allMessages = data._results || [];
+    const drafts = allMessages.filter((m: Record<string, unknown>) => m.is_draft === true);
 
-    console.log(`[plugin/delete-drafts] conv=${conversationId} found ${drafts.length} draft(s)`);
+    console.log(`[plugin/delete-drafts] conv=${conversationId} total_messages=${allMessages.length} drafts=${drafts.length}`);
+    if (drafts.length > 0) {
+      console.log(`[plugin/delete-drafts] draft ids:`, drafts.map((d: Record<string, unknown>) => d.id));
+    }
+    if (drafts.length === 0 && allMessages.length > 0) {
+      // Log les types de messages pour comprendre pourquoi aucun brouillon trouvé
+      console.log(`[plugin/delete-drafts] message types:`, allMessages.map((m: Record<string, unknown>) => ({
+        id: m.id,
+        is_draft: m.is_draft,
+        type: m.type,
+        draft_mode: m.draft_mode,
+      })));
+    }
 
     // Supprimer chaque brouillon
     let deleted = 0;
     for (const draft of drafts) {
+      console.log(`[plugin/delete-drafts] deleting draft ${draft.id}...`);
       const delRes = await frontFetch(`/drafts/${draft.id}`, { method: 'DELETE' });
-      if (delRes.ok || delRes.status === 204) {
+      const delStatus = delRes.status;
+      console.log(`[plugin/delete-drafts] DELETE /drafts/${draft.id} → ${delStatus}`);
+      if (delRes.ok || delStatus === 204) {
         deleted++;
       } else {
-        console.warn(`[plugin/delete-drafts] failed to delete ${draft.id}: ${delRes.status}`);
+        const errText = await delRes.text().catch(() => '');
+        console.warn(`[plugin/delete-drafts] failed to delete ${draft.id}: ${delStatus} ${errText}`);
       }
     }
 

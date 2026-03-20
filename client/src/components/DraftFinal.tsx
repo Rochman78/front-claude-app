@@ -10,13 +10,11 @@ interface DraftFinalProps {
 
 export default function DraftFinal({ rawContent, context }: DraftFinalProps) {
   const [pushing, setPushing] = useState(false);
-  const [pushed, setPushed] = useState(false);
-  const [pushedContent, setPushedContent] = useState('');
+  const [pushSuccess, setPushSuccess] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Si déjà poussé → afficher le contenu figé, pas le nouveau
-  const cleaned = pushed ? pushedContent : cleanDraft(rawContent);
+  const cleaned = cleanDraft(rawContent);
 
   async function handleCopy() {
     await navigator.clipboard.writeText(cleaned);
@@ -27,6 +25,7 @@ export default function DraftFinal({ rawContent, context }: DraftFinalProps) {
   async function handlePush() {
     setPushing(true);
     setError(null);
+    setPushSuccess(false);
 
     try {
       const messagesResponse = await context.listMessages();
@@ -37,25 +36,6 @@ export default function DraftFinal({ rawContent, context }: DraftFinalProps) {
       }
 
       const latestMessageId = messages[messages.length - 1].id;
-
-      // Supprimer les brouillons existants via le backend (API REST Front)
-      // pour éviter les doublons — le SDK ne permet pas de les supprimer
-      try {
-        const deleteRes = await fetch(`${window.location.origin}/api/plugin/delete-drafts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversationId: context.conversation.id }),
-        });
-        if (deleteRes.ok) {
-          const result = await deleteRes.json();
-          if (result.deleted > 0) {
-            console.log(`[plugin] deleted ${result.deleted} existing draft(s)`);
-          }
-        }
-      } catch (delErr) {
-        // Non bloquant : on continue même si la suppression échoue
-        console.warn('[plugin] delete-drafts failed:', delErr);
-      }
 
       await context.createDraft({
         content: {
@@ -68,28 +48,14 @@ export default function DraftFinal({ rawContent, context }: DraftFinalProps) {
         },
       });
 
-      // Figer le contenu : le bloc ne changera plus
-      setPushedContent(cleaned);
-      setPushed(true);
+      setPushSuccess(true);
+      setTimeout(() => setPushSuccess(false), 3000);
     } catch (err) {
       console.error('[plugin] createDraft error:', err);
       setError(err instanceof Error ? err.message : 'Erreur lors du push');
     } finally {
       setPushing(false);
     }
-  }
-
-  // Mode figé après push
-  if (pushed) {
-    return (
-      <div className="draft-final draft-final-pushed">
-        <div className="draft-final-header">Brouillon poussé dans Front App</div>
-        <div className="draft-final-content">{pushedContent}</div>
-        <p style={{ color: 'var(--success)', fontSize: '12px', marginTop: '8px' }}>
-          Visible dans le fil de conversation. Vous pouvez le modifier et l'envoyer depuis Front App.
-        </p>
-      </div>
-    );
   }
 
   return (
@@ -99,6 +65,12 @@ export default function DraftFinal({ rawContent, context }: DraftFinalProps) {
 
       {error && (
         <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>
+      )}
+
+      {pushSuccess && (
+        <p style={{ color: 'var(--success)', fontSize: '12px', marginBottom: '8px' }}>
+          Brouillon poussé dans Front App.
+        </p>
       )}
 
       <div className="draft-final-actions">

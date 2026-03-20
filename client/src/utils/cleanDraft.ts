@@ -48,10 +48,30 @@ export function cleanDraft(text: string): string {
 }
 
 /**
- * Détecte si la réponse de Claude indique que le brouillon est validable
- * (pas de questions, ou "tu peux valider").
+ * Détecte si le dernier message Claude contient des questions en attente.
+ * Cherche : section "QUESTIONS", questions numérotées (1. 2. 3.), ou "?" en fin de phrase.
+ */
+export function hasOpenQuestions(text: string): boolean {
+  // Section QUESTIONS explicite
+  if (/\bQUESTIONS?\s*\n/i.test(text)) return true;
+
+  // Questions numérotées après le brouillon (1. ... ? ou 2. ... ?)
+  const afterBonjour = text.indexOf('Bonjour');
+  const bodyAfterDraft = afterBonjour >= 0 ? text.substring(afterBonjour) : text;
+  if (/\n\d+\.\s+.+\?/.test(bodyAfterDraft)) return true;
+
+  return false;
+}
+
+/**
+ * Détecte si la réponse de Claude indique que le brouillon est validable.
+ * STRICT : retourne true UNIQUEMENT si Claude dit explicitement que c'est prêt
+ * ET qu'il n'y a PAS de questions en attente.
  */
 export function isDraftReady(text: string): boolean {
+  // Si des questions sont détectées → jamais prêt automatiquement
+  if (hasOpenQuestions(text)) return false;
+
   const lower = text.toLowerCase();
   return (
     lower.includes('pas de question') ||

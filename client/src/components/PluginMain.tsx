@@ -142,10 +142,13 @@ export default function PluginMain({ context }: PluginMainProps) {
   // État initial : pas encore d'analyse
   const hasMessages = claude.messages.length > 0;
 
-  // Détecter si le brouillon est prêt (Claude dit "pas de question" / "tu peux valider")
+  // Détecter si le brouillon est prêt
+  // RÈGLE STRICTE : le bloc vert n'apparaît JAMAIS si Claude a des questions en attente
+  // sauf si l'utilisateur clique manuellement "Valider le brouillon"
   const lastAssistantMsg = [...claude.messages].reverse().find((m) => m.role === 'assistant');
+  const hasDraft = lastAssistantMsg?.content.includes('Bonjour') ?? false;
   const autoReady = lastAssistantMsg ? isDraftReady(lastAssistantMsg.content) : false;
-  const showDraft = !claude.isStreaming && lastAssistantMsg?.content.includes('Bonjour') && (autoReady || manualValidation);
+  const showDraft = !claude.isStreaming && hasDraft && (autoReady || manualValidation);
 
   // Détecter un JSON devis dans la réponse
   const quoteData = lastAssistantMsg ? detectQuoteJson(lastAssistantMsg.content) : null;
@@ -187,8 +190,8 @@ export default function PluginMain({ context }: PluginMainProps) {
         />
       )}
 
-      {/* Bouton "Valider le brouillon" : visible quand il y a un brouillon mais pas encore validé */}
-      {hasMessages && !claude.isStreaming && !showDraft && lastAssistantMsg?.content.includes('Bonjour') && (
+      {/* Bouton "Valider le brouillon" : visible quand il y a un brouillon avec des questions, pas encore validé */}
+      {hasMessages && !claude.isStreaming && !showDraft && hasDraft && !manualValidation && (
         <div className="plugin-actions">
           <button className="btn-primary" onClick={() => setManualValidation(true)}>
             Valider le brouillon

@@ -335,6 +335,11 @@ body {
   gap: 8px;
 }
 
+.draft-final-pushed {
+  opacity: 0.85;
+  border-style: dashed;
+}
+
 /* === Quote Block (préparé pour étape 6) === */
 .quote-block {
   margin: 12px 16px;

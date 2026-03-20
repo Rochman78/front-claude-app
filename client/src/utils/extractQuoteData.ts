@@ -47,7 +47,7 @@ export function hasQuoteContent(text: string): boolean {
   // Mots-clés devis
   if (
     (lower.includes('devis') || lower.includes('chiffrage')) &&
-    (lower.includes('total ht') || lower.includes('total ttc') || lower.includes('prix unitaire') || lower.includes('€/m'))
+    (lower.includes('total ht') || lower.includes('total ttc') || lower.includes('prix unitaire') || lower.includes('€/m') || lower.includes('m²') || lower.includes('€ ht'))
   ) {
     return true;
   }

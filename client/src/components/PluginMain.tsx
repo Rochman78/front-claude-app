@@ -159,6 +159,8 @@ export default function PluginMain({ context }: PluginMainProps) {
     : false;
   const quoteData = lastAssistantMsg ? extractQuoteData(lastAssistantMsg.content) : null;
 
+  console.log('[PluginMain] quote detection:', { showQuote, hasJson: !!quoteData });
+
   return (
     <div className="plugin-main">
       <MailPreview
@@ -205,7 +207,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         </div>
       )}
 
-      {showQuote && quoteData && (
+      {showQuote && (
         <ErrorBoundary>
           <QuotePanel
             quote={quoteData}

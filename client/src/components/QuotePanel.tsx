@@ -9,7 +9,7 @@ import {
 const API_BASE = window.location.origin;
 
 interface QuotePanelProps {
-  quote: ExtractedQuote;
+  quote: ExtractedQuote | null;
   storeCode: string;
   inboxName: string;
   onSendMessage: (message: string) => void;
@@ -30,8 +30,31 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
 
+  console.log('[QuotePanel] state:', { hasQuote: !!quote, hasResult: !!result, showForm });
+
+  // --- État 0 : Devis détecté par mots-clés mais pas de JSON structuré ---
+  if (!quote && !result) {
+    return (
+      <div className="quote-panel">
+        <div className="quote-panel-header">Générer devis PDF</div>
+        <p style={{ fontSize: '12px', marginBottom: '10px' }}>
+          Un devis a été détecté dans la conversation. Demandez à Claude de formater le JSON pour créer le PDF.
+        </p>
+        <button
+          className="btn-primary"
+          onClick={() => onSendMessage(
+            'Formate le JSON du devis selon le format-json-devis.txt pour que je puisse générer le PDF Pennylane. ' +
+            'Inclus toutes les infos client et les lignes du devis.'
+          )}
+        >
+          Demander le JSON à Claude
+        </button>
+      </div>
+    );
+  }
+
   // Merger les données du formulaire dans le quote
-  const mergedQuote = mergeFormData(quote, formData);
+  const mergedQuote = mergeFormData(quote || { lines: [] }, formData);
   const missingFields = getMissingFields(mergedQuote);
   const { totalHT, totalTTC } = computeTotals(mergedQuote.lines);
 

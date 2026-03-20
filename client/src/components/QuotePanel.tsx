@@ -208,13 +208,6 @@ export default function QuotePanel({
       setResult(quoteResult);
       setState('done');
       onQuoteCreated?.(quoteResult.pdfUrl, quoteResult.quoteNumber);
-
-      onSendMessage(
-        `Le devis PDF ${quoteResult.quoteNumber} a été créé et sera joint au mail. ` +
-        `Réécris le brouillon en 4 lignes max : salutation, ci-joint le devis, ` +
-        `retourner le devis signé + virement aux coordonnées du devis, ` +
-        `délai fabrication et livraison environ 14 jours dès réception du règlement.`
-      );
     } catch (err) {
       console.error('[plugin] create-quote error:', err);
       setError(err instanceof Error ? err.message : 'Erreur inconnue');

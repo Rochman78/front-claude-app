@@ -10,15 +10,16 @@ interface DraftFinalProps {
   context: FrontSingleConversationContext;
   pdfUrl?: string;
   quoteNumber?: string;
+  skipClean?: boolean;
 }
 
-export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber }: DraftFinalProps) {
+export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, skipClean }: DraftFinalProps) {
   const [pushing, setPushing] = useState(false);
   const [pushSuccess, setPushSuccess] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cleaned = cleanDraft(rawContent);
+  const cleaned = skipClean ? rawContent : cleanDraft(rawContent);
 
   async function handleCopy() {
     await navigator.clipboard.writeText(cleaned);

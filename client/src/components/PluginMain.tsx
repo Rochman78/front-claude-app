@@ -47,6 +47,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [manualValidation, setManualValidation] = useState(false);
   const [quotePdfUrl, setQuotePdfUrl] = useState<string | null>(null);
   const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
+  const [quoteDraftText, setQuoteDraftText] = useState<string | null>(null);
   const [mailThread, setMailThread] = useState<string>('');
 
   const recipient = context.conversation.recipient;
@@ -218,6 +219,16 @@ export default function PluginMain({ context }: PluginMainProps) {
             onQuoteCreated={(pdfUrl, qNumber) => {
               setQuotePdfUrl(pdfUrl);
               setQuoteNumber(qNumber);
+              // Générer le brouillon fixe instantanément
+              const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
+              setQuoteDraftText(
+                `Bonjour ${prenom},\n\n` +
+                `Veuillez trouver ci-joint votre devis pour votre filet de camouflage sur mesure.\n\n` +
+                `Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
+                `La mise en production sera lancée dès réception du règlement, avec un délai de fabrication et de livraison d'environ 14 jours.\n\n` +
+                `N'hésitez pas à nous contacter si vous avez la moindre question.`
+              );
+              setManualValidation(true); // Afficher le bloc vert immédiatement
             }}
           />
         </ErrorBoundary>
@@ -225,10 +236,11 @@ export default function PluginMain({ context }: PluginMainProps) {
 
       {showDraft && lastAssistantMsg && (
         <DraftFinal
-          rawContent={lastAssistantMsg.content}
+          rawContent={quoteDraftText || lastAssistantMsg.content}
           context={context}
           pdfUrl={quotePdfUrl || undefined}
           quoteNumber={quoteNumber || undefined}
+          skipClean={!!quoteDraftText}
         />
       )}
     </div>

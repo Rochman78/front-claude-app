@@ -47,6 +47,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [manualValidation, setManualValidation] = useState(false);
   const [quotePdfUrl, setQuotePdfUrl] = useState<string | null>(null);
   const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
+  const [quotePennylaneUrl, setQuotePennylaneUrl] = useState<string | null>(null);
   const [quoteDraftText, setQuoteDraftText] = useState<string | null>(null);
   const [mailThread, setMailThread] = useState<string>('');
 
@@ -206,7 +207,23 @@ export default function PluginMain({ context }: PluginMainProps) {
         </div>
       )}
 
-      {showQuotePanel && lastAssistantMsg && (
+      {/* QuotePanel : état "done" géré ici pour éviter la perte de state */}
+      {showQuotePanel && lastAssistantMsg && quoteNumber && quotePennylaneUrl ? (
+        <div className="quote-panel">
+          <p style={{ fontSize: '13px' }}>
+            Le devis {quoteNumber} a bien été généré depuis Pennylane et chargé dans le brouillon.
+          </p>
+          <a
+            href={quotePennylaneUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary"
+            style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '10px' }}
+          >
+            Modifier le devis PDF
+          </a>
+        </div>
+      ) : showQuotePanel && lastAssistantMsg ? (
         <ErrorBoundary>
           <QuotePanel
             claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
@@ -216,10 +233,10 @@ export default function PluginMain({ context }: PluginMainProps) {
             storeCode={store.code}
             inboxName={store.inboxName}
             onSendMessage={claude.sendMessage}
-            onQuoteCreated={(pdfUrl, qNumber) => {
+            onQuoteCreated={(pdfUrl, qNumber, pennylaneUrl) => {
               setQuotePdfUrl(pdfUrl);
               setQuoteNumber(qNumber);
-              // Générer le brouillon fixe instantanément
+              setQuotePennylaneUrl(pennylaneUrl);
               const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
               setQuoteDraftText(
                 `Bonjour ${prenom},\n\n` +
@@ -228,11 +245,11 @@ export default function PluginMain({ context }: PluginMainProps) {
                 `La mise en production sera lancée dès réception du règlement, avec un délai de fabrication et de livraison d'environ 14 jours.\n\n` +
                 `N'hésitez pas à nous contacter si vous avez la moindre question.`
               );
-              setManualValidation(true); // Afficher le bloc vert immédiatement
+              setManualValidation(true);
             }}
           />
         </ErrorBoundary>
-      )}
+      ) : null}
 
       {showDraft && lastAssistantMsg && (
         <DraftFinal

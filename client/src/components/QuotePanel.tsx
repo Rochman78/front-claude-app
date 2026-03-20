@@ -19,7 +19,7 @@ interface QuotePanelProps {
   storeCode: string;
   inboxName: string;
   onSendMessage: (message: string) => void;
-  onQuoteCreated?: (pdfUrl: string, quoteNumber: string) => void;
+  onQuoteCreated?: (pdfUrl: string, quoteNumber: string, pennylaneUrl: string) => void;
 }
 
 interface QuoteResult {
@@ -207,7 +207,7 @@ export default function QuotePanel({
 
       setResult(quoteResult);
       setState('done');
-      onQuoteCreated?.(quoteResult.pdfUrl, quoteResult.quoteNumber);
+      onQuoteCreated?.(quoteResult.pdfUrl, quoteResult.quoteNumber, quoteResult.pennylaneUrl);
     } catch (err) {
       console.error('[plugin] create-quote error:', err);
       setError(err instanceof Error ? err.message : 'Erreur inconnue');

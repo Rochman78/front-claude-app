@@ -134,6 +134,14 @@ export async function POST(req: NextRequest) {
     // 6. Appeler Claude en streaming
     const systemPrompt = agent.instructions || `Tu es l'assistant service client de ${store.name}. Analyse le mail du client et propose un brouillon de réponse.`;
 
+    console.log(`[plugin/analyze] === CLAUDE API CALL ===`);
+    console.log(`[plugin/analyze] system prompt: ${systemPrompt.length} chars`);
+    console.log(`[plugin/analyze] documents: ${filteredFiles.length} files, ${documents.length} chars`);
+    console.log(`[plugin/analyze] document names: [${filteredFiles.map(f => f.name).join(', ')}]`);
+    console.log(`[plugin/analyze] history: ${existingMessages.length} existing + 1 new = ${messages.length} messages`);
+    console.log(`[plugin/analyze] mail content: ${mailContent.length} chars`);
+    console.log(`[plugin/analyze] total input estimate: ~${Math.round((systemPrompt.length + documents.length + messages.reduce((n, m) => n + m.content.length, 0)) / 4)} tokens`);
+
     const { stream } = createChatStream({
       systemPrompt,
       messages,

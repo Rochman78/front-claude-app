@@ -92,9 +92,8 @@ export function useClaude(): UseClaudeReturn {
 
       const fullText = await readStream(response, setStreamingContent);
 
-      // Ajouter le message user (contexte mail) et la réponse assistant
+      // Ajouter uniquement la réponse Claude (pas le message technique d'analyse)
       setMessages([
-        { id: nextId(), role: 'user', content: `[Analyse demandée pour ${params.customerName || params.customerEmail}]` },
         { id: nextId(), role: 'assistant', content: fullText },
       ]);
     } catch (err) {

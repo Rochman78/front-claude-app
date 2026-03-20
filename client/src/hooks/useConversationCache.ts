@@ -40,8 +40,11 @@ export function useConversationCache() {
       const cached: CachedConversation = {
         conversationId: data.conversationId,
         messages: data.messages
-          // Filtrer les messages corrompus (contiennent du CSS brut)
-          .filter((m: { content: string }) => !m.content.includes('@media screen'))
+          // Filtrer les messages corrompus (CSS brut) et techniques (analyse demandée)
+          .filter((m: { content: string; role: string }) =>
+            !m.content.includes('@media screen') &&
+            !(m.role === 'user' && m.content.startsWith('[Analyse demandée'))
+          )
           .map((m: { id: string; role: string; content: string }) => ({
             id: m.id,
             role: m.role as 'user' | 'assistant',

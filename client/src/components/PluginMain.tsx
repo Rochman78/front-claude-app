@@ -186,7 +186,7 @@ export default function PluginMain({ context }: PluginMainProps) {
       )}
 
       {!hasMessages && claude.isStreaming && !claude.streamingContent && (
-        <LoadingState message="Analyse en cours avec Claude..." />
+        <LoadingState progressive />
       )}
 
       {(hasMessages || claude.streamingContent) && (

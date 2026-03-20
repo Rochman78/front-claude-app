@@ -87,7 +87,10 @@ export async function POST(req: NextRequest) {
     const filteredFiles = filterRelevantFiles(allFiles, relevantDocNames);
     const documents = buildDocumentsText(filteredFiles);
 
-    console.log(`[plugin/analyze] store=${storeCode} agent=${agent.name} docs=${filteredFiles.length}/${allFiles.length}`);
+    const systemPromptSize = (agent.instructions || '').length;
+    const docsSize = documents.length;
+    console.log(`[plugin/analyze] store=${storeCode} agent=${agent.name} docs=${filteredFiles.length}/${allFiles.length} selected=[${filteredFiles.map(f => f.name).join(', ')}]`);
+    console.log(`[plugin/analyze] sizes: systemPrompt=${systemPromptSize} chars, documents=${docsSize} chars, total=${systemPromptSize + docsSize} chars (~${Math.round((systemPromptSize + docsSize) / 4)} tokens)`);
 
     // 3. Récupérer ou créer la conversation en BDD
     const { rows: convRows } = await pool.query(

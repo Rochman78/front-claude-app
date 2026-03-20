@@ -12,7 +12,7 @@ interface FileEntry {
 const CATEGORIES: { keywords: string[]; docs: string[] }[] = [
   {
     keywords: ['devis', 'sur mesure', 'sur-mesure', 'dimensions', 'personnalisé', 'taille spéciale', 'mesure', 'mètres', 'm²', 'quote', 'custom', 'custom-made', 'bespoke'],
-    docs: ['devis-sur-mesure-base-documentaire.txt', 'obligations-tva-zephyr.docx', 'format-json-devis.txt'],
+    docs: ['devis-sur-mesure-base-documentaire.txt', 'obligations-tva-zephyr.docx', 'format-json-devis.txt', 'catalogue-LFC.txt'],
   },
   {
     keywords: ['retour', 'retourner', 'rembourser', 'remboursement', 'échange', 'échanger', 'rétractation', 'annuler', 'return', 'refund', 'exchange'],
@@ -21,6 +21,10 @@ const CATEGORIES: { keywords: string[]; docs: string[] }[] = [
   {
     keywords: ['livraison', 'colis', 'suivi', 'expédition', 'reçu', 'pas reçu', 'transporteur', 'mondial relay', 'colissimo', 'chronopost', 'tracking', 'delivery', 'shipping', 'parcel'],
     docs: ['POLITIQUE EXPEDITION.docx', 'template-colis-non-recu.txt'],
+  },
+  {
+    keywords: ['colis non reçu', 'pas reçu', 'jamais reçu', 'perdu', 'attestation'],
+    docs: ['attestation-filet.pdf', 'template-colis-non-recu.txt'],
   },
   {
     keywords: ['garantie', 'défaut', 'endommagé', 'cassé', 'déchiré', 'abîmé', 'usure', 'usé', 'décoloré', 'troué', 'warranty', 'damaged', 'broken', 'torn'],
@@ -39,8 +43,6 @@ const CATEGORIES: { keywords: string[]; docs: string[] }[] = [
     docs: ['CGV.docx'],
   },
 ];
-
-const KNOWN_DOC_NAMES = CATEGORIES.flatMap((c) => c.docs);
 
 /**
  * Retourne la liste des noms de documents pertinents selon le contenu du mail.
@@ -69,18 +71,12 @@ function nameMatches(fileName: string, docName: string): boolean {
 
 /**
  * Filtre les fichiers agent + partagés pour ne garder que les docs pertinents.
- * Les fichiers "inconnus" (pas dans les catégories) sont toujours inclus.
+ * Seuls les fichiers explicitement sélectionnés sont inclus (plus de fichiers "unknown" automatiques).
  */
 export function filterRelevantFiles(allFiles: FileEntry[], relevantDocNames: string[]): FileEntry[] {
-  const selectedFiles = allFiles.filter((f) =>
+  return allFiles.filter((f) =>
     relevantDocNames.some((docName) => nameMatches(f.name, docName))
   );
-
-  const unknownFiles = allFiles.filter((f) =>
-    !KNOWN_DOC_NAMES.some((docName) => nameMatches(f.name, docName))
-  );
-
-  return [...unknownFiles, ...selectedFiles];
 }
 
 /**

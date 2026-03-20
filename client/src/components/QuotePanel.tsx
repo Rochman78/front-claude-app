@@ -46,15 +46,28 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
             Le PDF sera joint automatiquement au brouillon lors du push.
           </p>
         </div>
-        <a
-          href={result.pennylaneUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn-primary"
-          style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '10px' }}
-        >
-          Voir le devis dans Pennylane
-        </a>
+        <div className="quote-panel-actions" style={{ marginTop: '10px' }}>
+          {result.pdfUrl && (
+            <a
+              href={result.pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary"
+              style={{ textAlign: 'center', textDecoration: 'none' }}
+            >
+              Consulter le PDF
+            </a>
+          )}
+          <a
+            href={result.pennylaneUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary"
+            style={{ textAlign: 'center', textDecoration: 'none', flex: 1 }}
+          >
+            Voir dans Pennylane
+          </a>
+        </div>
       </div>
     );
   }
@@ -207,7 +220,11 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
       onSendMessage(
         `Le devis PDF ${quoteResult.quoteNumber} est créé et sera joint au mail en pièce jointe. ` +
         `Rédige un nouveau brouillon qui dit au client que son devis est en pièce jointe. ` +
-        `Récapitule la commande et indique les prochaines étapes.`
+        `Récapitule la commande (produit, dimensions, prix). ` +
+        `Le texte de fin du mail doit indiquer : pour donner suite, retourner le devis signé ou accord par retour de mail. ` +
+        `Le règlement s'effectue par virement bancaire aux coordonnées indiquées sur le devis. ` +
+        `La fabrication sera lancée dès réception des fonds, avec un délai de production d'environ 14 jours. ` +
+        `Proposer de nous contacter pour toute question.`
       );
     } catch (err) {
       console.error('[plugin] create-quote error:', err);

@@ -39,11 +39,14 @@ export function useConversationCache() {
 
       const cached: CachedConversation = {
         conversationId: data.conversationId,
-        messages: data.messages.map((m: { id: string; role: string; content: string }) => ({
-          id: m.id,
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        })),
+        messages: data.messages
+          // Filtrer les messages corrompus (contiennent du CSS brut)
+          .filter((m: { content: string }) => !m.content.includes('@media screen'))
+          .map((m: { id: string; role: string; content: string }) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+          })),
       };
 
       CACHE.set(frontConvId, cached);

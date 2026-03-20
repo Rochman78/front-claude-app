@@ -18,6 +18,8 @@ interface UseClaudeReturn {
     subject?: string;
   }) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
+  restore: (msgs: Message[], convId: string) => void;
+  reset: () => void;
   setError: (error: string) => void;
   clearError: () => void;
 }
@@ -143,6 +145,25 @@ export function useClaude(): UseClaudeReturn {
     }
   }, [conversationId]);
 
+  /** Restaurer un historique existant (depuis le cache ou la BDD) */
+  const restore = useCallback((msgs: Message[], convId: string) => {
+    setMessages(msgs);
+    setConversationId(convId);
+    setStreamingContent('');
+    setIsStreaming(false);
+    setError(null);
+  }, []);
+
+  /** Reset complet (nouveau mail sans historique) */
+  const reset = useCallback(() => {
+    setMessages([]);
+    setConversationId(null);
+    setStreamingContent('');
+    setIsStreaming(false);
+    setError(null);
+    msgIdCounter.current = 0;
+  }, []);
+
   const exposedSetError = useCallback((msg: string) => setError(msg), []);
   const clearError = useCallback(() => setError(null), []);
 
@@ -154,6 +175,8 @@ export function useClaude(): UseClaudeReturn {
     error,
     analyze,
     sendMessage,
+    restore,
+    reset,
     setError: exposedSetError,
     clearError,
   };

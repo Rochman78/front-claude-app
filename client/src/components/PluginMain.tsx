@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { FrontSingleConversationContext } from '../providers/FrontContext';
 import { detectStore } from '../hooks/useStore';
 import { useClaude } from '../hooks/useClaude';
+import { useConversationCache } from '../hooks/useConversationCache';
 import MailPreview from './MailPreview';
 import ClaudeChat from './ClaudeChat';
 import DraftFinal from './DraftFinal';
@@ -44,15 +45,64 @@ interface PluginMainProps {
 export default function PluginMain({ context }: PluginMainProps) {
   const store = detectStore(context);
   const claude = useClaude();
+  const conversationCache = useConversationCache();
   const [manualValidation, setManualValidation] = useState(false);
   const [quotePdfUrl, setQuotePdfUrl] = useState<string | null>(null);
   const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
   const [quotePennylaneUrl, setQuotePennylaneUrl] = useState<string | null>(null);
   const [quoteDraftText, setQuoteDraftText] = useState<string | null>(null);
   const [mailThread, setMailThread] = useState<string>('');
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const prevConvId = useRef<string>('');
 
   const recipient = context.conversation.recipient;
   const subject = context.conversation.subject;
+  const frontConvId = context.conversation.id;
+
+  // Quand la conversation Front change → charger l'historique depuis le cache ou la BDD
+  useEffect(() => {
+    if (!frontConvId || frontConvId === prevConvId.current) return;
+    prevConvId.current = frontConvId;
+
+    // Reset les states liés au devis
+    setManualValidation(false);
+    setQuotePdfUrl(null);
+    setQuoteNumber(null);
+    setQuotePennylaneUrl(null);
+    setQuoteDraftText(null);
+
+    // 1. Vérifier le cache mémoire
+    const cached = conversationCache.getFromCache(frontConvId);
+    if (cached) {
+      console.log(`[plugin] cache hit for ${frontConvId}: ${cached.messages.length} msgs`);
+      claude.restore(cached.messages, cached.conversationId);
+      return;
+    }
+
+    // 2. Charger depuis la BDD
+    if (!store) return;
+    setLoadingHistory(true);
+    conversationCache.loadFromDB(frontConvId, store.code).then((result) => {
+      if (result && frontConvId === prevConvId.current) {
+        console.log(`[plugin] DB hit for ${frontConvId}: ${result.messages.length} msgs`);
+        claude.restore(result.messages, result.conversationId);
+      } else if (frontConvId === prevConvId.current) {
+        // Pas d'historique → reset
+        claude.reset();
+      }
+      setLoadingHistory(false);
+    });
+  }, [frontConvId, store, claude, conversationCache]);
+
+  // Sauvegarder dans le cache quand les messages changent
+  useEffect(() => {
+    if (claude.messages.length > 0 && claude.conversationId && frontConvId) {
+      conversationCache.setInCache(frontConvId, {
+        conversationId: claude.conversationId,
+        messages: claude.messages,
+      });
+    }
+  }, [claude.messages, claude.conversationId, frontConvId, conversationCache]);
 
   if (!store) {
     return (
@@ -177,7 +227,11 @@ export default function PluginMain({ context }: PluginMainProps) {
         </div>
       )}
 
-      {!hasMessages && !claude.isStreaming && (
+      {loadingHistory && (
+        <LoadingState message="Chargement de l'historique..." />
+      )}
+
+      {!hasMessages && !claude.isStreaming && !loadingHistory && (
         <div className="plugin-actions">
           <button className="btn-primary" onClick={handleAnalyze}>
             Analyser avec Claude

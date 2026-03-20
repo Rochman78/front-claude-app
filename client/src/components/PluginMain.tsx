@@ -5,10 +5,10 @@ import { useClaude } from '../hooks/useClaude';
 import MailPreview from './MailPreview';
 import ClaudeChat from './ClaudeChat';
 import DraftFinal from './DraftFinal';
-import QuoteBlock from './QuoteBlock';
+import QuotePanel from './QuotePanel';
 import LoadingState from './LoadingState';
-import { detectQuoteJson } from '../utils/detectQuoteJson';
 import { isDraftReady } from '../utils/cleanDraft';
+import { hasQuoteContent, extractQuoteData } from '../utils/extractQuoteData';
 
 /** Structure réelle d'un message Front SDK */
 interface FrontMessage {
@@ -150,8 +150,11 @@ export default function PluginMain({ context }: PluginMainProps) {
   const autoReady = lastAssistantMsg ? isDraftReady(lastAssistantMsg.content) : false;
   const showDraft = !claude.isStreaming && hasDraft && (autoReady || manualValidation);
 
-  // Détecter un JSON devis dans la réponse
-  const quoteData = lastAssistantMsg ? detectQuoteJson(lastAssistantMsg.content) : null;
+  // Détecter un devis dans la réponse (mots-clés ou JSON)
+  const showQuote = !claude.isStreaming && lastAssistantMsg
+    ? hasQuoteContent(lastAssistantMsg.content)
+    : false;
+  const quoteData = lastAssistantMsg ? extractQuoteData(lastAssistantMsg.content) : null;
 
   return (
     <div className="plugin-main">
@@ -203,8 +206,13 @@ export default function PluginMain({ context }: PluginMainProps) {
         <DraftFinal rawContent={lastAssistantMsg.content} context={context} />
       )}
 
-      {quoteData && !claude.isStreaming && (
-        <QuoteBlock quoteData={quoteData} inboxName={store.inboxName} />
+      {showQuote && quoteData && (
+        <QuotePanel
+          quote={quoteData}
+          storeCode={store.code}
+          inboxName={store.inboxName}
+          onSendMessage={claude.sendMessage}
+        />
       )}
     </div>
   );

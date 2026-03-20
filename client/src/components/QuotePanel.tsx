@@ -62,35 +62,18 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
   if (result) {
     return (
       <div className="quote-panel">
-        <div className="quote-panel-header">Devis créé</div>
         <div className="quote-panel-result">
-          <p>Devis {result.quoteNumber} — {Number(result.amountTTC || 0).toFixed(2)} € TTC</p>
-          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Le PDF sera joint automatiquement au brouillon lors du push.
-          </p>
+          <p>Le devis {result.quoteNumber} a bien été généré depuis Pennylane et chargé dans le brouillon.</p>
         </div>
-        <div className="quote-panel-actions" style={{ marginTop: '10px' }}>
-          {result.pdfUrl && (
-            <a
-              href={result.pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-secondary"
-              style={{ textAlign: 'center', textDecoration: 'none' }}
-            >
-              Consulter le PDF
-            </a>
-          )}
-          <a
-            href={result.pennylaneUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-primary"
-            style={{ textAlign: 'center', textDecoration: 'none', flex: 1 }}
-          >
-            Voir dans Pennylane
-          </a>
-        </div>
+        <a
+          href={result.pennylaneUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-primary"
+          style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '10px' }}
+        >
+          Modifier le devis PDF
+        </a>
       </div>
     );
   }

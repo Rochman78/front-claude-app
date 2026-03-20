@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   type ExtractedQuote,
   getMissingFields,
-  computeTotals,
   formatQuotePayload,
 } from '../utils/extractQuoteData';
 
@@ -20,29 +19,29 @@ interface QuoteResult {
   pdfUrl: string;
   pennylaneUrl: string;
   quoteNumber: string;
-  amountTTC: number;
 }
 
+type PanelState = 'ready' | 'missing' | 'form' | 'creating' | 'done';
+
 export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage, onQuoteCreated }: QuotePanelProps) {
-  const [creating, setCreating] = useState(false);
-  const [creatingStep, setCreatingStep] = useState('');
+  const [state, setState] = useState<PanelState>('ready');
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<Record<string, string>>({});
 
-  // Merger les données du formulaire dans le quote
   const mergedQuote = mergeFormData(quote, formData);
   const missingFields = getMissingFields(mergedQuote);
-  const { totalHT, totalTTC } = computeTotals(mergedQuote.lines);
 
-  // --- Devis créé ---
-  if (result) {
+  // Déterminer l'état initial si pas encore d'action utilisateur
+  const effectiveState = (state === 'ready' && missingFields.length > 0) ? 'missing' : state;
+
+  // ─── ÉTAT 3 : Devis créé ───
+  if (effectiveState === 'done' && result) {
     return (
       <div className="quote-panel">
-        <div className="quote-panel-result">
-          <p>Le devis {result.quoteNumber} a bien été généré depuis Pennylane et chargé dans le brouillon.</p>
-        </div>
+        <p style={{ fontSize: '13px' }}>
+          Le devis {result.quoteNumber} a bien été généré depuis Pennylane et chargé dans le brouillon.
+        </p>
         <a
           href={result.pennylaneUrl}
           target="_blank"
@@ -56,11 +55,23 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
     );
   }
 
-  // --- Infos manquantes (sans formulaire) ---
-  if (missingFields.length > 0 && !showForm) {
+  // ─── ÉTAT 2 : Génération en cours ───
+  if (effectiveState === 'creating') {
     return (
       <div className="quote-panel">
-        <div className="quote-panel-header">Générer devis PDF</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="loading-spinner" />
+          <span style={{ fontSize: '13px' }}>Génération du devis en cours...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Infos manquantes (liste) ───
+  if (effectiveState === 'missing') {
+    return (
+      <div className="quote-panel">
+        <div className="quote-panel-header">Devis détecté</div>
         <div className="quote-panel-missing">
           <p>Informations manquantes pour le devis PDF :</p>
           <ul>
@@ -69,22 +80,16 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
             ))}
           </ul>
         </div>
-
-        {error && (
-          <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>
-        )}
-
+        {error && <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>}
         <div className="quote-panel-actions">
-          <button className="btn-secondary" onClick={() => setShowForm(true)}>
+          <button className="btn-secondary" onClick={() => setState('form')}>
             Remplir manuellement
           </button>
           <button
             className="btn-secondary"
             onClick={() => {
               const list = missingFields.map((f) => f.label).join(', ');
-              onSendMessage(
-                `Rédige un brouillon pour demander au client les informations manquantes pour le devis : ${list}`
-              );
+              onSendMessage(`Rédige un brouillon pour demander au client les informations manquantes pour le devis : ${list}`);
             }}
           >
             Demander au client
@@ -94,8 +99,8 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
     );
   }
 
-  // --- Formulaire infos manquantes ---
-  if (missingFields.length > 0 && showForm) {
+  // ─── Formulaire saisie manuelle ───
+  if (effectiveState === 'form') {
     return (
       <div className="quote-panel">
         <div className="quote-panel-header">Compléter les informations</div>
@@ -113,71 +118,30 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
           ))}
         </div>
         <div className="quote-panel-actions">
-          <button className="btn-secondary" onClick={() => setShowForm(false)}>
-            Annuler
-          </button>
-          <button
-            className="btn-primary"
-            onClick={() => {
-              // Re-render recalcule missingFields avec les données saisies
-            }}
-            style={{ width: 'auto' }}
-          >
-            Valider
-          </button>
+          <button className="btn-secondary" onClick={() => setState('missing')}>Annuler</button>
+          <button className="btn-primary" onClick={() => setState('ready')} style={{ width: 'auto' }}>Valider</button>
         </div>
       </div>
     );
   }
 
-  // --- Tout est complet → bouton créer ---
+  // ─── ÉTAT 1 : Devis détecté, prêt à générer ───
   return (
     <div className="quote-panel">
-      <div className="quote-panel-header">Générer devis PDF</div>
-
-      <div className="quote-lines">
-        {mergedQuote.lines.map((line, i) => (
-          <div key={i} className="quote-line">
-            <span className="quote-line-label">{line.label}</span>
-            <span className="quote-line-detail">
-              {line.quantity} x {parseFloat(line.unitPrice || '0').toFixed(2)} €
-            </span>
-          </div>
-        ))}
-        <div className="quote-totals">
-          <div className="quote-total-row">
-            <span>Total HT</span>
-            <span>{totalHT.toFixed(2)} €</span>
-          </div>
-          <div className="quote-total-row total-ttc">
-            <span>Total TTC</span>
-            <span>{totalTTC.toFixed(2)} €</span>
-          </div>
-        </div>
-      </div>
-
-      {error && (
-        <p style={{ color: 'var(--error)', fontSize: '12px', margin: '8px 0' }}>{error}</p>
-      )}
-
-      <button
-        className="btn-primary"
-        onClick={() => handleCreate(mergedQuote)}
-        disabled={creating}
-        style={{ marginTop: '10px' }}
-      >
-        {creating ? creatingStep || 'Génération en cours...' : 'Générer devis PDF'}
+      <div className="quote-panel-header">Devis détecté</div>
+      {error && <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>}
+      <button className="btn-primary" onClick={handleCreate} style={{ marginTop: '4px' }}>
+        Générer devis PDF
       </button>
     </div>
   );
 
-  async function handleCreate(q: ExtractedQuote) {
-    setCreating(true);
-    setCreatingStep('Génération en cours...');
+  async function handleCreate() {
+    setState('creating');
     setError(null);
 
     try {
-      const payload = formatQuotePayload(q, storeCode, inboxName);
+      const payload = formatQuotePayload(mergedQuote, storeCode, inboxName);
       const response = await fetch(`${API_BASE}/api/plugin/create-quote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -194,11 +158,10 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
         pdfUrl: data.pdfUrl || '',
         pennylaneUrl: data.pennylaneUrl || '',
         quoteNumber: data.quoteNumber || '',
-        amountTTC: Number(data.amountTTC || data.amount || 0),
       };
 
-      setCreatingStep('Devis créé ! Mise à jour du brouillon...');
       setResult(quoteResult);
+      setState('done');
       onQuoteCreated?.(quoteResult.pdfUrl, quoteResult.quoteNumber);
 
       onSendMessage(
@@ -210,9 +173,7 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
     } catch (err) {
       console.error('[plugin] create-quote error:', err);
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
-    } finally {
-      setCreating(false);
-      setCreatingStep('');
+      setState('ready');
     }
   }
 }

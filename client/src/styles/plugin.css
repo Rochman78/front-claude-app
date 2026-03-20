@@ -414,3 +414,98 @@ body {
   text-decoration: underline;
   font-size: 12px;
 }
+
+/* === Quote Panel === */
+.quote-panel {
+  margin: 12px 16px;
+  padding: 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.quote-panel-header {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+
+.quote-panel-missing {
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.quote-panel-missing p {
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.quote-panel-missing ul {
+  list-style: none;
+  padding: 0;
+}
+
+.quote-panel-missing li {
+  padding: 3px 0;
+  color: var(--error);
+}
+
+.quote-panel-missing li::before {
+  content: "— ";
+  color: var(--text-secondary);
+}
+
+.quote-panel-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.quote-panel-result {
+  padding: 10px;
+  background: var(--success-bg);
+  border-radius: var(--radius);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.quote-panel-result p {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+/* === Quote Form === */
+.quote-panel-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.form-field label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.form-field input {
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.form-field input:focus {
+  outline: none;
+  border-color: var(--primary);
+}

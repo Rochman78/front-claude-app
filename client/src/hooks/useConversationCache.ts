@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useCallback } from 'react';
 import type { Message } from '../components/MessageBubble';
 
 const API_BASE = window.location.origin;
@@ -9,25 +9,26 @@ interface CachedConversation {
 }
 
 /**
- * Cache mémoire des conversations Claude.
- * Persiste entre les changements de mail (tant que le plugin reste ouvert).
- * Clé = frontConversationId.
+ * Cache mémoire au niveau module — survit aux mount/unmount des composants.
+ * Persiste tant que le plugin (iframe) est ouvert.
  */
+const CACHE = new Map<string, CachedConversation>();
+
 export function useConversationCache() {
-  const cache = useRef<Map<string, CachedConversation>>(new Map());
-
-  /** Récupère une conversation depuis le cache mémoire */
   const getFromCache = useCallback((frontConvId: string): CachedConversation | null => {
-    return cache.current.get(frontConvId) || null;
+    const cached = CACHE.get(frontConvId) || null;
+    if (cached) {
+      console.log(`[cache] hit for ${frontConvId}: ${cached.messages.length} msgs`);
+    }
+    return cached;
   }, []);
 
-  /** Sauvegarde une conversation dans le cache mémoire */
   const setInCache = useCallback((frontConvId: string, data: CachedConversation) => {
-    cache.current.set(frontConvId, data);
+    CACHE.set(frontConvId, data);
   }, []);
 
-  /** Charge une conversation depuis la BDD (si pas en cache) */
   const loadFromDB = useCallback(async (frontConvId: string, storeCode: string): Promise<CachedConversation | null> => {
+    console.log(`[cache] miss, loading from DB ${frontConvId}`);
     try {
       const res = await fetch(
         `${API_BASE}/api/plugin/conversation?front_conversation_id=${encodeURIComponent(frontConvId)}&store_code=${encodeURIComponent(storeCode)}`
@@ -45,8 +46,8 @@ export function useConversationCache() {
         })),
       };
 
-      // Mettre en cache
-      cache.current.set(frontConvId, cached);
+      CACHE.set(frontConvId, cached);
+      console.log(`[cache] loaded from DB ${frontConvId}: ${cached.messages.length} msgs`);
       return cached;
     } catch (err) {
       console.error('[cache] loadFromDB error:', err);

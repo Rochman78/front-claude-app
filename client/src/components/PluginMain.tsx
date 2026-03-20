@@ -6,6 +6,7 @@ import MailPreview from './MailPreview';
 import ClaudeChat from './ClaudeChat';
 import DraftFinal from './DraftFinal';
 import QuotePanel from './QuotePanel';
+import ErrorBoundary from './ErrorBoundary';
 import LoadingState from './LoadingState';
 import { isDraftReady } from '../utils/cleanDraft';
 import { hasQuoteContent, extractQuoteData } from '../utils/extractQuoteData';
@@ -207,12 +208,14 @@ export default function PluginMain({ context }: PluginMainProps) {
       )}
 
       {showQuote && quoteData && (
-        <QuotePanel
-          quote={quoteData}
-          storeCode={store.code}
-          inboxName={store.inboxName}
-          onSendMessage={claude.sendMessage}
-        />
+        <ErrorBoundary>
+          <QuotePanel
+            quote={quoteData}
+            storeCode={store.code}
+            inboxName={store.inboxName}
+            onSendMessage={claude.sendMessage}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );

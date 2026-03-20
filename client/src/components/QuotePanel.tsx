@@ -39,7 +39,7 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage 
       <div className="quote-panel">
         <div className="quote-panel-header">Devis créé</div>
         <div className="quote-panel-result">
-          <p>Devis {result.quoteNumber} — {result.amountTTC.toFixed(2)} € TTC</p>
+          <p>Devis {result.quoteNumber} — {Number(result.amountTTC || 0).toFixed(2)} € TTC</p>
           <a href={result.pdfUrl} target="_blank" rel="noopener noreferrer" className="quote-pdf-link">
             Voir le PDF
           </a>
@@ -192,9 +192,9 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage 
 
       const data = await response.json();
       setResult({
-        pdfUrl: data.pdfUrl,
-        quoteNumber: data.quoteNumber,
-        amountTTC: data.amountTTC,
+        pdfUrl: data.pdfUrl || '',
+        quoteNumber: data.quoteNumber || '',
+        amountTTC: Number(data.amountTTC || data.amount || 0),
       });
     } catch (err) {
       console.error('[plugin] create-quote error:', err);

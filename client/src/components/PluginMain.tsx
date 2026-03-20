@@ -9,7 +9,6 @@ import QuotePanel from './QuotePanel';
 import ErrorBoundary from './ErrorBoundary';
 import LoadingState from './LoadingState';
 import { isDraftReady } from '../utils/cleanDraft';
-import { hasQuoteContent, extractQuoteData } from '../utils/extractQuoteData';
 
 /** Structure réelle d'un message Front SDK */
 interface FrontMessage {
@@ -153,17 +152,8 @@ export default function PluginMain({ context }: PluginMainProps) {
   const autoReady = lastAssistantMsg ? isDraftReady(lastAssistantMsg.content) : false;
   const showDraft = !claude.isStreaming && hasDraft && (autoReady || manualValidation);
 
-  // Détecter un devis dans la réponse (mots-clés ou texte parsable)
-  const showQuote = !claude.isStreaming && lastAssistantMsg
-    ? hasQuoteContent(lastAssistantMsg.content)
-    : false;
-  const quoteData = lastAssistantMsg
-    ? extractQuoteData(lastAssistantMsg.content, {
-        customerEmail: recipient?.handle,
-        customerName: recipient?.name,
-        storeCode: store.code,
-      })
-    : null;
+  // QuotePanel visible dès qu'il y a au moins un message Claude
+  const showQuotePanel = hasMessages && !claude.isStreaming;
 
   return (
     <div className="plugin-main">
@@ -211,10 +201,12 @@ export default function PluginMain({ context }: PluginMainProps) {
         </div>
       )}
 
-      {showQuote && quoteData && (
+      {showQuotePanel && lastAssistantMsg && (
         <ErrorBoundary>
           <QuotePanel
-            quote={quoteData}
+            claudeText={lastAssistantMsg.content}
+            customerEmail={recipient?.handle || ''}
+            customerName={recipient?.name || ''}
             storeCode={store.code}
             inboxName={store.inboxName}
             onSendMessage={claude.sendMessage}

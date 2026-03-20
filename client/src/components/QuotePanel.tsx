@@ -3,12 +3,17 @@ import {
   type ExtractedQuote,
   getMissingFields,
   formatQuotePayload,
+  extractQuoteData,
 } from '../utils/extractQuoteData';
 
 const API_BASE = window.location.origin;
 
 interface QuotePanelProps {
-  quote: ExtractedQuote;
+  /** Texte brut de la dernière réponse Claude */
+  claudeText: string;
+  /** Contexte client depuis Front App */
+  customerEmail: string;
+  customerName: string;
   storeCode: string;
   inboxName: string;
   onSendMessage: (message: string) => void;
@@ -21,22 +26,19 @@ interface QuoteResult {
   quoteNumber: string;
 }
 
-type PanelState = 'ready' | 'missing' | 'form' | 'creating' | 'done';
+type PanelState = 'idle' | 'missing' | 'form' | 'creating' | 'done';
 
-export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage, onQuoteCreated }: QuotePanelProps) {
-  const [state, setState] = useState<PanelState>('ready');
+export default function QuotePanel({
+  claudeText, customerEmail, customerName, storeCode, inboxName, onSendMessage, onQuoteCreated,
+}: QuotePanelProps) {
+  const [state, setState] = useState<PanelState>('idle');
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
-
-  const mergedQuote = mergeFormData(quote, formData);
-  const missingFields = getMissingFields(mergedQuote);
-
-  // Déterminer l'état initial si pas encore d'action utilisateur
-  const effectiveState = (state === 'ready' && missingFields.length > 0) ? 'missing' : state;
+  const [extractedQuote, setExtractedQuote] = useState<ExtractedQuote | null>(null);
 
   // ─── ÉTAT 3 : Devis créé ───
-  if (effectiveState === 'done' && result) {
+  if (state === 'done' && result) {
     return (
       <div className="quote-panel">
         <p style={{ fontSize: '13px' }}>
@@ -56,7 +58,7 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
   }
 
   // ─── ÉTAT 2 : Génération en cours ───
-  if (effectiveState === 'creating') {
+  if (state === 'creating') {
     return (
       <div className="quote-panel">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -67,15 +69,30 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
     );
   }
 
-  // ─── Infos manquantes (liste) ───
-  if (effectiveState === 'missing') {
+  // ─── Infos manquantes ───
+  if (state === 'missing' && extractedQuote) {
+    const merged = mergeFormData(extractedQuote, formData);
+    const missing = getMissingFields(merged);
+
+    if (missing.length === 0) {
+      // Plus rien ne manque après saisie → lancer la création
+      handleCreate(merged);
+      return (
+        <div className="quote-panel">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="loading-spinner" />
+            <span style={{ fontSize: '13px' }}>Génération du devis en cours...</span>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="quote-panel">
-        <div className="quote-panel-header">Devis détecté</div>
+        <div className="quote-panel-header">Informations manquantes</div>
         <div className="quote-panel-missing">
-          <p>Informations manquantes pour le devis PDF :</p>
           <ul>
-            {missingFields.map((f) => (
+            {missing.map((f) => (
               <li key={f.key}>{f.label}</li>
             ))}
           </ul>
@@ -88,8 +105,9 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
           <button
             className="btn-secondary"
             onClick={() => {
-              const list = missingFields.map((f) => f.label).join(', ');
+              const list = missing.map((f) => f.label).join(', ');
               onSendMessage(`Rédige un brouillon pour demander au client les informations manquantes pour le devis : ${list}`);
+              setState('idle');
             }}
           >
             Demander au client
@@ -100,12 +118,15 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
   }
 
   // ─── Formulaire saisie manuelle ───
-  if (effectiveState === 'form') {
+  if (state === 'form' && extractedQuote) {
+    const merged = mergeFormData(extractedQuote, formData);
+    const missing = getMissingFields(merged);
+
     return (
       <div className="quote-panel">
         <div className="quote-panel-header">Compléter les informations</div>
         <div className="quote-panel-form">
-          {missingFields.map((field) => (
+          {missing.map((field) => (
             <div key={field.key} className="form-field">
               <label>{field.label}</label>
               <input
@@ -119,29 +140,49 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
         </div>
         <div className="quote-panel-actions">
           <button className="btn-secondary" onClick={() => setState('missing')}>Annuler</button>
-          <button className="btn-primary" onClick={() => setState('ready')} style={{ width: 'auto' }}>Valider</button>
+          <button className="btn-primary" onClick={() => setState('missing')} style={{ width: 'auto' }}>Valider</button>
         </div>
       </div>
     );
   }
 
-  // ─── ÉTAT 1 : Devis détecté, prêt à générer ───
+  // ─── ÉTAT 1 : Bouton par défaut (toujours visible) ───
   return (
     <div className="quote-panel">
-      <div className="quote-panel-header">Devis détecté</div>
       {error && <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>}
-      <button className="btn-primary" onClick={handleCreate} style={{ marginTop: '4px' }}>
+      <button className="btn-primary" onClick={handleClick}>
         Générer devis PDF
       </button>
     </div>
   );
 
-  async function handleCreate() {
+  function handleClick() {
+    setError(null);
+
+    // Extraire les données du chiffrage depuis le texte de Claude
+    const quote = extractQuoteData(claudeText, { customerEmail, customerName, storeCode });
+
+    if (!quote) {
+      setError('Aucun chiffrage détecté dans la réponse de Claude. Demandez-lui d\'abord de calculer le devis.');
+      return;
+    }
+
+    setExtractedQuote(quote);
+    const missing = getMissingFields(mergeFormData(quote, formData));
+
+    if (missing.length > 0) {
+      setState('missing');
+    } else {
+      handleCreate(quote);
+    }
+  }
+
+  async function handleCreate(quote: ExtractedQuote) {
     setState('creating');
     setError(null);
 
     try {
-      const payload = formatQuotePayload(mergedQuote, storeCode, inboxName);
+      const payload = formatQuotePayload(quote, storeCode, inboxName);
       const response = await fetch(`${API_BASE}/api/plugin/create-quote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -173,7 +214,7 @@ export default function QuotePanel({ quote, storeCode, inboxName, onSendMessage,
     } catch (err) {
       console.error('[plugin] create-quote error:', err);
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
-      setState('ready');
+      setState('idle');
     }
   }
 }

@@ -53,6 +53,20 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
         }
         console.log('[plugin] draft with PDF pushed successfully');
       } else {
+        // Supprimer les brouillons existants avant de créer le nouveau
+        console.log('[plugin] deleting existing drafts before createDraft');
+        const delRes = await fetch(`${API_BASE}/api/plugin/delete-drafts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId: context.conversation.id }),
+        });
+        if (delRes.ok) {
+          const delData = await delRes.json();
+          console.log(`[plugin] deleted ${delData.deleted} existing draft(s)`);
+        } else {
+          console.warn('[plugin] delete-drafts failed, continuing anyway');
+        }
+
         // Push via SDK Front (sans pièce jointe)
         const messagesResponse = await context.listMessages();
         const messages = messagesResponse.results;

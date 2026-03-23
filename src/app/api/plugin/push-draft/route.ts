@@ -150,6 +150,12 @@ async function resolveChannelAndAuthor(conversationId: string): Promise<{ channe
     const conv = await convRes.json();
     convType = conv.type || 'unknown';
 
+    // Si convType est unknown, déduire depuis le type du dernier message
+    if (convType === 'unknown' && conv.last_message?.type) {
+      convType = conv.last_message.type === 'front_chat' ? 'chat' : conv.last_message.type;
+      console.log(`[push-draft/resolve] convType deduced from last_message.type: ${conv.last_message.type} → ${convType}`);
+    }
+
     console.log(`[push-draft/resolve] conv type=${convType} subject="${conv.subject}" last_message_id=${conv.last_message?.id}`);
 
     // Stratégie 1 : extraire le channel_id du dernier message (fonctionne pour tous les types)
@@ -177,10 +183,16 @@ async function resolveChannelAndAuthor(conversationId: string): Promise<{ channe
                 const smtp = channels.find((c: Record<string, unknown>) => c.type === 'smtp');
                 if (smtp) { channelId = smtp.id as string; break; }
               } else {
-                // Chat/custom/unknown : prendre le premier canal non-SMTP, sinon le premier canal
+                // Chat/custom/unknown : prioriser front_chat, puis custom, puis premier non-SMTP
+                const frontChat = channels.find((c: Record<string, unknown>) => c.type === 'front_chat');
+                const custom = channels.find((c: Record<string, unknown>) => c.type === 'custom');
                 const nonSmtp = channels.find((c: Record<string, unknown>) => c.type !== 'smtp');
-                const fallback = nonSmtp || channels[0];
-                if (fallback) { channelId = fallback.id as string; break; }
+                const match = frontChat || custom || nonSmtp || channels[0];
+                if (match) {
+                  channelId = match.id as string;
+                  console.log(`[push-draft/resolve] selected channel: ${channelId} (type=${match.type})`);
+                  break;
+                }
               }
             }
           }

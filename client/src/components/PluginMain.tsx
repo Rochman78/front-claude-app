@@ -304,7 +304,7 @@ export default function PluginMain({ context }: PluginMainProps) {
       {/* Boutons sticky en bas */}
       {hasMessages && !claude.isStreaming && (
         <div className="actions-container">
-          {/* Brouillon validé : texte (fond vert) + boutons */}
+          {/* 1. Pousser dans Front App (si brouillon validé) */}
           {showDraft && lastAssistantMsg && (
             <DraftFinal
               rawContent={quoteDraftText || lastAssistantMsg.content}
@@ -315,14 +315,7 @@ export default function PluginMain({ context }: PluginMainProps) {
             />
           )}
 
-          {/* Valider le brouillon */}
-          {!showDraft && hasDraft && !manualValidation && (
-            <button className="btn-validate" onClick={() => setManualValidation(true)}>
-              Valider le brouillon
-            </button>
-          )}
-
-          {/* QuotePanel : devis créé → bouton modifier */}
+          {/* 2. Devis PDF : bouton modifier (vert Pennylane) */}
           {showQuotePanel && lastAssistantMsg && quoteNumber && quotePennylaneUrl && (
             <a
               href={quotePennylaneUrl}
@@ -331,11 +324,11 @@ export default function PluginMain({ context }: PluginMainProps) {
               className="btn-quote"
               style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
             >
-              Modifier le devis PDF
+              📄 Modifier le devis PDF
             </a>
           )}
 
-          {/* QuotePanel : formulaire devis */}
+          {/* 2. Devis PDF : formulaire (vert Pennylane) */}
           {showQuotePanel && lastAssistantMsg && !(quoteNumber && quotePennylaneUrl) && (
             <ErrorBoundary>
               <QuotePanel
@@ -362,6 +355,13 @@ export default function PluginMain({ context }: PluginMainProps) {
                 }}
               />
             </ErrorBoundary>
+          )}
+
+          {/* 3. Valider le brouillon (bleu clair, en dernier) */}
+          {!showDraft && hasDraft && !manualValidation && (
+            <button className="btn-validate" onClick={() => setManualValidation(true)}>
+              Valider le brouillon
+            </button>
           )}
         </div>
       )}

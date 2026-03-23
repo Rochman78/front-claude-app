@@ -158,8 +158,8 @@ export default function QuotePanel({
   return (
     <div className="quote-panel">
       {error && <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>}
-      <button className="btn-primary" onClick={handleClick}>
-        Générer devis PDF
+      <button className="btn-quote" onClick={handleClick}>
+        📄 Générer devis PDF
       </button>
     </div>
   );

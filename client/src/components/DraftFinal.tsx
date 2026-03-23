@@ -53,6 +53,9 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
         }
         console.log('[plugin] draft with PDF pushed successfully');
       } else {
+        const convType = (context.conversation as Record<string, unknown>).type ?? 'unknown';
+        console.log('[plugin] conversation type:', convType);
+
         // Supprimer les brouillons existants avant de créer le nouveau
         console.log('[plugin] deleting existing drafts before createDraft');
         const delRes = await fetch(`${API_BASE}/api/plugin/delete-drafts`, {
@@ -67,26 +70,44 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
           console.warn('[plugin] delete-drafts failed, continuing anyway');
         }
 
-        // Push via SDK Front (sans pièce jointe)
-        const messagesResponse = await context.listMessages();
-        const messages = messagesResponse.results;
+        if (convType === 'chat' || convType === 'custom') {
+          // Chat/custom : SDK createDraft ne supporte pas replyOptions → fallback API REST
+          console.log('[plugin] chat conversation detected, using REST API fallback');
+          const response = await fetch(`${API_BASE}/api/plugin/push-draft`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              conversationId: context.conversation.id,
+              body: textToHtml(cleaned),
+            }),
+          });
+          if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || `Erreur ${response.status}`);
+          }
+          console.log('[plugin] draft pushed via REST API (chat fallback)');
+        } else {
+          // Email : Push via SDK Front
+          const messagesResponse = await context.listMessages();
+          const messages = messagesResponse.results;
 
-        if (messages.length === 0) {
-          throw new Error('Aucun message dans la conversation');
+          if (messages.length === 0) {
+            throw new Error('Aucun message dans la conversation');
+          }
+
+          const latestMessageId = messages[messages.length - 1].id;
+
+          await context.createDraft({
+            content: {
+              body: textToHtml(cleaned),
+              type: 'html',
+            },
+            replyOptions: {
+              type: 'reply',
+              originalMessageId: latestMessageId,
+            },
+          });
         }
-
-        const latestMessageId = messages[messages.length - 1].id;
-
-        await context.createDraft({
-          content: {
-            body: textToHtml(cleaned),
-            type: 'html',
-          },
-          replyOptions: {
-            type: 'reply',
-            originalMessageId: latestMessageId,
-          },
-        });
       }
 
       setPushSuccess(true);

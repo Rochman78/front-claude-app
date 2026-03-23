@@ -162,14 +162,14 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
     const d = await res.json();
     console.log('[pennylane] create quote response:', JSON.stringify(d, null, 2));
 
-    // Utiliser l'URL retournée par l'API si disponible, sinon construire avec le bon format
-    const pennylaneUrl = d.public_url || d.quote_url || d.invoice_url
-      || `https://app.pennylane.com/companies/21942122/sales/quotes/${d.id}`;
+    const quoteNumber = d.quote_number || d.label || '';
+    const companyId = process.env.PENNYLANE_COMPANY_ID || '21942122';
+    const pennylaneUrl = `https://app.pennylane.com/companies/${companyId}/customer_invoices?search=${encodeURIComponent(quoteNumber)}`;
 
     return {
       success: true,
       quoteId: d.id,
-      quoteNumber: d.quote_number || d.label,
+      quoteNumber,
       pdfUrl: d.public_file_url || d.file_url,
       pennylaneUrl,
       amount: d.currency_amount_before_tax,

@@ -16,16 +16,9 @@ interface DraftFinalProps {
 export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, skipClean }: DraftFinalProps) {
   const [pushing, setPushing] = useState(false);
   const [pushSuccess, setPushSuccess] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const cleaned = skipClean ? rawContent : cleanDraft(rawContent);
-
-  async function handleCopy() {
-    await navigator.clipboard.writeText(cleaned);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   async function handlePush() {
     setPushing(true);
@@ -155,9 +148,6 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
 
       {/* Encadré boutons : séparé */}
       <div className="draft-final-actions">
-        <button className="btn-secondary" onClick={handleCopy}>
-          {copied ? 'Copié !' : 'Copier'}
-        </button>
         <button className="btn-primary" onClick={handlePush} disabled={pushing}>
           {pushing ? 'Envoi...' : pdfUrl ? 'Pousser avec PDF' : 'Pousser dans Front App'}
         </button>

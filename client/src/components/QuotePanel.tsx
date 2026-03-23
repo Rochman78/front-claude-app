@@ -114,6 +114,12 @@ export default function QuotePanel({
           >
             Demander au client
           </button>
+          <button
+            className="btn-secondary"
+            onClick={() => handleCreate(merged)}
+          >
+            Ignorer
+          </button>
         </div>
       </div>
     );

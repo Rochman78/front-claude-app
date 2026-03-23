@@ -83,6 +83,8 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [quotePennylaneUrl, setQuotePennylaneUrl] = useState<string | null>(null);
   const [quoteDraftText, setQuoteDraftText] = useState<string | null>(null);
   const [mailThread, setMailThread] = useState<string>('');
+  const [resolvedEmail, setResolvedEmail] = useState<string>('');
+  const [resolvedName, setResolvedName] = useState<string>('');
   const [loadingHistory, setLoadingHistory] = useState(false);
   const prevConvId = useRef<string>('');
 
@@ -217,8 +219,10 @@ export default function PluginMain({ context }: PluginMainProps) {
         frontConversationId: payload.frontConversationId,
       });
 
-      // Stocker le fil de mails pour le QuotePanel
+      // Stocker le fil de mails et le vrai email/nom client pour le QuotePanel
       setMailThread(mailContent);
+      setResolvedEmail(customerEmail);
+      setResolvedName(customerName);
 
       await claude.analyze(payload);
     } catch (err) {
@@ -313,8 +317,8 @@ export default function PluginMain({ context }: PluginMainProps) {
           <QuotePanel
             claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
             mailThread={mailThread}
-            customerEmail={recipient?.handle || ''}
-            customerName={recipient?.name || ''}
+            customerEmail={resolvedEmail || recipient?.handle || ''}
+            customerName={resolvedName || recipient?.name || ''}
             storeCode={store.code}
             inboxName={store.inboxName}
             onSendMessage={claude.sendMessage}

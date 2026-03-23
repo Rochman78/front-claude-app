@@ -202,16 +202,9 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     return m ? m[1].trim() : '';
   };
 
-  // Extraire l'email : chercher TOUS les emails dans le texte, filtrer les emails système
-  const isJunkEmail = (e: string) => !e || /shopify\.com|noreply|no-reply|mailer-daemon|le-filet-de-camouflage\.fr/i.test(e);
-  const allEmails = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-  const emailFromBody = allEmails.find(e => !isJunkEmail(e)) || '';
-  const emailFromSDK = context?.customerEmail || '';
-  const finalEmail = emailFromBody || (!isJunkEmail(emailFromSDK) ? emailFromSDK : '');
-  console.log('[extractQuoteData] all emails found:', allEmails);
-  console.log('[extractQuoteData] email from body (filtered):', emailFromBody);
-  console.log('[extractQuoteData] email from SDK:', emailFromSDK);
-  console.log('[extractQuoteData] final email used:', finalEmail);
+  // Email client : vient du SDK (replyTo.handle), déjà résolu dans PluginMain
+  const finalEmail = context?.customerEmail || '';
+  console.log('[extractQuoteData] final email (from SDK replyTo):', finalEmail);
 
   // Extraire le nom depuis le corps du mail (prioritaire sur le SDK)
   const nameFromBody = getField(/(?:name|nom\s*complet)/);

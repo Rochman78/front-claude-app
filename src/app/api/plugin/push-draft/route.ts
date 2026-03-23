@@ -65,7 +65,10 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({ version }),
           }).catch(() => {});
         }
-        if (drafts.length > 0) console.log(`[plugin/push-draft] deleted ${drafts.length} existing draft(s)`);
+        if (drafts.length > 0) {
+          console.log(`[plugin/push-draft] deleted ${drafts.length} existing draft(s), waiting 1500ms...`);
+          await new Promise((r) => setTimeout(r, 1500));
+        }
       }
     } catch { /* non bloquant */ }
 

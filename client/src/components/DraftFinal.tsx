@@ -56,27 +56,9 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
         const convType = (context.conversation as Record<string, unknown>).type ?? 'unknown';
         console.log('[plugin] conversation type:', convType);
 
-        // Supprimer les brouillons existants avant de créer le nouveau
-        console.log('[plugin] deleting existing drafts before createDraft');
-        const delRes = await fetch(`${API_BASE}/api/plugin/delete-drafts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversationId: context.conversation.id }),
-        });
-        if (delRes.ok) {
-          const delData = await delRes.json();
-          console.log(`[plugin] deleted ${delData.deleted} existing draft(s)`);
-          if (delData.deleted > 0) {
-            // Laisser Front App digérer la suppression avant de créer le nouveau
-            console.log('[plugin] waiting 500ms for Front App to process deletion...');
-            await new Promise((r) => setTimeout(r, 500));
-          }
-        } else {
-          console.warn('[plugin] delete-drafts failed, continuing anyway');
-        }
-
         if (convType === 'chat' || convType === 'custom') {
-          // Chat/custom : SDK createDraft ne supporte pas replyOptions → fallback API REST
+          // Chat/custom : utiliser UNIQUEMENT le backend REST (suppression + délai + création inclus)
+          console.log('[plugin] using REST fallback for chat (not SDK createDraft)');
           const frontConversationId = context.conversation.id;
           console.log('[plugin] push chat draft - frontConversationId:', frontConversationId);
           const response = await fetch(`${API_BASE}/api/plugin/push-draft`, {
@@ -96,7 +78,25 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
           }
           console.log('[plugin] draft pushed via REST API (chat fallback)');
         } else {
-          // Email : Push via SDK Front
+          // Email : supprimer brouillons existants puis SDK createDraft
+          console.log('[plugin] using SDK createDraft for email');
+          console.log('[plugin] deleting existing drafts before createDraft');
+          const delRes = await fetch(`${API_BASE}/api/plugin/delete-drafts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conversationId: context.conversation.id }),
+          });
+          if (delRes.ok) {
+            const delData = await delRes.json();
+            console.log(`[plugin] deleted ${delData.deleted} existing draft(s)`);
+            if (delData.deleted > 0) {
+              console.log('[plugin] waiting 500ms for Front App to process deletion...');
+              await new Promise((r) => setTimeout(r, 500));
+            }
+          } else {
+            console.warn('[plugin] delete-drafts failed, continuing anyway');
+          }
+
           const messagesResponse = await context.listMessages();
           const messages = messagesResponse.results;
 

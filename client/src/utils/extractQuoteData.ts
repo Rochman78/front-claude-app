@@ -242,9 +242,16 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
 
   // Construire le customer depuis le contexte + texte
 
+  // Helper : extraire un champ de formulaire Shopify (label sur même ligne OU ligne suivante)
+  // Supporte : "Label: valeur" et "Label:\nvaleur"
+  const getField = (label: RegExp): string => {
+    const m = text.match(new RegExp(label.source + '\\s*[:：]\\s*\\n?\\s*([^\\n]+)', 'i'));
+    return m ? m[1].trim() : '';
+  };
+
   // Extraire l'email depuis le corps du mail (prioritaire sur le SDK)
   const emailFromBody = (() => {
-    const m = text.match(/(?:e-?mail|courriel)\s*[:：]\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+    const m = text.match(/(?:e-?mail|courriel)\s*[:：]\s*\n?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
     return m ? m[1].trim() : '';
   })();
   const emailFromSDK = context?.customerEmail || '';
@@ -256,10 +263,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   console.log('[extractQuoteData] final email used:', finalEmail);
 
   // Extraire le nom depuis le corps du mail (prioritaire sur le SDK)
-  const nameFromBody = (() => {
-    const m = text.match(/(?:name|nom\s*complet)\s*[:：]\s*([^\n]+)/i);
-    return m ? m[1].trim() : '';
-  })();
+  const nameFromBody = getField(/(?:name|nom\s*complet)/);
   const nameFromSDK = context?.customerName || '';
   // Ignorer les noms Shopify
   const isJunkName = (n: string) => !n || /shopify|filet.*camouflage|noreply/i.test(n);
@@ -268,27 +272,29 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   let customer: QuoteCustomer | undefined;
 
   // Détecter la raison sociale (entreprise, IUT, collectivité, etc.)
-  const raisonSocialeMatch = text.match(/(?:raison\s*sociale|entreprise|société)\s*(?:\([^)]*\))?\s*[:=]\s*([^\n]+)/i);
-  const companyName = raisonSocialeMatch ? raisonSocialeMatch[1].trim() : '';
+  const raisonSocialeRaw = getField(/(?:raison\s*sociale|entreprise|société)(?:\s*\([^)]*\))?/);
+  const companyName = raisonSocialeRaw;
   const isCompany = companyName.length > 0;
 
-  // Chercher "Nom et prénom : Jérôme Muratore" ou "Nom et prénom : Marey Sylvie"
-  const nomPrenomMatch = text.match(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom)\s*[:=]?\s*([A-Za-zÀ-ÿ-]+)\s+([A-Za-zÀ-ÿ-]+)/i);
+  // Chercher "Nom et prénom" (même ligne ou ligne suivante)
+  const nomPrenomRaw = getField(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom)/);
+  const nomPrenomParts = nomPrenomRaw.split(/\s+/).filter(Boolean);
+  const nomPrenomMatch = nomPrenomParts.length >= 2 ? nomPrenomParts : null;
 
   if (nomPrenomMatch) {
     if (isCompany) {
       customer = {
         type: 'company',
         name: companyName,
-        firstName: nomPrenomMatch[2],
-        lastName: nomPrenomMatch[1],
+        firstName: nomPrenomMatch[nomPrenomMatch.length - 1],
+        lastName: nomPrenomMatch.slice(0, -1).join(' '),
         email: finalEmail,
       };
     } else {
       customer = {
         type: 'individual',
-        firstName: nomPrenomMatch[1],
-        lastName: nomPrenomMatch[2],
+        firstName: nomPrenomMatch[0],
+        lastName: nomPrenomMatch.slice(1).join(' '),
         email: finalEmail,
       };
     }
@@ -308,7 +314,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     };
   }
 
-  console.log('[extractQuoteData] customer:', { isCompany, companyName, nomPrenom: nomPrenomMatch?.[0], type: customer?.type });
+  console.log('[extractQuoteData] customer:', { isCompany, companyName, nomPrenom: nomPrenomMatch?.join(' '), type: customer?.type });
   console.log('[extractQuoteData] customer payload:', JSON.stringify(customer));
 
   // Extraire l'adresse depuis le texte (format libre français)
@@ -325,11 +331,11 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   // 2. Rue : ligne contenant un numéro + type de voie
   const rueMatch = text.match(/(\d+[\s,]+(?:rue|avenue|boulevard|impasse|chemin|allée|place|cours|passage|voie|route)\s+[^\n]{2,50})/i);
 
-  // 3. Fallback : pattern "adresse :" suivi du contenu
-  const adresseLabelMatch = text.match(/(?:adresse(?:\s*(?:de\s*facturation|postale|complète))?)\s*[:=]\s*([^\n]+)/i);
+  // 3. Fallback : pattern "adresse :" suivi du contenu (même ligne ou ligne suivante)
+  const adresseLabelMatch = text.match(/(?:adresse(?:\s*(?:de\s*facturation|postale|complète))?)\s*[:=]\s*\n?\s*([^\n]+)/i);
 
-  // 4. Téléphone
-  const phoneMatch = text.match(/(?:tél(?:éphone)?|portable|mobile|tel)\s*[:=]?\s*([\d\s.+-]{10,})/i)
+  // 4. Téléphone (même ligne ou ligne suivante)
+  const phoneMatch = text.match(/(?:tél(?:éphone)?|portable|mobile|tel|phone)\s*[:=]?\s*\n?\s*([\d\s.+-]{10,})/i)
     || text.match(/(0[67][\s.]?[\d\s.]{8,})/);
 
   console.log('[extractQuoteData] address matches:', {

@@ -13,21 +13,19 @@ interface DraftFinalProps {
   skipClean?: boolean;
 }
 
-export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, skipClean }: DraftFinalProps) {
+/** Hook exposant la logique push pour que PluginMain place le bouton où il veut */
+export function usePushDraft(context: FrontSingleConversationContext) {
   const [pushing, setPushing] = useState(false);
   const [pushSuccess, setPushSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [pushError, setPushError] = useState<string | null>(null);
 
-  const cleaned = skipClean ? rawContent : cleanDraft(rawContent);
-
-  async function handlePush() {
+  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string) {
     setPushing(true);
-    setError(null);
+    setPushError(null);
     setPushSuccess(false);
 
     try {
       if (pdfUrl) {
-        // Push via backend avec PDF en pièce jointe
         console.log('[plugin] pushing draft with PDF attachment');
         const response = await fetch(`${API_BASE}/api/plugin/push-draft`, {
           method: 'POST',
@@ -39,7 +37,6 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
             pdfFilename: quoteNumber ? `Devis-${quoteNumber}.pdf` : 'devis.pdf',
           }),
         });
-
         if (!response.ok) {
           const err = await response.json();
           throw new Error(err.error || `Erreur ${response.status}`);
@@ -49,14 +46,10 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
         const convType = (context.conversation as Record<string, unknown>).type ?? 'unknown';
         const convId = context.conversation.id;
         console.log('[push] conversation type:', convType, 'id:', convId);
-
-        // Utiliser le SDK createDraft UNIQUEMENT pour les emails confirmés
-        // Tout le reste (chat, custom, unknown) passe par le backend REST
         const useSDK = convType === 'email';
         console.log('[push] strategy:', useSDK ? 'SDK createDraft (email)' : 'REST backend (non-email)');
 
         if (!useSDK) {
-          // Non-email : tout géré par push-draft backend (suppression + délai 1500ms + création)
           console.log('[push] step 1: calling push-draft REST for non-email');
           const response = await fetch(`${API_BASE}/api/plugin/push-draft`, {
             method: 'POST',
@@ -72,7 +65,6 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
           }
           console.log('[push] step 4: draft created via REST');
         } else {
-          // Email : delete-drafts → délai → SDK createDraft
           console.log('[push] step 1: calling delete-drafts');
           const delRes = await fetch(`${API_BASE}/api/plugin/delete-drafts`, {
             method: 'POST',
@@ -102,14 +94,8 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
           console.log('[push] step 4c: replying to message:', latestMessageId);
 
           await context.createDraft({
-            content: {
-              body: textToHtml(cleaned),
-              type: 'html',
-            },
-            replyOptions: {
-              type: 'reply',
-              originalMessageId: latestMessageId,
-            },
+            content: { body: textToHtml(cleaned), type: 'html' },
+            replyOptions: { type: 'reply', originalMessageId: latestMessageId },
           });
           console.log('[push] step 5: draft created via SDK');
         }
@@ -119,39 +105,36 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
       setTimeout(() => setPushSuccess(false), 3000);
     } catch (err) {
       console.error('[plugin] push draft error:', err);
-      setError(err instanceof Error ? err.message : 'Erreur lors du push');
+      setPushError(err instanceof Error ? err.message : 'Erreur lors du push');
     } finally {
       setPushing(false);
     }
   }
 
-  return (
-    <>
-      {/* Encadré texte : fond vert */}
-      <div className="draft-final-text">
-        <div className="draft-final-header">Mail final</div>
-        <div className="draft-final-content">{cleaned}</div>
-        {pdfUrl && (
-          <p style={{ fontSize: '11px', color: 'var(--primary)', marginTop: '8px' }}>
-            Le devis PDF sera joint automatiquement au brouillon.
-          </p>
-        )}
-        {error && (
-          <p style={{ color: 'var(--error)', fontSize: '12px', marginTop: '8px' }}>{error}</p>
-        )}
-        {pushSuccess && (
-          <p style={{ color: 'var(--success)', fontSize: '12px', marginTop: '8px' }}>
-            Brouillon poussé dans Front App{pdfUrl ? ' avec le PDF en pièce jointe' : ''}.
-          </p>
-        )}
-      </div>
+  return { handlePush, pushing, pushSuccess, pushError };
+}
 
-      {/* Encadré boutons : séparé */}
-      <div className="draft-final-actions">
-        <button className="btn-primary" onClick={handlePush} disabled={pushing}>
-          {pushing ? 'Envoi...' : pdfUrl ? 'Pousser avec PDF' : 'Pousser dans Front App'}
-        </button>
-      </div>
-    </>
+/** Composant texte uniquement (fond vert) — les boutons sont dans PluginMain */
+export default function DraftFinal({ rawContent, pdfUrl, skipClean, pushError, pushSuccess }: DraftFinalProps & { pushError?: string | null; pushSuccess?: boolean }) {
+  const cleaned = skipClean ? rawContent : cleanDraft(rawContent);
+
+  return (
+    <div className="draft-final-text">
+      <div className="draft-final-header">Mail final</div>
+      <div className="draft-final-content">{cleaned}</div>
+      {pdfUrl && (
+        <p style={{ fontSize: '11px', color: 'var(--primary)', marginTop: '8px' }}>
+          Le devis PDF sera joint automatiquement au brouillon.
+        </p>
+      )}
+      {pushError && (
+        <p style={{ color: 'var(--error)', fontSize: '12px', marginTop: '8px' }}>{pushError}</p>
+      )}
+      {pushSuccess && (
+        <p style={{ color: 'var(--success)', fontSize: '12px', marginTop: '8px' }}>
+          Brouillon poussé dans Front App{pdfUrl ? ' avec le PDF en pièce jointe' : ''}.
+        </p>
+      )}
+    </div>
   );
 }

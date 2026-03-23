@@ -5,7 +5,8 @@ import { useClaude } from '../hooks/useClaude';
 import { useConversationCache } from '../hooks/useConversationCache';
 import MailPreview from './MailPreview';
 import ClaudeChat from './ClaudeChat';
-import DraftFinal from './DraftFinal';
+import DraftFinal, { usePushDraft } from './DraftFinal';
+import { cleanDraft } from '../utils/cleanDraft';
 import QuotePanel from './QuotePanel';
 import ErrorBoundary from './ErrorBoundary';
 import LoadingState from './LoadingState';
@@ -87,6 +88,8 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [resolvedName, setResolvedName] = useState<string>('');
   const [loadingHistory, setLoadingHistory] = useState(false);
   const prevConvId = useRef<string>('');
+  const pushDraft = usePushDraft(context);
+  const quoteClickRef = useRef<(() => void) | null>(null);
 
   const recipient = context.conversation.recipient;
   const subject = context.conversation.subject;
@@ -301,34 +304,80 @@ export default function PluginMain({ context }: PluginMainProps) {
         />
       )}
 
-      {/* Boutons sticky en bas */}
+      {/* Texte brouillon validé (fond vert) — dans la zone scrollable */}
+      {showDraft && lastAssistantMsg && (
+        <DraftFinal
+          rawContent={quoteDraftText || lastAssistantMsg.content}
+          context={context}
+          pdfUrl={quotePdfUrl || undefined}
+          quoteNumber={quoteNumber || undefined}
+          skipClean={!!quoteDraftText}
+          pushError={pushDraft.pushError}
+          pushSuccess={pushDraft.pushSuccess}
+        />
+      )}
+
+      {/* QuotePanel caché (gère les states missing/form/creating/done + enregistre handleClick) */}
+      {showQuotePanel && lastAssistantMsg && !(quoteNumber && quotePennylaneUrl) && (
+        <ErrorBoundary>
+          <QuotePanel
+            claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
+            mailThread={mailThread}
+            customerEmail={resolvedEmail || recipient?.handle || ''}
+            customerName={resolvedName || recipient?.name || ''}
+            storeCode={store.code}
+            inboxName={store.inboxName}
+            onSendMessage={claude.sendMessage}
+            onRegisterClick={(fn) => { quoteClickRef.current = fn; }}
+            onQuoteCreated={(pdfUrl, qNumber, pennylaneUrl) => {
+              setQuotePdfUrl(pdfUrl);
+              setQuoteNumber(qNumber);
+              setQuotePennylaneUrl(pennylaneUrl);
+              const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
+              setQuoteDraftText(
+                `Bonjour ${prenom},\n\n` +
+                `Veuillez trouver ci-joint votre devis pour votre filet de camouflage sur mesure.\n\n` +
+                `Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
+                `La mise en production sera lancée dès réception du règlement, avec un délai de fabrication et de livraison d'environ 14 jours.\n\n` +
+                `N'hésitez pas à nous contacter si vous avez la moindre question.`
+              );
+              setManualValidation(true);
+            }}
+          />
+        </ErrorBoundary>
+      )}
+
+      {/* ═══ CONTAINER BOUTONS FIXE EN BAS ═══ */}
       {hasMessages && !claude.isStreaming && (
         <div className="actions-container">
-          {/* Brouillon validé : 1. Modifier brouillon, 2. Pousser, 3. Devis */}
+          {/* Brouillon validé */}
           {showDraft && (
-            <button className="btn-secondary" onClick={() => { setManualValidation(false); setQuoteDraftText(null); }}>
-              Modifier le brouillon
-            </button>
+            <>
+              <button className="btn-outline" onClick={() => { setManualValidation(false); setQuoteDraftText(null); }}>
+                Modifier le brouillon
+              </button>
+              <button
+                className="btn-push"
+                onClick={() => {
+                  const content = quoteDraftText || lastAssistantMsg?.content || '';
+                  const cleaned = quoteDraftText ? content : cleanDraft(content);
+                  pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined);
+                }}
+                disabled={pushDraft.pushing}
+              >
+                {pushDraft.pushing ? 'Envoi...' : quotePdfUrl ? 'Pousser avec PDF' : 'Pousser dans Front App'}
+              </button>
+            </>
           )}
 
-          {showDraft && lastAssistantMsg && (
-            <DraftFinal
-              rawContent={quoteDraftText || lastAssistantMsg.content}
-              context={context}
-              pdfUrl={quotePdfUrl || undefined}
-              quoteNumber={quoteNumber || undefined}
-              skipClean={!!quoteDraftText}
-            />
-          )}
-
-          {/* Brouillon pas validé : 1. Valider */}
+          {/* Brouillon pas validé */}
           {!showDraft && hasDraft && !manualValidation && (
             <button className="btn-validate" onClick={() => setManualValidation(true)}>
               Valider le brouillon
             </button>
           )}
 
-          {/* Devis PDF : bouton modifier (vert Pennylane) */}
+          {/* Devis PDF : modifier (si déjà créé) */}
           {showQuotePanel && lastAssistantMsg && quoteNumber && quotePennylaneUrl && (
             <a
               href={quotePennylaneUrl}
@@ -341,33 +390,11 @@ export default function PluginMain({ context }: PluginMainProps) {
             </a>
           )}
 
-          {/* Devis PDF : formulaire (vert Pennylane) */}
+          {/* Devis PDF : générer (si pas encore créé) */}
           {showQuotePanel && lastAssistantMsg && !(quoteNumber && quotePennylaneUrl) && (
-            <ErrorBoundary>
-              <QuotePanel
-                claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
-                mailThread={mailThread}
-                customerEmail={resolvedEmail || recipient?.handle || ''}
-                customerName={resolvedName || recipient?.name || ''}
-                storeCode={store.code}
-                inboxName={store.inboxName}
-                onSendMessage={claude.sendMessage}
-                onQuoteCreated={(pdfUrl, qNumber, pennylaneUrl) => {
-                  setQuotePdfUrl(pdfUrl);
-                  setQuoteNumber(qNumber);
-                  setQuotePennylaneUrl(pennylaneUrl);
-                  const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
-                  setQuoteDraftText(
-                    `Bonjour ${prenom},\n\n` +
-                    `Veuillez trouver ci-joint votre devis pour votre filet de camouflage sur mesure.\n\n` +
-                    `Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
-                    `La mise en production sera lancée dès réception du règlement, avec un délai de fabrication et de livraison d'environ 14 jours.\n\n` +
-                    `N'hésitez pas à nous contacter si vous avez la moindre question.`
-                  );
-                  setManualValidation(true);
-                }}
-              />
-            </ErrorBoundary>
+            <button className="btn-quote" onClick={() => quoteClickRef.current?.()}>
+              📄 Générer devis PDF
+            </button>
           )}
         </div>
       )}

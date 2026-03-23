@@ -55,6 +55,7 @@ body {
 /* === Layout === */
 .plugin-main {
   overflow-y: auto;
+  padding-bottom: 120px;
 }
 
 .plugin-empty {
@@ -142,17 +143,57 @@ body {
   margin-top: 4px;
 }
 
-/* === Actions container unique === */
+/* === Container boutons fixe en bas === */
 .actions-container {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: #ffffff;
+  background: #1e3a5f;
   padding: 12px 16px;
+  border-radius: 12px 12px 0 0;
   position: sticky;
   bottom: 0;
-  z-index: 10;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Modifier le brouillon : outline blanc */
+.btn-outline {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: transparent;
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-outline:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #ffffff;
+}
+
+/* Pousser dans Front App : bleu clair */
+.btn-push {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: #3b82f6;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-push:hover {
+  background: #2563eb;
+}
+.btn-push:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Valider le brouillon : bleu clair */

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   type ExtractedQuote,
   getMissingFields,
@@ -20,6 +20,8 @@ interface QuotePanelProps {
   inboxName: string;
   onSendMessage: (message: string) => void;
   onQuoteCreated?: (pdfUrl: string, quoteNumber: string, pennylaneUrl: string) => void;
+  /** Callback pour exposer handleClick au parent */
+  onRegisterClick?: (fn: () => void) => void;
 }
 
 interface QuoteResult {
@@ -31,7 +33,7 @@ interface QuoteResult {
 type PanelState = 'idle' | 'missing' | 'form' | 'creating' | 'done';
 
 export default function QuotePanel({
-  claudeText, mailThread, customerEmail, customerName, storeCode, inboxName, onSendMessage, onQuoteCreated,
+  claudeText, mailThread, customerEmail, customerName, storeCode, inboxName, onSendMessage, onQuoteCreated, onRegisterClick,
 }: QuotePanelProps) {
   const [state, setState] = useState<PanelState>('idle');
   const [result, setResult] = useState<QuoteResult | null>(null);
@@ -154,15 +156,16 @@ export default function QuotePanel({
     );
   }
 
-  // ─── ÉTAT 1 : Bouton par défaut (toujours visible) ───
-  return (
-    <div className="quote-panel">
-      {error && <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>}
-      <button className="btn-quote" onClick={handleClick}>
-        📄 Générer devis PDF
-      </button>
-    </div>
-  );
+  // Exposer handleClick au parent pour que le bouton soit dans le container
+  useEffect(() => {
+    onRegisterClick?.(handleClick);
+  });
+
+  // ─── ÉTAT 1 : idle — pas de bouton ici, il est dans le container PluginMain ───
+  if (state === 'idle') {
+    return error ? <p style={{ color: 'var(--error)', fontSize: '12px' }}>{error}</p> : null;
+  }
+  return null;
 
   function handleClick() {
     setError(null);

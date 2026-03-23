@@ -360,7 +360,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                 Modifier le brouillon
               </button>
               <button
-                className="btn-push"
+                className={quotePdfUrl ? 'btn-push-pdf' : 'btn-push'}
                 onClick={() => {
                   const content = quoteDraftText || lastAssistantMsg?.content || '';
                   const cleaned = quoteDraftText ? content : cleanDraft(content);

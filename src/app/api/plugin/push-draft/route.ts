@@ -55,7 +55,15 @@ export async function POST(req: NextRequest) {
         const data = await existingRes.json();
         const drafts = (data._results || []).filter((m: Record<string, unknown>) => m.is_draft === true);
         for (const d of drafts) {
-          await frontFetch(`/drafts/${d.id}`, { method: 'DELETE' }).catch(() => {});
+          let version = d.version;
+          if (!version) {
+            const msgRes = await frontFetch(`/messages/${d.id}`).catch(() => null);
+            if (msgRes?.ok) version = (await msgRes.json()).version;
+          }
+          await frontFetch(`/drafts/${d.id}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ version }),
+          }).catch(() => {});
         }
         if (drafts.length > 0) console.log(`[plugin/push-draft] deleted ${drafts.length} existing draft(s)`);
       }

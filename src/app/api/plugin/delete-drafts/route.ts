@@ -45,11 +45,23 @@ export async function POST(req: NextRequest) {
       })));
     }
 
-    // Supprimer chaque brouillon
+    // Supprimer chaque brouillon (l'API Front exige le champ "version" dans le body)
     let deleted = 0;
     for (const draft of drafts) {
-      console.log(`[plugin/delete-drafts] deleting draft ${draft.id}...`);
-      const delRes = await frontFetch(`/drafts/${draft.id}`, { method: 'DELETE' });
+      // Récupérer la version du brouillon
+      let version = draft.version;
+      if (!version) {
+        const msgRes = await frontFetch(`/messages/${draft.id}`);
+        if (msgRes.ok) {
+          const msgData = await msgRes.json();
+          version = msgData.version;
+        }
+      }
+      console.log(`[plugin/delete-drafts] deleting draft ${draft.id} (version=${version})...`);
+      const delRes = await frontFetch(`/drafts/${draft.id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ version }),
+      });
       const delStatus = delRes.status;
       console.log(`[plugin/delete-drafts] DELETE /drafts/${draft.id} → ${delStatus}`);
       if (delRes.ok || delStatus === 204) {

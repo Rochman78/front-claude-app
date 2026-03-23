@@ -359,18 +359,19 @@ body {
 }
 
 /* === Draft Final (préparé pour étape 5) === */
-.draft-final {
-  margin: 12px 16px;
+/* Encadré texte brouillon : fond vert */
+.draft-final-text {
+  margin: 8px 16px;
   padding: 14px;
-  background: var(--success-bg);
-  border: 1px solid var(--success);
-  border-radius: var(--radius);
+  background: #f0fdf4;
+  border: 1px solid #16a34a;
+  border-radius: 8px;
 }
 
 .draft-final-header {
   font-weight: 600;
   font-size: 12px;
-  color: var(--success);
+  color: #16a34a;
   margin-bottom: 8px;
   text-transform: uppercase;
 }
@@ -379,9 +380,9 @@ body {
   font-size: 13px;
   white-space: pre-wrap;
   line-height: 1.5;
-  margin-bottom: 12px;
 }
 
+/* Boutons du brouillon dans le container actions */
 .draft-final-actions {
   display: flex;
   flex-direction: column;
@@ -532,12 +533,6 @@ body {
   border: none;
 }
 
-.actions-container .draft-final {
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  border: none;
-}
 
 .quote-panel-result {
   padding: 10px;

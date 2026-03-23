@@ -301,9 +301,20 @@ export default function PluginMain({ context }: PluginMainProps) {
         />
       )}
 
-      {/* Container unique pour tous les boutons d'action */}
+      {/* Encadré boutons en bas — toujours le même container */}
       {hasMessages && !claude.isStreaming && (
         <div className="actions-container">
+          {/* Brouillon validé : texte (fond vert) + boutons */}
+          {showDraft && lastAssistantMsg && (
+            <DraftFinal
+              rawContent={quoteDraftText || lastAssistantMsg.content}
+              context={context}
+              pdfUrl={quotePdfUrl || undefined}
+              quoteNumber={quoteNumber || undefined}
+              skipClean={!!quoteDraftText}
+            />
+          )}
+
           {/* Valider le brouillon */}
           {!showDraft && hasDraft && !manualValidation && (
             <button className="btn-validate" onClick={() => setManualValidation(true)}>
@@ -311,23 +322,21 @@ export default function PluginMain({ context }: PluginMainProps) {
             </button>
           )}
 
-          {/* QuotePanel : devis créé OU formulaire */}
-          {showQuotePanel && lastAssistantMsg && quoteNumber && quotePennylaneUrl ? (
-            <>
-              <p style={{ fontSize: '13px', margin: '0 0 8px 0' }}>
-                Le devis {quoteNumber} a bien été généré depuis Pennylane et chargé dans le brouillon.
-              </p>
-              <a
-                href={quotePennylaneUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-quote"
-                style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
-              >
-                Modifier le devis PDF
-              </a>
-            </>
-          ) : showQuotePanel && lastAssistantMsg ? (
+          {/* QuotePanel : devis créé → bouton modifier */}
+          {showQuotePanel && lastAssistantMsg && quoteNumber && quotePennylaneUrl && (
+            <a
+              href={quotePennylaneUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-quote"
+              style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
+            >
+              Modifier le devis PDF
+            </a>
+          )}
+
+          {/* QuotePanel : formulaire devis */}
+          {showQuotePanel && lastAssistantMsg && !(quoteNumber && quotePennylaneUrl) && (
             <ErrorBoundary>
               <QuotePanel
                 claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
@@ -353,17 +362,6 @@ export default function PluginMain({ context }: PluginMainProps) {
                 }}
               />
             </ErrorBoundary>
-          ) : null}
-
-          {/* DraftFinal : Copier + Pousser dans Front App */}
-          {showDraft && lastAssistantMsg && (
-            <DraftFinal
-              rawContent={quoteDraftText || lastAssistantMsg.content}
-              context={context}
-              pdfUrl={quotePdfUrl || undefined}
-              quoteNumber={quoteNumber || undefined}
-              skipClean={!!quoteDraftText}
-            />
           )}
         </div>
       )}

@@ -133,34 +133,35 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
   }
 
   return (
-    <div className="draft-final">
-      <div className="draft-final-header">Mail final</div>
-      <div className="draft-final-content">{cleaned}</div>
+    <>
+      {/* Encadré texte : fond vert */}
+      <div className="draft-final-text">
+        <div className="draft-final-header">Mail final</div>
+        <div className="draft-final-content">{cleaned}</div>
+        {pdfUrl && (
+          <p style={{ fontSize: '11px', color: 'var(--primary)', marginTop: '8px' }}>
+            Le devis PDF sera joint automatiquement au brouillon.
+          </p>
+        )}
+        {error && (
+          <p style={{ color: 'var(--error)', fontSize: '12px', marginTop: '8px' }}>{error}</p>
+        )}
+        {pushSuccess && (
+          <p style={{ color: 'var(--success)', fontSize: '12px', marginTop: '8px' }}>
+            Brouillon poussé dans Front App{pdfUrl ? ' avec le PDF en pièce jointe' : ''}.
+          </p>
+        )}
+      </div>
 
-      {pdfUrl && (
-        <p style={{ fontSize: '11px', color: 'var(--primary)', marginBottom: '8px' }}>
-          Le devis PDF sera joint automatiquement au brouillon.
-        </p>
-      )}
-
-      {error && (
-        <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>
-      )}
-
-      {pushSuccess && (
-        <p style={{ color: 'var(--success)', fontSize: '12px', marginBottom: '8px' }}>
-          Brouillon poussé dans Front App{pdfUrl ? ' avec le PDF en pièce jointe' : ''}.
-        </p>
-      )}
-
+      {/* Encadré boutons : séparé */}
       <div className="draft-final-actions">
         <button className="btn-secondary" onClick={handleCopy}>
           {copied ? 'Copié !' : 'Copier'}
         </button>
-        <button className="btn-primary" onClick={handlePush} disabled={pushing} style={{ width: 'auto' }}>
+        <button className="btn-primary" onClick={handlePush} disabled={pushing}>
           {pushing ? 'Envoi...' : pdfUrl ? 'Pousser avec PDF' : 'Pousser dans Front App'}
         </button>
       </div>
-    </div>
+    </>
   );
 }

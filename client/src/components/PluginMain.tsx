@@ -387,9 +387,9 @@ export default function PluginMain({ context }: PluginMainProps) {
               target="_blank"
               rel="noopener noreferrer"
               className="btn-quote"
-              style={{ textDecoration: 'none' }}
+              style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
             >
-              <svg width="20" height="20" viewBox="0 0 32 32" style={{ flexShrink: 0 }}><circle cx="16" cy="16" r="14" fill="#2ea267"/><circle cx="16" cy="16" r="7" fill="#1e8a55"/><circle cx="16" cy="16" r="3.5" fill="#f0f2f5"/></svg>
+              📄
               Modifier le devis PDF
             </a>
           )}
@@ -397,7 +397,7 @@ export default function PluginMain({ context }: PluginMainProps) {
           {/* Devis PDF : générer (si pas encore créé) */}
           {showQuotePanel && lastAssistantMsg && !(quoteNumber && quotePennylaneUrl) && (
             <button className="btn-quote" onClick={() => quoteClickRef.current?.()}>
-              <svg width="20" height="20" viewBox="0 0 32 32" style={{ flexShrink: 0 }}><circle cx="16" cy="16" r="14" fill="#2ea267"/><circle cx="16" cy="16" r="7" fill="#1e8a55"/><circle cx="16" cy="16" r="3.5" fill="#f0f2f5"/></svg>
+              📄
               Générer devis PDF
             </button>
           )}

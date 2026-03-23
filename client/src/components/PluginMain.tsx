@@ -389,14 +389,16 @@ export default function PluginMain({ context }: PluginMainProps) {
               className="btn-quote"
               style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
             >
-              📄 Modifier le devis PDF
+              <img src="/plugin/pennylane-icon.svg" alt="" style={{ width: 18, height: 18, verticalAlign: 'middle', marginRight: 6 }} />
+              Modifier le devis PDF
             </a>
           )}
 
           {/* Devis PDF : générer (si pas encore créé) */}
           {showQuotePanel && lastAssistantMsg && !(quoteNumber && quotePennylaneUrl) && (
             <button className="btn-quote" onClick={() => quoteClickRef.current?.()}>
-              📄 Générer devis PDF
+              <img src="/plugin/pennylane-icon.svg" alt="" style={{ width: 18, height: 18, verticalAlign: 'middle', marginRight: 6 }} />
+              Générer devis PDF
             </button>
           )}
         </div>

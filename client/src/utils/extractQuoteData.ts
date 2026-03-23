@@ -63,14 +63,10 @@ export function hasQuoteContent(text: string): boolean {
 
 /**
  * Extrait les données devis depuis la réponse Claude.
- * Essaie d'abord le JSON structuré, puis parse le texte naturel.
+ * Parse UNIQUEMENT le texte naturel — jamais de JSON structuré
+ * (qui pourrait contenir des données d'une ancienne conversation).
  */
 export function extractQuoteData(text: string, context?: { customerEmail?: string; customerName?: string; storeCode?: string }): ExtractedQuote | null {
-  // 1. Essayer le JSON structuré (blocs ```json```)
-  const jsonResult = extractFromJson(text);
-  if (jsonResult) return jsonResult;
-
-  // 2. Parser le texte naturel de Claude
   return extractFromText(text, context);
 }
 
@@ -139,10 +135,10 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     text.match(/(\d+[.,]\d+)\s*€\s*(?:ht\s*)?(?:\/\s*m[²2]|par\s*m[²2])/i) ||
     text.match(/(\d+[.,]\d+)\s*€\s*\/\s*m[²2]/i);
 
-  // Extraire la surface — patterns variés
+  // Extraire la surface — patterns variés (supporte entiers et décimaux)
   const surfaceMatch =
-    text.match(/surface\s*(?:totale|unitaire)?\s*[:=]?\s*(\d+[.,]\d+)\s*m[²2]/i) ||
-    text.match(/(\d+[.,]\d+)\s*m[²2]\s*(?:au total|total)?/i);
+    text.match(/surface\s*(?:totale|unitaire)?\s*[:=]?\s*(\d+[.,]?\d*)\s*m[²2]/i) ||
+    text.match(/(\d+[.,]?\d*)\s*m[²2]\s*(?:au total|total)?/i);
 
   // Extraire le total HT — patterns variés
   const totalHTMatch =
@@ -168,8 +164,8 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   // - total TTC (on calcule le HT en divisant par 1.2)
   if (!totalHTMatch && !totalTTCMatch && !(prixUnitaireMatch && surfaceMatch)) return null;
 
-  // Extraire les dimensions — supporte × et x
-  const dimMatch = text.match(/(\d+[.,]\d+)\s*[x×]\s*(\d+[.,]\d+)\s*m/i);
+  // Extraire les dimensions — supporte × et x, entiers et décimaux
+  const dimMatch = text.match(/(\d+[.,]?\d*)\s*[x×]\s*(\d+[.,]?\d*)\s*m/i);
 
   // Extraire matière/finition et couleur
   const matiereMatch = text.match(/(?:matière|finition|type)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
@@ -215,6 +211,8 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   } else {
     return null;
   }
+
+  console.log('[extractQuoteData] line values:', { surface: quantity, unitPricePerM2: unitPrice, totalHT: (quantity * parseFloat(unitPrice)).toFixed(2) });
 
   // Description : "Quantité : X | Total m² : Y | Délai de production + livraison : environ 14 jours"
   const descParts = [];
@@ -289,6 +287,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   }
 
   console.log('[extractQuoteData] customer:', { isCompany, companyName, nomPrenom: nomPrenomMatch?.[0], type: customer?.type });
+  console.log('[extractQuoteData] customer payload:', JSON.stringify(customer));
 
   // Extraire l'adresse depuis le texte (format libre français)
   // 1. Code postal + ville : "13500 Martigues" (5 chiffres + mot(s) sur la même ligne)

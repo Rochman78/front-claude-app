@@ -28,8 +28,22 @@ export async function POST(req: NextRequest) {
 
     const authHeader = `Bearer ${process.env.FRONT_API_TOKEN}`;
 
-    // Résoudre channel_id et author_id
+    // Déterminer le type de conversation
+    let convType = 'unknown';
+    try {
+      const convRes = await frontFetch(`/conversations/${conversationId}`);
+      if (convRes.ok) {
+        const conv = await convRes.json();
+        convType = conv.type || 'unknown';
+      }
+    } catch { /* fallback unknown */ }
+    console.log(`[plugin/push-draft] conversation type: ${convType}`);
+
+    // Résoudre channel_id (emails uniquement) et author_id
     const { channelId, authorId } = await resolveChannelAndAuthor(conversationId);
+    const isEmail = convType === 'email';
+    const effectiveChannelId = isEmail ? channelId : '';
+    console.log(`[plugin/push-draft] channelId=${effectiveChannelId || '(none)'} authorId=${authorId || '(none)'} isEmail=${isEmail}`);
 
     // Télécharger le PDF si fourni
     let pdfBuffer: Buffer | null = null;
@@ -87,7 +101,7 @@ export async function POST(req: NextRequest) {
 
       addField('body', body);
       addField('mode', 'shared');
-      if (channelId) addField('channel_id', channelId);
+      if (effectiveChannelId) addField('channel_id', effectiveChannelId);
       if (authorId) addField('author_id', authorId);
 
       parts.push(Buffer.from(
@@ -107,7 +121,7 @@ export async function POST(req: NextRequest) {
     } else {
       // JSON sans pièce jointe
       const payload: Record<string, string> = { body, mode: 'shared' };
-      if (channelId) payload.channel_id = channelId;
+      if (effectiveChannelId) payload.channel_id = effectiveChannelId;
       if (authorId) payload.author_id = authorId;
 
       response = await fetch(`${FRONT_API_URL}/conversations/${conversationId}/drafts`, {

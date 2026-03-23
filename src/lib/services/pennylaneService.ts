@@ -191,8 +191,9 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
     };
   }
 
+  const errBody = await res.text();
   let errMsg: string;
-  try { errMsg = (await res.json()).message || await res.text(); }
-  catch { errMsg = await res.text(); }
+  try { errMsg = JSON.parse(errBody).message || errBody; }
+  catch { errMsg = errBody; }
   throw new Error(`Erreur Pennylane (${res.status}): ${errMsg}`);
 }

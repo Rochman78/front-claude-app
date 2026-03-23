@@ -104,6 +104,20 @@ export default function PluginMain({ context }: PluginMainProps) {
     setQuotePennylaneUrl(null);
     setQuoteDraftText(null);
 
+    // Résoudre l'email/nom client depuis le SDK (replyTo.handle) à chaque conversation
+    (async () => {
+      try {
+        const msgsRes = await context.listMessages();
+        const msgs = msgsRes.results as unknown as FrontMessage[];
+        const firstIncoming = msgs.find((m) => m.replyTo?.handle);
+        const email = extractCustomerEmail(firstIncoming || msgs[0], recipient?.handle || '');
+        const name = extractCustomerName(firstIncoming || msgs[0], recipient?.name || '');
+        console.log('[plugin] resolved email from replyTo:', email);
+        setResolvedEmail(email);
+        setResolvedName(name);
+      } catch { /* fallback aux valeurs du recipient */ }
+    })();
+
     // 1. Vérifier le cache mémoire
     const cached = conversationCache.getFromCache(frontConvId);
     if (cached) {

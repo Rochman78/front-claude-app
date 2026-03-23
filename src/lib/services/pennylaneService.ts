@@ -59,9 +59,9 @@ export async function createCustomer(customer: Record<string, unknown>): Promise
   let endpoint: string;
   if (type === 'company') {
     endpoint = `${PENNYLANE_API_URL}/company_customers`;
-    payload.name = customer.name || '';
-    if (customer.firstName) payload.first_name = customer.firstName;
-    if (customer.lastName) payload.last_name = customer.lastName;
+    // Inclure le nom du contact dans le champ name pour qu'il apparaisse sur le PDF
+    const contactName = [customer.firstName, customer.lastName].filter(Boolean).join(' ');
+    payload.name = contactName ? `${customer.name || ''} - ${contactName}` : (customer.name || '');
     if (customer.vatNumber) payload.vat_number = customer.vatNumber;
   } else {
     endpoint = `${PENNYLANE_API_URL}/individual_customers`;

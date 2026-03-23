@@ -77,7 +77,30 @@ export async function createCustomer(customer: Record<string, unknown>): Promise
   });
   console.log(`[pennylane] createCustomer → ${res.status} (${Date.now() - t0}ms)`);
 
-  if (res.status === 200 || res.status === 201) return res.json();
+  if (res.status === 200 || res.status === 201) {
+    const result = await res.json();
+
+    // Pour les company, tenter d'ajouter le destinataire (nom du contact)
+    if (type === 'company' && result.id && (customer.firstName || customer.lastName)) {
+      const contactName = [customer.firstName, customer.lastName].filter(Boolean).join(' ');
+      const fieldsToTry = ['recipient', 'delivery_name', 'delivery_recipient'];
+      for (const field of fieldsToTry) {
+        const updateRes = await fetch(`${PENNYLANE_API_URL}/company_customers/${result.id}`, {
+          method: 'PUT',
+          headers: pennylaneHeaders(),
+          body: JSON.stringify({ [field]: contactName }),
+        });
+        const updateBody = await updateRes.text();
+        console.log(`[pennylane] update customer ${field}="${contactName}" → ${updateRes.status} ${updateBody.substring(0, 200)}`);
+        if (updateRes.ok) {
+          console.log(`[pennylane] recipient field found: "${field}"`);
+          break;
+        }
+      }
+    }
+
+    return result;
+  }
   const text = await res.text();
   return { error: `Erreur création client: ${text}` };
 }

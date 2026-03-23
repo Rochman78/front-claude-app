@@ -241,6 +241,30 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   const subject = `Devis ${matiere ? matiere.toLowerCase() + ' ' : ''}${couleur ? couleur.toLowerCase() + ' ' : ''}${dimLabel || 'sur mesure'}`.trim();
 
   // Construire le customer depuis le contexte + texte
+
+  // Extraire l'email depuis le corps du mail (prioritaire sur le SDK)
+  const emailFromBody = (() => {
+    const m = text.match(/(?:e-?mail|courriel)\s*[:：]\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+    return m ? m[1].trim() : '';
+  })();
+  const emailFromSDK = context?.customerEmail || '';
+  // Ignorer les emails Shopify/noreply
+  const isJunkEmail = (e: string) => !e || /shopify\.com|noreply|no-reply|mailer-daemon/i.test(e);
+  const finalEmail = !isJunkEmail(emailFromBody) ? emailFromBody : !isJunkEmail(emailFromSDK) ? emailFromSDK : '';
+  console.log('[extractQuoteData] email from mail body:', emailFromBody);
+  console.log('[extractQuoteData] email from SDK:', emailFromSDK);
+  console.log('[extractQuoteData] final email used:', finalEmail);
+
+  // Extraire le nom depuis le corps du mail (prioritaire sur le SDK)
+  const nameFromBody = (() => {
+    const m = text.match(/(?:name|nom\s*complet)\s*[:：]\s*([^\n]+)/i);
+    return m ? m[1].trim() : '';
+  })();
+  const nameFromSDK = context?.customerName || '';
+  // Ignorer les noms Shopify
+  const isJunkName = (n: string) => !n || /shopify|filet.*camouflage|noreply/i.test(n);
+  const finalName = !isJunkName(nameFromBody) ? nameFromBody : !isJunkName(nameFromSDK) ? nameFromSDK : '';
+
   let customer: QuoteCustomer | undefined;
 
   // Détecter la raison sociale (entreprise, IUT, collectivité, etc.)
@@ -253,36 +277,34 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
 
   if (nomPrenomMatch) {
     if (isCompany) {
-      // Pro : raison sociale + contact
       customer = {
         type: 'company',
         name: companyName,
         firstName: nomPrenomMatch[2],
         lastName: nomPrenomMatch[1],
-        email: context?.customerEmail || '',
+        email: finalEmail,
       };
     } else {
       customer = {
         type: 'individual',
         firstName: nomPrenomMatch[1],
         lastName: nomPrenomMatch[2],
-        email: context?.customerEmail || '',
+        email: finalEmail,
       };
     }
   } else if (isCompany) {
-    // Pro sans contact nommé
     customer = {
       type: 'company',
       name: companyName,
-      email: context?.customerEmail || '',
+      email: finalEmail,
     };
-  } else if (context?.customerEmail || context?.customerName) {
-    const nameParts = (context.customerName || '').split(/\s+/);
+  } else if (finalEmail || finalName) {
+    const nameParts = finalName.split(/\s+/);
     customer = {
       type: 'individual',
       firstName: nameParts[0] || '',
       lastName: nameParts.slice(1).join(' ') || '',
-      email: context.customerEmail || '',
+      email: finalEmail,
     };
   }
 

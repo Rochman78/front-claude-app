@@ -60,12 +60,16 @@ export async function createCustomer(customer: Record<string, unknown>): Promise
   if (type === 'company') {
     endpoint = `${PENNYLANE_API_URL}/company_customers`;
     payload.name = customer.name || '';
+    if (customer.firstName) payload.first_name = customer.firstName;
+    if (customer.lastName) payload.last_name = customer.lastName;
     if (customer.vatNumber) payload.vat_number = customer.vatNumber;
   } else {
     endpoint = `${PENNYLANE_API_URL}/individual_customers`;
     payload.first_name = customer.firstName || '';
     payload.last_name = customer.lastName || '';
   }
+
+  console.log(`[pennylane] createCustomer type=${type} email=${customer.email} payload:`, JSON.stringify(payload));
 
   const t0 = Date.now();
   const res = await fetch(endpoint, {

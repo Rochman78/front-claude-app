@@ -264,13 +264,15 @@ export default function PluginMain({ context }: PluginMainProps) {
   const showQuotePanel = hasMessages && !claude.isStreaming;
 
   return (
-    <div className="plugin-main">
-      <MailPreview
-        storeCode={store.code}
-        customerName={recipient?.name || ''}
-        customerEmail={recipient?.handle || ''}
-        subject={subject}
-      />
+    <div className="plugin-shell">
+      {/* Zone scrollable */}
+      <div className="plugin-scroll">
+        <MailPreview
+          storeCode={store.code}
+          customerName={recipient?.name || ''}
+          customerEmail={recipient?.handle || ''}
+          subject={subject}
+        />
 
       {claude.error && (
         <div className="plugin-error">
@@ -347,6 +349,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         </ErrorBoundary>
       )}
 
+      </div>
       {/* ═══ CONTAINER BOUTONS FIXE EN BAS ═══ */}
       {hasMessages && !claude.isStreaming && (
         <div className="actions-container">

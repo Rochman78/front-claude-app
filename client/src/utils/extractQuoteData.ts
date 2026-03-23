@@ -245,14 +245,37 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   // Construire le customer depuis le contexte + texte
   let customer: QuoteCustomer | undefined;
 
-  // Chercher "Nom et prénom : Jérôme Muratore" dans le texte (notre mail ou réponse client)
-  const nomPrenomMatch = text.match(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom)\s*[:=]?\s*([A-Za-zÀ-ÿ]+)\s+([A-Za-zÀ-ÿ]+)/i);
+  // Détecter la raison sociale (entreprise, IUT, collectivité, etc.)
+  const raisonSocialeMatch = text.match(/(?:raison\s*sociale|entreprise|société)\s*(?:\([^)]*\))?\s*[:=]\s*([^\n]+)/i);
+  const companyName = raisonSocialeMatch ? raisonSocialeMatch[1].trim() : '';
+  const isCompany = companyName.length > 0;
+
+  // Chercher "Nom et prénom : Jérôme Muratore" ou "Nom et prénom : Marey Sylvie"
+  const nomPrenomMatch = text.match(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom)\s*[:=]?\s*([A-Za-zÀ-ÿ-]+)\s+([A-Za-zÀ-ÿ-]+)/i);
 
   if (nomPrenomMatch) {
+    if (isCompany) {
+      // Pro : raison sociale + contact
+      customer = {
+        type: 'company',
+        name: companyName,
+        firstName: nomPrenomMatch[2],
+        lastName: nomPrenomMatch[1],
+        email: context?.customerEmail || '',
+      };
+    } else {
+      customer = {
+        type: 'individual',
+        firstName: nomPrenomMatch[1],
+        lastName: nomPrenomMatch[2],
+        email: context?.customerEmail || '',
+      };
+    }
+  } else if (isCompany) {
+    // Pro sans contact nommé
     customer = {
-      type: 'individual',
-      firstName: nomPrenomMatch[1],
-      lastName: nomPrenomMatch[2],
+      type: 'company',
+      name: companyName,
       email: context?.customerEmail || '',
     };
   } else if (context?.customerEmail || context?.customerName) {
@@ -264,6 +287,8 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
       email: context.customerEmail || '',
     };
   }
+
+  console.log('[extractQuoteData] customer:', { isCompany, companyName, nomPrenom: nomPrenomMatch?.[0], type: customer?.type });
 
   // Extraire l'adresse depuis le texte (format libre français)
   // 1. Code postal + ville : "13500 Martigues" (5 chiffres + mot(s) sur la même ligne)

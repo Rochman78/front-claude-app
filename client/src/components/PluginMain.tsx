@@ -301,67 +301,71 @@ export default function PluginMain({ context }: PluginMainProps) {
         />
       )}
 
-      {/* Bouton "Valider le brouillon" : visible quand il y a un brouillon avec des questions, pas encore validé */}
-      {hasMessages && !claude.isStreaming && !showDraft && hasDraft && !manualValidation && (
-        <div className="plugin-actions">
-          <button className="btn-primary" onClick={() => setManualValidation(true)}>
-            Valider le brouillon
-          </button>
-        </div>
-      )}
+      {/* Container unique pour tous les boutons d'action */}
+      {hasMessages && !claude.isStreaming && (
+        <div className="actions-container">
+          {/* Valider le brouillon */}
+          {!showDraft && hasDraft && !manualValidation && (
+            <button className="btn-validate" onClick={() => setManualValidation(true)}>
+              Valider le brouillon
+            </button>
+          )}
 
-      {/* QuotePanel : état "done" géré ici pour éviter la perte de state */}
-      {showQuotePanel && lastAssistantMsg && quoteNumber && quotePennylaneUrl ? (
-        <div className="quote-panel">
-          <p style={{ fontSize: '13px' }}>
-            Le devis {quoteNumber} a bien été généré depuis Pennylane et chargé dans le brouillon.
-          </p>
-          <a
-            href={quotePennylaneUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-primary"
-            style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '10px' }}
-          >
-            Modifier le devis PDF
-          </a>
-        </div>
-      ) : showQuotePanel && lastAssistantMsg ? (
-        <ErrorBoundary>
-          <QuotePanel
-            claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
-            mailThread={mailThread}
-            customerEmail={resolvedEmail || recipient?.handle || ''}
-            customerName={resolvedName || recipient?.name || ''}
-            storeCode={store.code}
-            inboxName={store.inboxName}
-            onSendMessage={claude.sendMessage}
-            onQuoteCreated={(pdfUrl, qNumber, pennylaneUrl) => {
-              setQuotePdfUrl(pdfUrl);
-              setQuoteNumber(qNumber);
-              setQuotePennylaneUrl(pennylaneUrl);
-              const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
-              setQuoteDraftText(
-                `Bonjour ${prenom},\n\n` +
-                `Veuillez trouver ci-joint votre devis pour votre filet de camouflage sur mesure.\n\n` +
-                `Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
-                `La mise en production sera lancée dès réception du règlement, avec un délai de fabrication et de livraison d'environ 14 jours.\n\n` +
-                `N'hésitez pas à nous contacter si vous avez la moindre question.`
-              );
-              setManualValidation(true);
-            }}
-          />
-        </ErrorBoundary>
-      ) : null}
+          {/* QuotePanel : devis créé OU formulaire */}
+          {showQuotePanel && lastAssistantMsg && quoteNumber && quotePennylaneUrl ? (
+            <>
+              <p style={{ fontSize: '13px', margin: '0 0 8px 0' }}>
+                Le devis {quoteNumber} a bien été généré depuis Pennylane et chargé dans le brouillon.
+              </p>
+              <a
+                href={quotePennylaneUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-quote"
+                style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
+              >
+                Modifier le devis PDF
+              </a>
+            </>
+          ) : showQuotePanel && lastAssistantMsg ? (
+            <ErrorBoundary>
+              <QuotePanel
+                claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
+                mailThread={mailThread}
+                customerEmail={resolvedEmail || recipient?.handle || ''}
+                customerName={resolvedName || recipient?.name || ''}
+                storeCode={store.code}
+                inboxName={store.inboxName}
+                onSendMessage={claude.sendMessage}
+                onQuoteCreated={(pdfUrl, qNumber, pennylaneUrl) => {
+                  setQuotePdfUrl(pdfUrl);
+                  setQuoteNumber(qNumber);
+                  setQuotePennylaneUrl(pennylaneUrl);
+                  const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
+                  setQuoteDraftText(
+                    `Bonjour ${prenom},\n\n` +
+                    `Veuillez trouver ci-joint votre devis pour votre filet de camouflage sur mesure.\n\n` +
+                    `Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
+                    `La mise en production sera lancée dès réception du règlement, avec un délai de fabrication et de livraison d'environ 14 jours.\n\n` +
+                    `N'hésitez pas à nous contacter si vous avez la moindre question.`
+                  );
+                  setManualValidation(true);
+                }}
+              />
+            </ErrorBoundary>
+          ) : null}
 
-      {showDraft && lastAssistantMsg && (
-        <DraftFinal
-          rawContent={quoteDraftText || lastAssistantMsg.content}
-          context={context}
-          pdfUrl={quotePdfUrl || undefined}
-          quoteNumber={quoteNumber || undefined}
-          skipClean={!!quoteDraftText}
-        />
+          {/* DraftFinal : Copier + Pousser dans Front App */}
+          {showDraft && lastAssistantMsg && (
+            <DraftFinal
+              rawContent={quoteDraftText || lastAssistantMsg.content}
+              context={context}
+              pdfUrl={quotePdfUrl || undefined}
+              quoteNumber={quoteNumber || undefined}
+              skipClean={!!quoteDraftText}
+            />
+          )}
+        </div>
       )}
     </div>
   );

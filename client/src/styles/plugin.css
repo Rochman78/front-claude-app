@@ -145,17 +145,49 @@ body {
   margin-top: 4px;
 }
 
-/* === Actions === */
-.plugin-actions {
-  padding: 12px 16px;
+/* === Actions container unique === */
+.actions-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #f8f9fa;
+  padding: 12px;
+  margin: 8px 16px 16px;
+  border-radius: 8px;
 }
 
 /* Valider le brouillon : bleu foncé */
-.plugin-actions .btn-primary {
+.btn-validate {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
   background: #1a3a5c;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
-.plugin-actions .btn-primary:hover {
+.btn-validate:hover {
   background: #152e4a;
+}
+
+/* Générer / Modifier devis PDF : bleu moyen */
+.btn-quote {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: #2563eb;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-quote:hover {
+  background: #1d4ed8;
 }
 
 /* === Buttons === */
@@ -354,9 +386,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: #f8f9fa;
-  padding: 12px;
-  border-radius: 8px;
 }
 
 /* Pousser dans Front App : bleu clair */
@@ -493,9 +522,21 @@ body {
   flex-direction: column;
   gap: 8px;
   margin-top: 10px;
-  background: #f8f9fa;
-  padding: 12px;
-  border-radius: 8px;
+}
+
+/* Quand quote-panel est dans actions-container, pas de double fond/margin */
+.actions-container .quote-panel {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.actions-container .draft-final {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
 }
 
 .quote-panel-result {

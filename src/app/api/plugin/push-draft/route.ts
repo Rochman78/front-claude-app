@@ -28,22 +28,9 @@ export async function POST(req: NextRequest) {
 
     const authHeader = `Bearer ${process.env.FRONT_API_TOKEN}`;
 
-    // Déterminer le type de conversation
-    let convType = 'unknown';
-    try {
-      const convRes = await frontFetch(`/conversations/${conversationId}`);
-      if (convRes.ok) {
-        const conv = await convRes.json();
-        convType = conv.type || 'unknown';
-      }
-    } catch { /* fallback unknown */ }
-    console.log(`[plugin/push-draft] conversation type: ${convType}`);
-
-    // Résoudre channel_id (emails uniquement) et author_id
-    const { channelId, authorId } = await resolveChannelAndAuthor(conversationId);
-    const isEmail = convType === 'email';
-    const effectiveChannelId = isEmail ? channelId : '';
-    console.log(`[plugin/push-draft] channelId=${effectiveChannelId || '(none)'} authorId=${authorId || '(none)'} isEmail=${isEmail}`);
+    // Résoudre channel_id et author_id (adapté au type de conversation)
+    const { channelId, authorId, convType } = await resolveChannelAndAuthor(conversationId);
+    console.log(`[plugin/push-draft] convType=${convType} channelId=${channelId || '(none)'} authorId=${authorId || '(none)'}`);
 
     // Télécharger le PDF si fourni
     let pdfBuffer: Buffer | null = null;
@@ -101,7 +88,7 @@ export async function POST(req: NextRequest) {
 
       addField('body', body);
       addField('mode', 'shared');
-      if (effectiveChannelId) addField('channel_id', effectiveChannelId);
+      if (channelId) addField('channel_id', channelId);
       if (authorId) addField('author_id', authorId);
 
       parts.push(Buffer.from(
@@ -121,7 +108,7 @@ export async function POST(req: NextRequest) {
     } else {
       // JSON sans pièce jointe
       const payload: Record<string, string> = { body, mode: 'shared' };
-      if (effectiveChannelId) payload.channel_id = effectiveChannelId;
+      if (channelId) payload.channel_id = channelId;
       if (authorId) payload.author_id = authorId;
 
       response = await fetch(`${FRONT_API_URL}/conversations/${conversationId}/drafts`, {
@@ -152,32 +139,56 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function resolveChannelAndAuthor(conversationId: string): Promise<{ channelId: string; authorId: string }> {
+async function resolveChannelAndAuthor(conversationId: string): Promise<{ channelId: string; authorId: string; convType: string }> {
   let channelId = '';
   let authorId = '';
+  let convType = 'unknown';
 
   try {
     const convRes = await frontFetch(`/conversations/${conversationId}`);
-    if (!convRes.ok) return { channelId, authorId };
+    if (!convRes.ok) return { channelId, authorId, convType };
     const conv = await convRes.json();
+    convType = conv.type || 'unknown';
 
-    // Channel SMTP via inbox
-    const inboxesUrl = conv._links?.related?.inboxes;
-    if (inboxesUrl) {
-      const authHeader = `Bearer ${process.env.FRONT_API_TOKEN}`;
-      const inboxesRes = await fetch(inboxesUrl, { headers: { Authorization: authHeader, Accept: 'application/json' } });
-      if (inboxesRes.ok) {
-        const inboxes = (await inboxesRes.json())._results || [];
-        for (const inbox of inboxes) {
-          const chRes = await frontFetch(`/inboxes/${inbox.id}/channels`);
-          if (chRes.ok) {
-            const channels = (await chRes.json())._results || [];
-            const smtp = channels.find((c: Record<string, unknown>) => c.type === 'smtp');
-            if (smtp) { channelId = smtp.id as string; break; }
+    console.log(`[push-draft/resolve] conv type=${convType} subject="${conv.subject}" last_message_id=${conv.last_message?.id}`);
+
+    // Stratégie 1 : extraire le channel_id du dernier message (fonctionne pour tous les types)
+    if (conv.last_message?.metadata?.headers?.['x-front-channel-id']) {
+      channelId = conv.last_message.metadata.headers['x-front-channel-id'];
+      console.log(`[push-draft/resolve] channel from last_message headers: ${channelId}`);
+    }
+
+    // Stratégie 2 : lister les canaux de l'inbox et trouver le bon type
+    if (!channelId) {
+      const inboxesUrl = conv._links?.related?.inboxes;
+      if (inboxesUrl) {
+        const authHeader = `Bearer ${process.env.FRONT_API_TOKEN}`;
+        const inboxesRes = await fetch(inboxesUrl, { headers: { Authorization: authHeader, Accept: 'application/json' } });
+        if (inboxesRes.ok) {
+          const inboxes = (await inboxesRes.json())._results || [];
+          for (const inbox of inboxes) {
+            const chRes = await frontFetch(`/inboxes/${inbox.id}/channels`);
+            if (chRes.ok) {
+              const channels = (await chRes.json())._results || [];
+              console.log(`[push-draft/resolve] inbox ${inbox.id} channels:`, channels.map((c: Record<string, unknown>) => ({ id: c.id, type: c.type })));
+
+              if (convType === 'email') {
+                // Email : chercher canal SMTP
+                const smtp = channels.find((c: Record<string, unknown>) => c.type === 'smtp');
+                if (smtp) { channelId = smtp.id as string; break; }
+              } else {
+                // Chat/custom/unknown : prendre le premier canal non-SMTP, sinon le premier canal
+                const nonSmtp = channels.find((c: Record<string, unknown>) => c.type !== 'smtp');
+                const fallback = nonSmtp || channels[0];
+                if (fallback) { channelId = fallback.id as string; break; }
+              }
+            }
           }
         }
       }
     }
+
+    console.log(`[push-draft/resolve] final channelId=${channelId || '(none)'}`);
 
     // Author : assignee ou admin
     authorId = conv.assignee?.id || '';
@@ -191,5 +202,5 @@ async function resolveChannelAndAuthor(conversationId: string): Promise<{ channe
     }
   } catch { /* fallback sans channel/author */ }
 
-  return { channelId, authorId };
+  return { channelId, authorId, convType };
 }

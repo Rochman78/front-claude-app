@@ -269,42 +269,39 @@ export default function PluginMain({ context }: PluginMainProps) {
         subject={subject}
       />
 
-      {/* Zone scrollable : chat + brouillon */}
-      <div className="plugin-scrollable">
-        {claude.error && (
-          <div className="plugin-error">
-            <p>{claude.error}</p>
-            <button onClick={claude.clearError}>Fermer</button>
-          </div>
-        )}
+      {claude.error && (
+        <div className="plugin-error">
+          <p>{claude.error}</p>
+          <button onClick={claude.clearError}>Fermer</button>
+        </div>
+      )}
 
-        {loadingHistory && (
-          <LoadingState message="Chargement de l'historique..." />
-        )}
+      {loadingHistory && (
+        <LoadingState message="Chargement de l'historique..." />
+      )}
 
-        {!hasMessages && !claude.isStreaming && !loadingHistory && (
-          <div className="plugin-actions">
-            <button className="btn-primary" onClick={handleAnalyze}>
-              Analyser avec Claude
-            </button>
-          </div>
-        )}
+      {!hasMessages && !claude.isStreaming && !loadingHistory && (
+        <div className="plugin-actions">
+          <button className="btn-primary" onClick={handleAnalyze}>
+            Analyser avec Claude
+          </button>
+        </div>
+      )}
 
-        {!hasMessages && claude.isStreaming && !claude.streamingContent && (
-          <LoadingState progressive />
-        )}
+      {!hasMessages && claude.isStreaming && !claude.streamingContent && (
+        <LoadingState progressive />
+      )}
 
-        {(hasMessages || claude.streamingContent) && (
-          <ClaudeChat
-            messages={claude.messages}
-            streamingContent={claude.streamingContent}
-            isStreaming={claude.isStreaming}
-            onSend={claude.sendMessage}
-          />
-        )}
-      </div>
+      {(hasMessages || claude.streamingContent) && (
+        <ClaudeChat
+          messages={claude.messages}
+          streamingContent={claude.streamingContent}
+          isStreaming={claude.isStreaming}
+          onSend={claude.sendMessage}
+        />
+      )}
 
-      {/* Encadré boutons fixe en bas */}
+      {/* Boutons sticky en bas */}
       {hasMessages && !claude.isStreaming && (
         <div className="actions-container">
           {/* Brouillon validé : texte (fond vert) + boutons */}

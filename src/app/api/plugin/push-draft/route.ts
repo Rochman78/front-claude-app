@@ -156,6 +156,30 @@ async function resolveChannelAndAuthor(conversationId: string): Promise<{ channe
       console.log(`[push-draft/resolve] convType deduced from last_message.type: ${conv.last_message.type} → ${convType}`);
     }
 
+    // Si toujours unknown (last_message absent), récupérer les messages pour déduire le type
+    if (convType === 'unknown') {
+      try {
+        const msgsRes = await frontFetch(`/conversations/${conversationId}/messages`);
+        if (msgsRes.ok) {
+          const msgsData = await msgsRes.json();
+          const msgs = (msgsData._results || []).filter((m: Record<string, unknown>) => !m.is_draft);
+          if (msgs.length > 0) {
+            const lastMsg = msgs[0]; // _results est trié du plus récent au plus ancien
+            const msgType = lastMsg.type as string;
+            console.log(`[push-draft/resolve] last message type from API: ${msgType} (id=${lastMsg.id})`);
+            if (msgType === 'email' || msgType === 'smtp') {
+              convType = 'email';
+            } else if (msgType === 'front_chat') {
+              convType = 'chat';
+            } else {
+              convType = msgType || 'unknown';
+            }
+            console.log(`[push-draft/resolve] deduced type from messages: ${convType}`);
+          }
+        }
+      } catch { /* non bloquant */ }
+    }
+
     console.log(`[push-draft/resolve] conv type=${convType} subject="${conv.subject}" last_message_id=${conv.last_message?.id}`);
 
     // Stratégie 1 : extraire le channel_id du dernier message (fonctionne pour tous les types)

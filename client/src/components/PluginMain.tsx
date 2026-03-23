@@ -357,7 +357,14 @@ export default function PluginMain({ context }: PluginMainProps) {
             </ErrorBoundary>
           )}
 
-          {/* 3. Valider le brouillon (bleu clair, en dernier) */}
+          {/* 3. Modifier le brouillon (outline bleu, si brouillon validé) */}
+          {showDraft && (
+            <button className="btn-secondary" onClick={() => { setManualValidation(false); setQuoteDraftText(null); }}>
+              Modifier le brouillon
+            </button>
+          )}
+
+          {/* 3. Valider le brouillon (bleu clair, si pas encore validé) */}
           {!showDraft && hasDraft && !manualValidation && (
             <button className="btn-validate" onClick={() => setManualValidation(true)}>
               Valider le brouillon

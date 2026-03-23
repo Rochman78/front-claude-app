@@ -103,9 +103,23 @@ export async function resolveCustomerId(customer?: Record<string, unknown>, cust
   if (customerId) return customerId;
   if (!customer) throw new Error('Impossible de créer ou trouver le client');
 
+  console.log('[pennylane] customer payload:', JSON.stringify(customer));
+
+  const requestedType = (customer.type as string) || 'individual';
+
+  // Chercher un client existant par email
   let resolved: string | null = null;
   if (customer.email) {
     resolved = await findCustomerByEmail(customer.email as string);
+    if (resolved) {
+      console.log(`[pennylane] found existing customer ${resolved} by email, but requested type=${requestedType}`);
+      // Si le type demandé est "company" mais le client existant est un particulier,
+      // créer un nouveau client company (Pennylane a des endpoints séparés)
+      if (requestedType === 'company') {
+        console.log('[pennylane] creating new company customer (ignoring existing individual)');
+        resolved = null; // forcer la création
+      }
+    }
   }
   if (!resolved) {
     const result = await createCustomer(customer);

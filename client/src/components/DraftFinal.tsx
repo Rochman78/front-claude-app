@@ -54,57 +54,59 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
         console.log('[plugin] draft with PDF pushed successfully');
       } else {
         const convType = (context.conversation as Record<string, unknown>).type ?? 'unknown';
-        console.log('[plugin] conversation type:', convType);
+        const convId = context.conversation.id;
+        console.log('[push] conversation type:', convType, 'id:', convId);
 
-        if (convType === 'chat' || convType === 'custom') {
-          // Chat/custom : utiliser UNIQUEMENT le backend REST (suppression + délai + création inclus)
-          console.log('[plugin] using REST fallback for chat (not SDK createDraft)');
-          const frontConversationId = context.conversation.id;
-          console.log('[plugin] push chat draft - frontConversationId:', frontConversationId);
+        // Utiliser le SDK createDraft UNIQUEMENT pour les emails confirmés
+        // Tout le reste (chat, custom, unknown) passe par le backend REST
+        const useSDK = convType === 'email';
+        console.log('[push] strategy:', useSDK ? 'SDK createDraft (email)' : 'REST backend (non-email)');
+
+        if (!useSDK) {
+          // Non-email : tout géré par push-draft backend (suppression + délai 1500ms + création)
+          console.log('[push] step 1: calling push-draft REST for non-email');
           const response = await fetch(`${API_BASE}/api/plugin/push-draft`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              conversationId: frontConversationId,
-              body: textToHtml(cleaned),
-            }),
+            body: JSON.stringify({ conversationId: convId, body: textToHtml(cleaned) }),
           });
           const responseText = await response.text();
-          console.log('[plugin] push chat draft - response status:', response.status);
-          console.log('[plugin] push chat draft - response body:', responseText);
+          console.log('[push] step 2: push-draft response status:', response.status);
+          console.log('[push] step 3: push-draft response body:', responseText);
           if (!response.ok) {
             const err = responseText ? JSON.parse(responseText) : {};
             throw new Error(err.error || `Erreur ${response.status}`);
           }
-          console.log('[plugin] draft pushed via REST API (chat fallback)');
+          console.log('[push] step 4: draft created via REST');
         } else {
-          // Email : supprimer brouillons existants puis SDK createDraft
-          console.log('[plugin] using SDK createDraft for email');
-          console.log('[plugin] deleting existing drafts before createDraft');
+          // Email : delete-drafts → délai → SDK createDraft
+          console.log('[push] step 1: calling delete-drafts');
           const delRes = await fetch(`${API_BASE}/api/plugin/delete-drafts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ conversationId: context.conversation.id }),
+            body: JSON.stringify({ conversationId: convId }),
           });
-          if (delRes.ok) {
-            const delData = await delRes.json();
-            console.log(`[plugin] deleted ${delData.deleted} existing draft(s)`);
-            if (delData.deleted > 0) {
-              console.log('[plugin] waiting 500ms for Front App to process deletion...');
-              await new Promise((r) => setTimeout(r, 500));
-            }
+          const delData = delRes.ok ? await delRes.json() : null;
+          console.log('[push] step 2: delete-drafts done, result:', delData);
+
+          if (delData && delData.deleted > 0) {
+            console.log('[push] step 3: waiting 500ms for Front App to process deletion...');
+            await new Promise((r) => setTimeout(r, 500));
           } else {
-            console.warn('[plugin] delete-drafts failed, continuing anyway');
+            console.log('[push] step 3: no drafts deleted, skipping wait');
           }
 
+          console.log('[push] step 4: about to create draft via SDK createDraft');
           const messagesResponse = await context.listMessages();
           const messages = messagesResponse.results;
+          console.log('[push] step 4b: got', messages.length, 'messages');
 
           if (messages.length === 0) {
             throw new Error('Aucun message dans la conversation');
           }
 
           const latestMessageId = messages[messages.length - 1].id;
+          console.log('[push] step 4c: replying to message:', latestMessageId);
 
           await context.createDraft({
             content: {
@@ -116,6 +118,7 @@ export default function DraftFinal({ rawContent, context, pdfUrl, quoteNumber, s
               originalMessageId: latestMessageId,
             },
           });
+          console.log('[push] step 5: draft created via SDK');
         }
       }
 

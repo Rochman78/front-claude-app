@@ -227,22 +227,21 @@ body {
   background: #f0f6ff;
 }
 
-/* Modifier le brouillon : outline gris discret */
+/* Modifier le brouillon : même style que Valider */
 .btn-outline {
   width: 100%;
   padding: 12px 16px;
   font-size: 13px;
-  font-weight: 500;
-  color: #64748b;
-  background: transparent;
-  border: 1px solid #cbd5e1;
+  font-weight: 600;
+  color: #1565D8;
+  background: #ffffff;
+  border: 2px solid #1565D8;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 .btn-outline:hover {
-  background: #f8fafc;
-  border-color: #94a3b8;
+  background: #f0f6ff;
 }
 
 /* Générer / Modifier devis PDF : vert Pennylane */

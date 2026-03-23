@@ -252,16 +252,14 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     return m ? m[1].trim() : '';
   };
 
-  // Extraire l'email depuis le corps du mail (prioritaire sur le SDK)
-  const emailFromBody = (() => {
-    const m = text.match(/(?:e-?mail|courriel)\s*[:：]\s*\n?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
-    return m ? m[1].trim() : '';
-  })();
+  // Extraire l'email : chercher TOUS les emails dans le texte, filtrer les emails système
+  const isJunkEmail = (e: string) => !e || /shopify\.com|noreply|no-reply|mailer-daemon|le-filet-de-camouflage\.fr/i.test(e);
+  const allEmails = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+  const emailFromBody = allEmails.find(e => !isJunkEmail(e)) || '';
   const emailFromSDK = context?.customerEmail || '';
-  // Ignorer les emails Shopify/noreply
-  const isJunkEmail = (e: string) => !e || /shopify\.com|noreply|no-reply|mailer-daemon/i.test(e);
-  const finalEmail = !isJunkEmail(emailFromBody) ? emailFromBody : !isJunkEmail(emailFromSDK) ? emailFromSDK : '';
-  console.log('[extractQuoteData] email from mail body:', emailFromBody);
+  const finalEmail = emailFromBody || (!isJunkEmail(emailFromSDK) ? emailFromSDK : '');
+  console.log('[extractQuoteData] all emails found:', allEmails);
+  console.log('[extractQuoteData] email from body (filtered):', emailFromBody);
   console.log('[extractQuoteData] email from SDK:', emailFromSDK);
   console.log('[extractQuoteData] final email used:', finalEmail);
 
@@ -400,8 +398,10 @@ export function getMissingFields(quote: ExtractedQuote): MissingField[] {
   if (!c.address?.postalCode) missing.push({ key: 'postalCode', label: 'Code postal' });
   if (!c.address?.city) missing.push({ key: 'city', label: 'Ville' });
 
-  if (c.type === 'company' && !c.vatNumber) {
-    missing.push({ key: 'vatNumber', label: 'N° TVA intracommunautaire' });
+  // TVA intra obligatoire UNIQUEMENT si le client a fourni un numéro (2 lettres + chiffres)
+  // Pas obligatoire pour les entreprises/associations qui n'en ont pas
+  if (c.type === 'company' && c.vatNumber && !/^[A-Z]{2}\d/.test(c.vatNumber)) {
+    missing.push({ key: 'vatNumber', label: 'N° TVA intracommunautaire (format invalide)' });
   }
 
   return missing;

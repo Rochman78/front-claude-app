@@ -127,6 +127,9 @@ function tryParseJsonQuote(raw: string): ExtractedQuote | null {
  */
 function extractFromText(text: string, context?: { customerEmail?: string; customerName?: string; storeCode?: string }): ExtractedQuote | null {
   console.log('[extractQuoteData] input text (500 chars):', text.substring(0, 500));
+  console.log('[extractQuoteData] email regex test:', /(?:e-?mail|courriel)\s*[:：]\s*\n?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i.test(text));
+  console.log('[extractQuoteData] all emails found in text:', text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g));
+  console.log('[extractQuoteData] text length:', text.length);
 
   // Extraire le prix unitaire HT — patterns variés
   const prixUnitaireMatch =

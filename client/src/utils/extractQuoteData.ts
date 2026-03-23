@@ -171,16 +171,21 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   // Extraire les dimensions — supporte × et x
   const dimMatch = text.match(/(\d+[.,]\d+)\s*[x×]\s*(\d+[.,]\d+)\s*m/i);
 
-  // Extraire matière et couleur
+  // Extraire matière/finition et couleur
   const matiereMatch = text.match(/(?:matière|finition|type)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
   const couleurMatch = text.match(/(?:couleur)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
 
-  // Construire le label du produit
+  // Extraire la quantité (nombre de filets commandés)
+  const qtyMatch = text.match(/(?:quantité|qté|qty)\s*[:=]?\s*(\d+)/i);
+  const orderQty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+
+  // Construire le label : "[Couleur] - [LxH m] - Filet de camouflage renforcé [finition]"
   const couleur = couleurMatch ? couleurMatch[1].trim() : '';
   const matiere = matiereMatch ? matiereMatch[1].trim() : '';
-  const dimensions = dimMatch ? `${dimMatch[1]} x ${dimMatch[2]} m` : '';
+  const dimLabel = dimMatch ? `${dimMatch[1].replace(',', '.')}x${dimMatch[2].replace(',', '.')} m` : '';
+  const finition = matiere ? `Filet de camouflage renforcé ${matiere.toLowerCase()}` : 'Filet de camouflage renforcé sur mesure';
 
-  const labelParts = [couleur, dimensions, matiere ? `Filet ${matiere.toLowerCase()}` : 'Filet sur mesure'].filter(Boolean);
+  const labelParts = [couleur, dimLabel, finition].filter(Boolean);
   const label = labelParts.join(' - ') || 'Produit sur mesure';
 
   // Déterminer quantité et prix
@@ -211,10 +216,17 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     return null;
   }
 
+  // Description : "Quantité : X | Total m² : Y | Délai de production + livraison : environ 14 jours"
+  const descParts = [];
+  if (orderQty > 0) descParts.push(`Quantité : ${orderQty}`);
+  if (quantity > 0) descParts.push(`Total m² : ${quantity}`);
+  descParts.push('Délai de production + livraison : environ 14 jours');
+  const description = descParts.join(' | ');
+
   const lines: QuoteLine[] = [{
     type: 'product',
-    label: label.toUpperCase().substring(0, 3) === label.substring(0, 3) ? label : label,
-    description: dimensions ? `Dimensions : ${dimensions}` : undefined,
+    label,
+    description,
     quantity,
     unitPrice,
     unit: 'm2',
@@ -228,7 +240,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   }
 
   // Construire le sujet
-  const subject = `Devis ${matiere ? matiere.toLowerCase() + ' ' : ''}${couleur ? couleur.toLowerCase() + ' ' : ''}${dimensions || 'sur mesure'}`.trim();
+  const subject = `Devis ${matiere ? matiere.toLowerCase() + ' ' : ''}${couleur ? couleur.toLowerCase() + ' ' : ''}${dimLabel || 'sur mesure'}`.trim();
 
   // Construire le customer depuis le contexte + texte
   let customer: QuoteCustomer | undefined;

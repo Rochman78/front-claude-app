@@ -170,6 +170,14 @@ export default function QuotePanel({
     // Extraire les données : chiffrage depuis Claude, infos client depuis le fil de mails
     // mailThread en premier pour prioriser les infos les plus récentes du client
     const fullText = mailThread + '\n\n---\n\n' + claudeText;
+    const allEmailsInFullText = fullText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+    console.log('[QuotePanel] fullText length:', fullText.length);
+    console.log('[QuotePanel] mailThread length:', mailThread.length);
+    console.log('[QuotePanel] claudeText length:', claudeText.length);
+    console.log('[QuotePanel] allEmails in fullText:', allEmailsInFullText);
+    console.log('[QuotePanel] customerEmail from SDK:', customerEmail);
+    console.log('[QuotePanel] fullText first 800 chars:', fullText.substring(0, 800));
+
     const quote = extractQuoteData(fullText, { customerEmail, customerName, storeCode });
 
     if (!quote) {
@@ -177,6 +185,7 @@ export default function QuotePanel({
       return;
     }
 
+    console.log('[QuotePanel] extracted quote email:', quote.customer?.email);
     setExtractedQuote(quote);
     const missing = getMissingFields(mergeFormData(quote, formData));
 

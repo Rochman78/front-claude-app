@@ -304,7 +304,13 @@ export default function PluginMain({ context }: PluginMainProps) {
       {/* Boutons sticky en bas */}
       {hasMessages && !claude.isStreaming && (
         <div className="actions-container">
-          {/* 1. Pousser dans Front App (si brouillon validé) */}
+          {/* Brouillon validé : 1. Modifier brouillon, 2. Pousser, 3. Devis */}
+          {showDraft && (
+            <button className="btn-secondary" onClick={() => { setManualValidation(false); setQuoteDraftText(null); }}>
+              Modifier le brouillon
+            </button>
+          )}
+
           {showDraft && lastAssistantMsg && (
             <DraftFinal
               rawContent={quoteDraftText || lastAssistantMsg.content}
@@ -315,7 +321,14 @@ export default function PluginMain({ context }: PluginMainProps) {
             />
           )}
 
-          {/* 2. Devis PDF : bouton modifier (vert Pennylane) */}
+          {/* Brouillon pas validé : 1. Valider */}
+          {!showDraft && hasDraft && !manualValidation && (
+            <button className="btn-validate" onClick={() => setManualValidation(true)}>
+              Valider le brouillon
+            </button>
+          )}
+
+          {/* Devis PDF : bouton modifier (vert Pennylane) */}
           {showQuotePanel && lastAssistantMsg && quoteNumber && quotePennylaneUrl && (
             <a
               href={quotePennylaneUrl}
@@ -328,7 +341,7 @@ export default function PluginMain({ context }: PluginMainProps) {
             </a>
           )}
 
-          {/* 2. Devis PDF : formulaire (vert Pennylane) */}
+          {/* Devis PDF : formulaire (vert Pennylane) */}
           {showQuotePanel && lastAssistantMsg && !(quoteNumber && quotePennylaneUrl) && (
             <ErrorBoundary>
               <QuotePanel
@@ -355,20 +368,6 @@ export default function PluginMain({ context }: PluginMainProps) {
                 }}
               />
             </ErrorBoundary>
-          )}
-
-          {/* 3. Modifier le brouillon (outline bleu, si brouillon validé) */}
-          {showDraft && (
-            <button className="btn-secondary" onClick={() => { setManualValidation(false); setQuoteDraftText(null); }}>
-              Modifier le brouillon
-            </button>
-          )}
-
-          {/* 3. Valider le brouillon (bleu clair, si pas encore validé) */}
-          {!showDraft && hasDraft && !manualValidation && (
-            <button className="btn-validate" onClick={() => setManualValidation(true)}>
-              Valider le brouillon
-            </button>
           )}
         </div>
       )}

@@ -70,56 +70,6 @@ export function extractQuoteData(text: string, context?: { customerEmail?: strin
   return extractFromText(text, context);
 }
 
-function extractFromJson(text: string): ExtractedQuote | null {
-  const codeBlockRegex = /```json\s*([\s\S]*?)```/g;
-  let match;
-  while ((match = codeBlockRegex.exec(text)) !== null) {
-    const parsed = tryParseJsonQuote(match[1]);
-    if (parsed) return parsed;
-  }
-  const braceRegex = /\{[\s\S]*?"lines"\s*:\s*\[[\s\S]*?\]\s*\}/g;
-  while ((match = braceRegex.exec(text)) !== null) {
-    const parsed = tryParseJsonQuote(match[0]);
-    if (parsed) return parsed;
-  }
-  return null;
-}
-
-function tryParseJsonQuote(raw: string): ExtractedQuote | null {
-  try {
-    const data = JSON.parse(raw.trim());
-    if (!data || !Array.isArray(data.lines) || data.lines.length === 0) return null;
-    return {
-      store: data.store,
-      customer: data.customer ? {
-        type: data.customer.type || 'individual',
-        firstName: data.customer.firstName,
-        lastName: data.customer.lastName,
-        name: data.customer.name,
-        email: data.customer.email,
-        phone: data.customer.phone,
-        vatNumber: data.customer.vatNumber,
-        address: data.customer.address ? {
-          address: data.customer.address.address,
-          postalCode: data.customer.address.postalCode,
-          city: data.customer.address.city,
-        } : undefined,
-      } : undefined,
-      lines: data.lines.map((line: Record<string, unknown>) => ({
-        type: (line.type as string) || 'product',
-        label: (line.label as string) || '',
-        description: line.description as string | undefined,
-        quantity: Number(line.quantity) || 1,
-        unitPrice: String(line.unitPrice ?? '0'),
-        unit: (line.unit as string) || 'piece',
-      })),
-      subject: data.subject,
-    };
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Parse le texte naturel de Claude pour extraire les données du devis.
  * Cherche dans tout le texte (tous les messages concaténés) :

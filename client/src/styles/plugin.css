@@ -147,7 +147,15 @@ body {
 
 /* === Actions === */
 .plugin-actions {
-  padding: 16px;
+  padding: 12px 16px;
+}
+
+/* Valider le brouillon : bleu foncé */
+.plugin-actions .btn-primary {
+  background: #1a3a5c;
+}
+.plugin-actions .btn-primary:hover {
+  background: #152e4a;
 }
 
 /* === Buttons === */
@@ -157,15 +165,15 @@ body {
   font-size: 13px;
   font-weight: 600;
   color: #ffffff;
-  background: var(--primary);
+  background: #2563eb;
   border: none;
-  border-radius: var(--radius);
+  border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .btn-primary:hover {
-  background: var(--primary-hover);
+  background: #1d4ed8;
 }
 
 .btn-primary:disabled {
@@ -174,19 +182,21 @@ body {
 }
 
 .btn-secondary {
-  padding: 8px 14px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2563eb;
+  background: #ffffff;
+  border: 1.5px solid #93c5fd;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .btn-secondary:hover {
-  background: var(--border);
+  background: #eff6ff;
+  border-color: #60a5fa;
 }
 
 /* === Error === */
@@ -342,7 +352,19 @@ body {
 
 .draft-final-actions {
   display: flex;
+  flex-direction: column;
   gap: 8px;
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+/* Pousser dans Front App : bleu clair */
+.draft-final-actions .btn-primary {
+  background: #3b82f6;
+}
+.draft-final-actions .btn-primary:hover {
+  background: #2563eb;
 }
 
 
@@ -468,8 +490,12 @@ body {
 
 .quote-panel-actions {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   margin-top: 10px;
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 8px;
 }
 
 .quote-panel-result {

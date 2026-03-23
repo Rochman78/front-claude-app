@@ -80,23 +80,15 @@ export async function createCustomer(customer: Record<string, unknown>): Promise
   if (res.status === 200 || res.status === 201) {
     const result = await res.json();
 
-    // Pour les company, tenter d'ajouter le destinataire (nom du contact)
+    // Pour les company, ajouter le destinataire (nom du contact)
     if (type === 'company' && result.id && (customer.firstName || customer.lastName)) {
       const contactName = [customer.firstName, customer.lastName].filter(Boolean).join(' ');
-      const fieldsToTry = ['recipient', 'delivery_name', 'delivery_recipient'];
-      for (const field of fieldsToTry) {
-        const updateRes = await fetch(`${PENNYLANE_API_URL}/company_customers/${result.id}`, {
-          method: 'PUT',
-          headers: pennylaneHeaders(),
-          body: JSON.stringify({ [field]: contactName }),
-        });
-        const updateBody = await updateRes.text();
-        console.log(`[pennylane] update customer ${field}="${contactName}" → ${updateRes.status} ${updateBody.substring(0, 200)}`);
-        if (updateRes.ok) {
-          console.log(`[pennylane] recipient field found: "${field}"`);
-          break;
-        }
-      }
+      const updateRes = await fetch(`${PENNYLANE_API_URL}/company_customers/${result.id}`, {
+        method: 'PUT',
+        headers: pennylaneHeaders(),
+        body: JSON.stringify({ recipient: contactName }),
+      });
+      console.log(`[pennylane] set recipient="${contactName}" → ${updateRes.status}`);
     }
 
     return result;

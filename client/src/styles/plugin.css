@@ -57,7 +57,13 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  overflow: hidden;
+}
+
+.plugin-scrollable {
+  flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .plugin-empty {
@@ -152,8 +158,9 @@ body {
   gap: 8px;
   background: #f8f9fa;
   padding: 12px;
-  margin: 8px 16px 16px;
+  margin: 0 16px 12px;
   border-radius: 8px;
+  flex-shrink: 0;
 }
 
 /* Valider le brouillon : bleu foncé */

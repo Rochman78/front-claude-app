@@ -163,7 +163,7 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
     console.log('[pennylane] create quote response:', JSON.stringify(d, null, 2));
 
     const quoteNumber = d.quote_number || d.label || '';
-    const companyId = process.env.PENNYLANE_COMPANY_ID || '21942122';
+    const companyId = process.env.PENNYLANE_COMPANY_ID || '21855877';
     const pennylaneUrl = `https://app.pennylane.com/companies/${companyId}/customer_invoices?search=${encodeURIComponent(quoteNumber)}`;
 
     return {

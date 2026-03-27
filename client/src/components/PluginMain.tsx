@@ -455,26 +455,57 @@ export default function PluginMain({ context }: PluginMainProps) {
             </button>
           )}
 
-          {/* Reprendre à 0 — toujours visible quand il y a des messages */}
-          <button
-            className="btn-outline"
-            style={{ fontSize: '12px', opacity: 0.7, marginTop: '4px' }}
-            onClick={async () => {
-              if (!store) return;
-              await conversationCache.deleteFromDB(frontConvId, store.code);
-              claude.reset();
-              setManualValidation(false);
-              setDraftInvalidated(false);
-              setQuotePdfUrl(null);
-              setQuoteNumber(null);
-              setQuotePennylaneUrl(null);
-              setQuoteDraftText(null);
-              setMailThread('');
-              setShowQuoteConfirm(false);
-            }}
-          >
-            Reprendre à 0
-          </button>
+          {/* Boutons secondaires : Reprendre avec Claude + Reprendre à 0 */}
+          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+            <button
+              className="btn-outline"
+              style={{ fontSize: '12px', opacity: 0.8, flex: 1 }}
+              onClick={async () => {
+                try {
+                  const msgsRes = await context.listMessages();
+                  const msgs = msgsRes.results as unknown as FrontMessage[];
+                  const mailContent = msgs
+                    .map((msg) => {
+                      const author = msg.author?.name || msg.author?.email || 'Inconnu';
+                      const date = new Date(msg.date * 1000).toLocaleString('fr-FR');
+                      const text = extractText(msg);
+                      return text ? `[${date}] ${author} :\n${text}` : '';
+                    })
+                    .filter(Boolean)
+                    .join('\n\n---\n\n');
+                  setMailThread(mailContent);
+                  setManualValidation(false);
+                  setDraftInvalidated(true);
+                  setQuoteDraftText(null);
+                  setShowQuoteConfirm(false);
+                  await claude.sendMessage(`Voici la suite de la conversation avec le client. Lis les nouveaux messages et propose un nouveau brouillon en tenant compte de tout l'historique :\n\n${mailContent}`);
+                } catch (err) {
+                  console.error('[plugin] reprendre avec claude error:', err);
+                }
+              }}
+            >
+              Reprendre avec Claude
+            </button>
+            <button
+              className="btn-outline"
+              style={{ fontSize: '12px', opacity: 0.7, flex: 1 }}
+              onClick={async () => {
+                if (!store) return;
+                await conversationCache.deleteFromDB(frontConvId, store.code);
+                claude.reset();
+                setManualValidation(false);
+                setDraftInvalidated(false);
+                setQuotePdfUrl(null);
+                setQuoteNumber(null);
+                setQuotePennylaneUrl(null);
+                setQuoteDraftText(null);
+                setMailThread('');
+                setShowQuoteConfirm(false);
+              }}
+            >
+              Reprendre à 0
+            </button>
+          </div>
         </div>
       )}
     </div>

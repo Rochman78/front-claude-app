@@ -6,8 +6,9 @@ import Anthropic from '@anthropic-ai/sdk';
  * Détecte la langue du client et traduit le brouillon si nécessaire.
  *
  * Body: {
- *   text: string,        — brouillon à traduire (texte brut)
- *   mailContent: string   — fil de mails pour détecter la langue du client
+ *   text: string,           — brouillon à traduire (texte brut)
+ *   mailContent: string     — fil de mails pour détecter la langue du client
+ *   targetLanguage?: string — code langue ISO 639-1 forcé (skip la détection)
  * }
  *
  * Response: {
@@ -22,28 +23,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ANTHROPIC_API_KEY non configurée' }, { status: 500 });
     }
 
-    const { text, mailContent } = await req.json();
+    const { text, mailContent, targetLanguage } = await req.json();
 
-    if (!text || !mailContent) {
-      return NextResponse.json({ error: 'text et mailContent requis' }, { status: 400 });
+    if (!text || (!mailContent && !targetLanguage)) {
+      return NextResponse.json({ error: 'text et (mailContent ou targetLanguage) requis' }, { status: 400 });
     }
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    // Étape 1 : détecter la langue du client
-    const detectResponse = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 50,
-      messages: [
-        {
-          role: 'user',
-          content: `Analyse le dernier message du CLIENT (pas les réponses de la boutique) dans ce fil de mails et détecte la langue utilisée par le client. Réponds UNIQUEMENT avec le code langue ISO 639-1 (fr, en, de, nl, es, it, pt, etc.). Rien d'autre.\n\n${mailContent.substring(0, 3000)}`,
-        },
-      ],
-    });
+    // Étape 1 : détecter la langue du client (ou utiliser la langue forcée)
+    let detectedLanguage: string;
 
-    const detectedLanguage = (detectResponse.content[0].type === 'text' ? detectResponse.content[0].text : 'fr').trim().toLowerCase().substring(0, 2);
-    console.log(`[plugin/translate] langue détectée: ${detectedLanguage}`);
+    if (targetLanguage) {
+      // Langue forcée depuis le store_code → pas de détection
+      detectedLanguage = targetLanguage.trim().toLowerCase().substring(0, 2);
+      console.log(`[plugin/translate] langue forcée: ${detectedLanguage}`);
+    } else {
+      const detectResponse = await client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 50,
+        messages: [
+          {
+            role: 'user',
+            content: `Analyse le dernier message du CLIENT (pas les réponses de la boutique) dans ce fil de mails et détecte la langue utilisée par le client. Réponds UNIQUEMENT avec le code langue ISO 639-1 (fr, en, de, nl, es, it, pt, etc.). Rien d'autre.\n\n${mailContent.substring(0, 3000)}`,
+          },
+        ],
+      });
+      detectedLanguage = (detectResponse.content[0].type === 'text' ? detectResponse.content[0].text : 'fr').trim().toLowerCase().substring(0, 2);
+      console.log(`[plugin/translate] langue détectée: ${detectedLanguage}`);
+    }
 
     // Si français, pas de traduction
     if (detectedLanguage === 'fr') {

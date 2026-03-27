@@ -41,6 +41,11 @@ export default function QuotePanel({
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [extractedQuote, setExtractedQuote] = useState<ExtractedQuote | null>(null);
 
+  // Exposer handleClick au parent — DOIT être avant tout return conditionnel
+  useEffect(() => {
+    onRegisterClick?.(handleClick);
+  });
+
   // ─── ÉTAT 3 : Devis créé ───
   if (state === 'done' && result) {
     return (
@@ -155,11 +160,6 @@ export default function QuotePanel({
       </div>
     );
   }
-
-  // Exposer handleClick au parent pour que le bouton soit dans le container
-  useEffect(() => {
-    onRegisterClick?.(handleClick);
-  });
 
   // ─── ÉTAT 1 : idle — pas de bouton ici, il est dans le container PluginMain ───
   if (state === 'idle') {

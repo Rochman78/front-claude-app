@@ -8,11 +8,18 @@ interface CachedConversation {
   messages: Message[];
 }
 
+export interface CachedQuote {
+  pdfUrl: string;
+  quoteNumber: string;
+  pennylaneUrl: string;
+}
+
 /**
  * Cache mémoire au niveau module — survit aux mount/unmount des composants.
  * Persiste tant que le plugin (iframe) est ouvert.
  */
 const CACHE = new Map<string, CachedConversation>();
+const QUOTE_CACHE = new Map<string, CachedQuote>();
 
 export function useConversationCache() {
   const getFromCache = useCallback((frontConvId: string): CachedConversation | null => {
@@ -25,6 +32,19 @@ export function useConversationCache() {
 
   const setInCache = useCallback((frontConvId: string, data: CachedConversation) => {
     CACHE.set(frontConvId, data);
+  }, []);
+
+  const getQuoteFromCache = useCallback((frontConvId: string): CachedQuote | null => {
+    return QUOTE_CACHE.get(frontConvId) || null;
+  }, []);
+
+  const setQuoteInCache = useCallback((frontConvId: string, data: CachedQuote) => {
+    QUOTE_CACHE.set(frontConvId, data);
+  }, []);
+
+  const clearCache = useCallback((frontConvId: string) => {
+    CACHE.delete(frontConvId);
+    QUOTE_CACHE.delete(frontConvId);
   }, []);
 
   const loadFromDB = useCallback(async (frontConvId: string, storeCode: string): Promise<CachedConversation | null> => {
@@ -61,5 +81,18 @@ export function useConversationCache() {
     }
   }, []);
 
-  return { getFromCache, setInCache, loadFromDB };
+  const deleteFromDB = useCallback(async (frontConvId: string, storeCode: string): Promise<boolean> => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/plugin/conversation?front_conversation_id=${encodeURIComponent(frontConvId)}&store_code=${encodeURIComponent(storeCode)}`,
+        { method: 'DELETE' }
+      );
+      clearCache(frontConvId);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }, [clearCache]);
+
+  return { getFromCache, setInCache, getQuoteFromCache, setQuoteInCache, clearCache, loadFromDB, deleteFromDB };
 }

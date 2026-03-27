@@ -79,6 +79,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const claude = useClaude();
   const conversationCache = useConversationCache();
   const [manualValidation, setManualValidation] = useState(false);
+  const [draftInvalidated, setDraftInvalidated] = useState(false);
   const [quotePdfUrl, setQuotePdfUrl] = useState<string | null>(null);
   const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
   const [quotePennylaneUrl, setQuotePennylaneUrl] = useState<string | null>(null);
@@ -103,11 +104,21 @@ export default function PluginMain({ context }: PluginMainProps) {
 
     // Reset les states liés au devis
     setManualValidation(false);
-    setQuotePdfUrl(null);
-    setQuoteNumber(null);
-    setQuotePennylaneUrl(null);
+    setDraftInvalidated(false);
     setQuoteDraftText(null);
     setShowQuoteConfirm(false);
+
+    // Restaurer les infos devis depuis le cache (point 1 : persistance)
+    const cachedQuote = conversationCache.getQuoteFromCache(frontConvId);
+    if (cachedQuote) {
+      setQuotePdfUrl(cachedQuote.pdfUrl);
+      setQuoteNumber(cachedQuote.quoteNumber);
+      setQuotePennylaneUrl(cachedQuote.pennylaneUrl);
+    } else {
+      setQuotePdfUrl(null);
+      setQuoteNumber(null);
+      setQuotePennylaneUrl(null);
+    }
 
     // Résoudre l'email/nom client depuis le SDK (replyTo.handle) à chaque conversation
     (async () => {
@@ -260,7 +271,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const lastAssistantMsg = [...claude.messages].reverse().find((m) => m.role === 'assistant');
   const hasDraft = lastAssistantMsg?.content.includes('Bonjour') ?? false;
   const autoReady = lastAssistantMsg ? isDraftReady(lastAssistantMsg.content) : false;
-  const showDraft = !claude.isStreaming && hasDraft && (autoReady || manualValidation);
+  const showDraft = !claude.isStreaming && hasDraft && (autoReady || manualValidation) && !draftInvalidated;
 
   // QuotePanel visible dès qu'il y a au moins un message Claude
   const showQuotePanel = hasMessages && !claude.isStreaming;
@@ -339,6 +350,9 @@ export default function PluginMain({ context }: PluginMainProps) {
               setQuoteNumber(qNumber);
               setQuotePennylaneUrl(pennylaneUrl);
               setManualValidation(true);
+              setDraftInvalidated(false);
+              // Sauvegarder dans le cache pour persistance
+              conversationCache.setQuoteInCache(frontConvId, { pdfUrl, quoteNumber: qNumber, pennylaneUrl });
               // Demander si on remplace le brouillon par le mail générique devis
               setShowQuoteConfirm(true);
             }}
@@ -395,7 +409,7 @@ export default function PluginMain({ context }: PluginMainProps) {
           {/* Brouillon validé */}
           {showDraft && (
             <>
-              <button className="btn-outline" onClick={() => { setManualValidation(false); setQuoteDraftText(null); }}>
+              <button className="btn-outline" onClick={() => { setManualValidation(false); setDraftInvalidated(true); setQuoteDraftText(null); }}>
                 Modifier le brouillon
               </button>
               <button
@@ -413,8 +427,8 @@ export default function PluginMain({ context }: PluginMainProps) {
           )}
 
           {/* Brouillon pas validé */}
-          {!showDraft && hasDraft && !manualValidation && (
-            <button className="btn-validate" onClick={() => setManualValidation(true)}>
+          {!showDraft && hasDraft && (
+            <button className="btn-validate" onClick={() => { setManualValidation(true); setDraftInvalidated(false); }}>
               Valider le brouillon
             </button>
           )}
@@ -440,6 +454,27 @@ export default function PluginMain({ context }: PluginMainProps) {
               Générer devis PDF
             </button>
           )}
+
+          {/* Reprendre à 0 — toujours visible quand il y a des messages */}
+          <button
+            className="btn-outline"
+            style={{ fontSize: '12px', opacity: 0.7, marginTop: '4px' }}
+            onClick={async () => {
+              if (!store) return;
+              await conversationCache.deleteFromDB(frontConvId, store.code);
+              claude.reset();
+              setManualValidation(false);
+              setDraftInvalidated(false);
+              setQuotePdfUrl(null);
+              setQuoteNumber(null);
+              setQuotePennylaneUrl(null);
+              setQuoteDraftText(null);
+              setMailThread('');
+              setShowQuoteConfirm(false);
+            }}
+          >
+            Reprendre à 0
+          </button>
         </div>
       )}
     </div>

@@ -153,33 +153,57 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   const qtyMatch = text.match(/(?:quantité|qté|qty)\s*[:=]?\s*(\d+)/i);
   const orderQty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
 
-  // Construire le label : "[Couleur] - [LxH m] - Filet de camouflage renforcé [finition]"
+  // Déterminer si c'est un produit catalogue (TTC) ou du sur mesure (HT/m²)
+  const isCatalogue = !!(totalTTCMatch && !surfaceMatch && !prixUnitaireMatch);
+
+  // Construire le label
   const couleur = couleurMatch ? couleurMatch[1].trim() : '';
   const matiere = matiereMatch ? matiereMatch[1].trim() : '';
   const dimLabel = dimMatch ? `${dimMatch[1].replace(',', '.')}x${dimMatch[2].replace(',', '.')} m` : '';
-  const finition = matiere ? `Filet de camouflage renforcé ${matiere.toLowerCase()}` : 'Filet de camouflage renforcé sur mesure';
 
-  const labelParts = [couleur, dimLabel, finition].filter(Boolean);
-  const label = labelParts.join(' - ') || 'Produit sur mesure';
+  let label: string;
+  if (isCatalogue) {
+    // Produit catalogue : extraire le nom du produit depuis le brouillon
+    // Cherche la ligne qui décrit le produit (ex: "Filet de camouflage câble acier — Blanc — 3 x 6 m")
+    const productLineMatch = text.match(/(?:^|\n)\s*((?:filet|red|rete|net|netz|toile|coco|voile|parasol|rideau|brise-vue|cortina|tenda|Schutznetz|camouflagenet)[^\n]{5,80})/im);
+    if (productLineMatch) {
+      // Nettoyer : retirer "Quantité :", prix, etc.
+      label = productLineMatch[1].trim()
+        .replace(/\s*[-—–]\s*(?:quantité|cantidad|qty|anzahl|aantal|quantità)\s*[:=]?\s*\d+/i, '')
+        .replace(/\s*[-—–]\s*\d+[.,]\d+\s*€.*/i, '')
+        .trim();
+    } else {
+      // Fallback : construire depuis les éléments extraits
+      const parts = [dimLabel, couleur, matiere].filter(Boolean);
+      label = parts.length > 0 ? parts.join(' — ') : 'Produit catalogue';
+    }
+  } else {
+    // Sur mesure : label classique
+    const finition = matiere ? `Filet de camouflage renforcé ${matiere.toLowerCase()}` : 'Filet de camouflage renforcé sur mesure';
+    const labelParts = [couleur, dimLabel, finition].filter(Boolean);
+    label = labelParts.join(' - ') || 'Produit sur mesure';
+  }
+
+  console.log('[extractQuoteData] isCatalogue:', isCatalogue, 'label:', label);
 
   // Déterminer quantité et prix
-  // RÈGLE : le prix dans le catalogue et les mails = prix TTC
-  // On calcule le HT à partir du TTC en divisant par le vrai taux TVA
   let quantity: number;
   let unitPrice: string;
 
-  if (totalTTCMatch) {
-    // Priorité au TTC : c'est le prix de référence (catalogue / mails)
+  if (isCatalogue) {
+    // Produit catalogue : prix TTC → HT, quantité en unités
+    const ttc = parseNumber(totalTTCMatch![1]);
+    const ht = ttc / vatMultiplier;
+    quantity = orderQty;
+    unitPrice = (ht / orderQty).toFixed(2);
+    console.log('[extractQuoteData] catalogue TTC→HT:', { ttc, vatMultiplier, htUnit: unitPrice, qty: quantity });
+  } else if (totalTTCMatch && surfaceMatch) {
+    // Sur mesure avec TTC : convertir en HT/m²
     const ttc = parseNumber(totalTTCMatch[1]);
     const ht = ttc / vatMultiplier;
-    if (surfaceMatch) {
-      quantity = parseNumber(surfaceMatch[1]);
-      unitPrice = (ht / quantity).toFixed(2);
-    } else {
-      quantity = 1;
-      unitPrice = ht.toFixed(2);
-    }
-    console.log('[extractQuoteData] TTC→HT conversion:', { ttc, vatMultiplier, ht: ht.toFixed(2) });
+    quantity = parseNumber(surfaceMatch[1]);
+    unitPrice = (ht / quantity).toFixed(2);
+    console.log('[extractQuoteData] sur mesure TTC→HT:', { ttc, vatMultiplier, ht: ht.toFixed(2) });
   } else if (surfaceMatch && prixUnitaireMatch) {
     quantity = parseNumber(surfaceMatch[1]);
     unitPrice = parseNumber(prixUnitaireMatch[1]).toFixed(2);
@@ -193,14 +217,17 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     return null;
   }
 
-  console.log('[extractQuoteData] line values:', { surface: quantity, unitPricePerM2: unitPrice, totalHT: (quantity * parseFloat(unitPrice)).toFixed(2) });
+  console.log('[extractQuoteData] line values:', { quantity, unitPrice, totalHT: (quantity * parseFloat(unitPrice)).toFixed(2) });
 
-  // Description : "Quantité : X | Total m² : Y | Délai de production + livraison : environ 14 jours"
-  const descParts = [];
-  if (orderQty > 0) descParts.push(`Quantité : ${orderQty}`);
-  if (quantity > 0) descParts.push(`Total m² : ${quantity}`);
-  descParts.push('Délai de production + livraison : environ 14 jours');
-  const description = descParts.join(' | ');
+  // Description : uniquement pour le sur mesure
+  let description: string | undefined;
+  if (!isCatalogue) {
+    const descParts = [];
+    if (orderQty > 0) descParts.push(`Quantité : ${orderQty}`);
+    if (quantity > 0) descParts.push(`Total m² : ${quantity}`);
+    descParts.push('Délai de production + livraison : environ 14 jours');
+    description = descParts.join(' | ');
+  }
 
   const lines: QuoteLine[] = [{
     type: 'product',
@@ -208,7 +235,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     description,
     quantity,
     unitPrice,
-    unit: 'm2',
+    unit: isCatalogue ? 'piece' : 'm2',
   }];
 
   // Détecter livraison offerte
@@ -454,6 +481,7 @@ export function formatQuotePayload(quote: ExtractedQuote, storeCode: string, inb
       quantity: l.quantity,
       unitPrice: parseFloat(l.unitPrice),
       vatRate: vatCode,
+      unit: l.unit,
     })),
     subject: quote.subject,
     inboxName,

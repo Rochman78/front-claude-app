@@ -28,6 +28,8 @@ interface QuotePanelProps {
   onQuoteCreated?: (pdfUrl: string, quoteNumber: string, pennylaneUrl: string) => void;
   /** Callback pour exposer handleClick au parent */
   onRegisterClick?: (fn: () => void) => void;
+  /** Callback pour récupérer les messages Front SDK (fallback si mailThread vide) */
+  onListMessages?: () => Promise<{ results: unknown[] }>;
 }
 
 interface QuoteResult {
@@ -39,7 +41,7 @@ interface QuoteResult {
 type PanelState = 'idle' | 'missing' | 'form' | 'creating' | 'done';
 
 export default function QuotePanel({
-  claudeText, mailThread, customerEmail, customerName, storeCode, inboxName, onSendMessage, onQuoteCreated, onRegisterClick,
+  claudeText, mailThread, customerEmail, customerName, storeCode, inboxName, onSendMessage, onQuoteCreated, onRegisterClick, onListMessages,
 }: QuotePanelProps) {
   const [state, setState] = useState<PanelState>('idle');
   const [result, setResult] = useState<QuoteResult | null>(null);
@@ -173,12 +175,26 @@ export default function QuotePanel({
   }
   return null;
 
-  function handleClick() {
+  async function handleClick() {
     setError(null);
+
+    // Si mailThread est vide (conversation restaurée depuis cache), récupérer depuis le SDK
+    let resolvedMailThread = mailThread;
+    if (!resolvedMailThread && onListMessages) {
+      try {
+        const msgsRes = await onListMessages();
+        const msgs = msgsRes.results as unknown as { content?: { body?: string } }[];
+        resolvedMailThread = msgs.map((m) => {
+          const body = m.content?.body || '';
+          return body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        }).filter(Boolean).join('\n\n');
+        console.log('[QuotePanel] mailThread recovered from SDK:', resolvedMailThread.length, 'chars');
+      } catch { /* fallback: pas de mailThread */ }
+    }
 
     // Extraire les données : chiffrage depuis Claude, infos client depuis le fil de mails
     // mailThread en premier pour prioriser les infos les plus récentes du client
-    const fullText = mailThread + '\n\n---\n\n' + claudeText;
+    const fullText = resolvedMailThread + '\n\n---\n\n' + claudeText;
     const allEmailsInFullText = fullText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
     console.log('[QuotePanel] fullText length:', fullText.length);
     console.log('[QuotePanel] mailThread length:', mailThread.length);

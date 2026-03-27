@@ -330,6 +330,7 @@ export default function PluginMain({ context }: PluginMainProps) {
             storeCode={store.code}
             inboxName={store.inboxName}
             onSendMessage={claude.sendMessage}
+            onListMessages={() => context.listMessages()}
             onRegisterClick={(fn) => { quoteClickRef.current = fn; }}
             onQuoteCreated={(pdfUrl, qNumber, pennylaneUrl) => {
               setQuotePdfUrl(pdfUrl);

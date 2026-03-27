@@ -121,9 +121,10 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
 
   // Extraire le taux de TVA depuis le texte (AVANT le calcul des prix)
   const tvaRateMatch =
-    text.match(/(?:TVA|tva|IVA|TVA applicable)\s*\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
-    text.match(/(?:taux\s*(?:de\s*)?(?:TVA|tva|IVA))\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
-    text.match(/TVA\s*\(\s*(\d+(?:[.,]\d+)?)\s*%\s*\)/i);
+    text.match(/(?:TVA|tva|IVA|TVA applicable)[^)]*?\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    text.match(/(?:taux\s*(?:de\s*)?(?:TVA|tva|IVA))[^)]*?[:=]?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    text.match(/TVA\s*\(\s*(\d+(?:[.,]\d+)?)\s*%\s*\)/i) ||
+    text.match(/(\d+(?:[.,]\d+)?)\s*%\s*(?:TVA|tva|IVA)/i);
   const extractedVatPercent = tvaRateMatch ? parseNumber(tvaRateMatch[1]) : null;
   const vatMultiplier = 1 + (extractedVatPercent !== null ? extractedVatPercent : 20) / 100;
   console.log('[extractQuoteData] extracted VAT rate:', extractedVatPercent !== null ? `${extractedVatPercent}%` : 'not found (default 20%)', 'multiplier:', vatMultiplier);

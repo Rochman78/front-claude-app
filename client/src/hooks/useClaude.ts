@@ -20,6 +20,7 @@ interface UseClaudeReturn {
   sendMessage: (message: string) => Promise<void>;
   restore: (msgs: Message[], convId: string) => void;
   reset: () => void;
+  abort: () => void;
   setError: (error: string) => void;
   clearError: () => void;
 }
@@ -31,31 +32,54 @@ export function useClaude(): UseClaudeReturn {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const msgIdCounter = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   function nextId(): string {
     return `msg-${++msgIdCounter.current}`;
+  }
+
+  /** Annule tout stream en cours */
+  function abortCurrent() {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
   }
 
   /** Lit un stream texte et accumule les chunks */
   async function readStream(
     response: Response,
     onChunk: (text: string) => void,
+    signal?: AbortSignal,
   ): Promise<string> {
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let full = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      if (chunk.includes('__ERROR__')) {
-        const errorMsg = chunk.replace(/.*__ERROR__/, '');
-        console.error('[useClaude] stream error received:', errorMsg);
-        throw new Error(errorMsg);
+    // Écouter l'abort pour annuler la lecture
+    if (signal) {
+      signal.addEventListener('abort', () => reader.cancel(), { once: true });
+    }
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        if (chunk.includes('__ERROR__')) {
+          const errorMsg = chunk.replace(/.*__ERROR__/, '');
+          console.error('[useClaude] stream error received:', errorMsg);
+          throw new Error(errorMsg);
+        }
+        full += chunk;
+        onChunk(full);
       }
-      full += chunk;
-      onChunk(full);
+    } catch (err) {
+      if (signal?.aborted) {
+        console.log('[useClaude] stream aborted (conversation changed)');
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      throw err;
     }
 
     return full;
@@ -69,6 +93,11 @@ export function useClaude(): UseClaudeReturn {
     frontConversationId: string;
     subject?: string;
   }) => {
+    // Annuler tout stream précédent
+    abortCurrent();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setIsStreaming(true);
     setStreamingContent('');
     setError(null);
@@ -79,6 +108,7 @@ export function useClaude(): UseClaudeReturn {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -90,17 +120,23 @@ export function useClaude(): UseClaudeReturn {
       const convId = response.headers.get('X-Conversation-Id');
       if (convId) setConversationId(convId);
 
-      const fullText = await readStream(response, setStreamingContent);
+      const fullText = await readStream(response, setStreamingContent, controller.signal);
+
+      // Vérifier qu'on n'a pas été annulé entre-temps
+      if (controller.signal.aborted) return;
 
       // Ajouter uniquement la réponse Claude (pas le message technique d'analyse)
       setMessages([
         { id: nextId(), role: 'assistant', content: fullText },
       ]);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
-      setStreamingContent('');
-      setIsStreaming(false);
+      if (!controller.signal.aborted) {
+        setStreamingContent('');
+        setIsStreaming(false);
+      }
     }
   }, []);
 
@@ -109,6 +145,11 @@ export function useClaude(): UseClaudeReturn {
       setError('Pas de conversation active. Lancez une analyse d\'abord.');
       return;
     }
+
+    // Annuler tout stream précédent
+    abortCurrent();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     // Ajouter le message user immédiatement
     const userMsg: Message = { id: nextId(), role: 'user', content: message };
@@ -122,6 +163,7 @@ export function useClaude(): UseClaudeReturn {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversationId, message }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -129,7 +171,9 @@ export function useClaude(): UseClaudeReturn {
         throw new Error(err.error || `Erreur ${response.status}`);
       }
 
-      const fullText = await readStream(response, setStreamingContent);
+      const fullText = await readStream(response, setStreamingContent, controller.signal);
+
+      if (controller.signal.aborted) return;
 
       // Ajouter la réponse assistant
       setMessages((prev) => [
@@ -137,15 +181,19 @@ export function useClaude(): UseClaudeReturn {
         { id: nextId(), role: 'assistant', content: fullText },
       ]);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
-      setStreamingContent('');
-      setIsStreaming(false);
+      if (!controller.signal.aborted) {
+        setStreamingContent('');
+        setIsStreaming(false);
+      }
     }
   }, [conversationId]);
 
   /** Restaurer un historique existant (depuis le cache ou la BDD) */
   const restore = useCallback((msgs: Message[], convId: string) => {
+    abortCurrent();
     setMessages(msgs);
     setConversationId(convId);
     setStreamingContent('');
@@ -155,6 +203,7 @@ export function useClaude(): UseClaudeReturn {
 
   /** Reset complet (nouveau mail sans historique) */
   const reset = useCallback(() => {
+    abortCurrent();
     setMessages([]);
     setConversationId(null);
     setStreamingContent('');
@@ -176,6 +225,7 @@ export function useClaude(): UseClaudeReturn {
     sendMessage,
     restore,
     reset,
+    abort: abortCurrent,
     setError: exposedSetError,
     clearError,
   };

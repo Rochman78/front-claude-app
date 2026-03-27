@@ -254,7 +254,12 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   // Supporte : "Label: valeur" et "Label:\nvaleur"
   const getField = (label: RegExp): string => {
     const m = text.match(new RegExp(label.source + '\\s*[:：]\\s*\\n?\\s*([^\\n]+)', 'i'));
-    return m ? m[1].trim() : '';
+    if (!m) return '';
+    // Limiter à 100 chars et couper au premier mot-clé de formulaire parasite
+    let val = m[1].trim().substring(0, 100);
+    // Couper si on détecte un label de formulaire suivant (Adresse, Email, Téléphone, etc.)
+    val = val.replace(/\s+(?:adresse|e-?mail|tél|prénom|nom|ville|code postal|pays|forme|type|taille|couleur|quantité|corps|numéro|n°|phone|dirección|indirizzo|address)\s*(?:[:：(]|de\s).*/i, '');
+    return val.trim();
   };
 
   // Email client : vient du SDK (replyTo.handle), déjà résolu dans PluginMain
@@ -272,7 +277,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   let customer: QuoteCustomer | undefined;
 
   // Détecter la raison sociale (FR/ES/DE/NL/IT)
-  const raisonSocialeRaw = getField(/(?:raison\s*sociale|entreprise|société|empresa|razón\s*social|firma|unternehmen|bedrijf|azienda|ditta)(?:\s*\([^)]*\))?/);
+  const raisonSocialeRaw = getField(/(?:raison\s*sociale|entreprise|société|empresa|razón\s*social|firma|unternehmen|bedrijf|azienda|ditta)(?:\s*\([^)]*\))?(?:\s*\/[^:]*)?/);
   const companyName = raisonSocialeRaw;
   const isCompany = companyName.length > 0;
 

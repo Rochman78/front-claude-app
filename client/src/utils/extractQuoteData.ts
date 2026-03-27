@@ -15,7 +15,21 @@ export interface QuoteCustomer {
     address?: string;
     postalCode?: string;
     city?: string;
+    country?: string;
   };
+}
+
+/** Mapping store_code → pays par défaut du marché */
+const STORE_DEFAULT_COUNTRY: Record<string, string> = {
+  LFC: 'FR', LVO: 'FR', COCO: 'FR', MON: 'FR', UNI: 'FR',
+  TAR: 'DE', HET: 'NL', RED: 'ES', RETE: 'IT',
+};
+
+/** Convertit un taux TVA (%) + pays en code Pennylane (ex: 'ES_210') */
+function toPennylaneVatCode(rate: number, country: string): string {
+  if (rate === 0) return 'tax_free_0';
+  const rateInt = Math.round(rate * 10);
+  return `${country}_${rateInt}`;
 }
 
 export interface QuoteLine {
@@ -32,6 +46,7 @@ export interface ExtractedQuote {
   customer?: QuoteCustomer;
   lines: QuoteLine[];
   subject?: string;
+  extractedVatPercent?: number | null;
 }
 
 export interface MissingField {
@@ -104,6 +119,16 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     text.match(/ttc\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
     text.match(/montant\s*ttc\s*[:=—–-]\s*(\d+[.,]\d+)\s*€/i);
 
+  // Extraire le taux de TVA depuis le texte (AVANT le calcul des prix)
+  const tvaRateMatch =
+    text.match(/(?:TVA|tva|IVA|TVA applicable)[^)]*?\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    text.match(/(?:taux\s*(?:de\s*)?(?:TVA|tva|IVA))[^)]*?[:=]?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    text.match(/TVA\s*\(\s*(\d+(?:[.,]\d+)?)\s*%\s*\)/i) ||
+    text.match(/(\d+(?:[.,]\d+)?)\s*%\s*(?:TVA|tva|IVA)/i);
+  const extractedVatPercent = tvaRateMatch ? parseNumber(tvaRateMatch[1]) : null;
+  const vatMultiplier = 1 + (extractedVatPercent !== null ? extractedVatPercent : 20) / 100;
+  console.log('[extractQuoteData] extracted VAT rate:', extractedVatPercent !== null ? `${extractedVatPercent}%` : 'not found (default 20%)', 'multiplier:', vatMultiplier);
+
   console.log('[extractQuoteData] matches:', {
     prixUnitaire: prixUnitaireMatch?.[1],
     surface: surfaceMatch?.[1],
@@ -114,7 +139,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   // On peut construire une ligne si on a :
   // - prix unitaire + surface, OU
   // - total HT, OU
-  // - total TTC (on calcule le HT en divisant par 1.2)
+  // - total TTC (on calcule le HT avec le vrai taux TVA)
   if (!totalHTMatch && !totalTTCMatch && !(prixUnitaireMatch && surfaceMatch)) return null;
 
   // Extraire les dimensions — supporte × et x, entiers et décimaux
@@ -128,20 +153,58 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   const qtyMatch = text.match(/(?:quantité|qté|qty)\s*[:=]?\s*(\d+)/i);
   const orderQty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
 
-  // Construire le label : "[Couleur] - [LxH m] - Filet de camouflage renforcé [finition]"
+  // Déterminer si c'est un produit catalogue (TTC) ou du sur mesure (HT/m²)
+  const isCatalogue = !!(totalTTCMatch && !surfaceMatch && !prixUnitaireMatch);
+
+  // Construire le label
   const couleur = couleurMatch ? couleurMatch[1].trim() : '';
   const matiere = matiereMatch ? matiereMatch[1].trim() : '';
   const dimLabel = dimMatch ? `${dimMatch[1].replace(',', '.')}x${dimMatch[2].replace(',', '.')} m` : '';
-  const finition = matiere ? `Filet de camouflage renforcé ${matiere.toLowerCase()}` : 'Filet de camouflage renforcé sur mesure';
 
-  const labelParts = [couleur, dimLabel, finition].filter(Boolean);
-  const label = labelParts.join(' - ') || 'Produit sur mesure';
+  let label: string;
+  if (isCatalogue) {
+    // Produit catalogue : extraire le nom du produit depuis le brouillon
+    // Cherche la ligne qui décrit le produit (ex: "Filet de camouflage câble acier — Blanc — 3 x 6 m")
+    const productLineMatch = text.match(/(?:^|\n)\s*((?:filet|red|rete|net|netz|toile|coco|voile|parasol|rideau|brise-vue|cortina|tenda|Schutznetz|camouflagenet)[^\n]{5,80})/im);
+    if (productLineMatch) {
+      // Nettoyer : retirer "Quantité :", prix, etc.
+      label = productLineMatch[1].trim()
+        .replace(/\s*[-—–]\s*(?:quantité|cantidad|qty|anzahl|aantal|quantità)\s*[:=]?\s*\d+/i, '')
+        .replace(/\s*[-—–]\s*\d+[.,]\d+\s*€.*/i, '')
+        .trim();
+    } else {
+      // Fallback : construire depuis les éléments extraits
+      const parts = [dimLabel, couleur, matiere].filter(Boolean);
+      label = parts.length > 0 ? parts.join(' — ') : 'Produit catalogue';
+    }
+  } else {
+    // Sur mesure : label classique
+    const finition = matiere ? `Filet de camouflage renforcé ${matiere.toLowerCase()}` : 'Filet de camouflage renforcé sur mesure';
+    const labelParts = [couleur, dimLabel, finition].filter(Boolean);
+    label = labelParts.join(' - ') || 'Produit sur mesure';
+  }
+
+  console.log('[extractQuoteData] isCatalogue:', isCatalogue, 'label:', label);
 
   // Déterminer quantité et prix
   let quantity: number;
   let unitPrice: string;
 
-  if (surfaceMatch && prixUnitaireMatch) {
+  if (isCatalogue) {
+    // Produit catalogue : prix TTC → HT, quantité en unités
+    const ttc = parseNumber(totalTTCMatch![1]);
+    const ht = ttc / vatMultiplier;
+    quantity = orderQty;
+    unitPrice = (ht / orderQty).toFixed(2);
+    console.log('[extractQuoteData] catalogue TTC→HT:', { ttc, vatMultiplier, htUnit: unitPrice, qty: quantity });
+  } else if (totalTTCMatch && surfaceMatch) {
+    // Sur mesure avec TTC : convertir en HT/m²
+    const ttc = parseNumber(totalTTCMatch[1]);
+    const ht = ttc / vatMultiplier;
+    quantity = parseNumber(surfaceMatch[1]);
+    unitPrice = (ht / quantity).toFixed(2);
+    console.log('[extractQuoteData] sur mesure TTC→HT:', { ttc, vatMultiplier, ht: ht.toFixed(2) });
+  } else if (surfaceMatch && prixUnitaireMatch) {
     quantity = parseNumber(surfaceMatch[1]);
     unitPrice = parseNumber(prixUnitaireMatch[1]).toFixed(2);
   } else if (totalHTMatch && surfaceMatch) {
@@ -150,29 +213,21 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   } else if (totalHTMatch) {
     quantity = 1;
     unitPrice = parseNumber(totalHTMatch[1]).toFixed(2);
-  } else if (totalTTCMatch) {
-    // Calculer le HT depuis le TTC (TVA 20%)
-    const ttc = parseNumber(totalTTCMatch[1]);
-    const ht = ttc / 1.2;
-    if (surfaceMatch) {
-      quantity = parseNumber(surfaceMatch[1]);
-      unitPrice = (ht / quantity).toFixed(2);
-    } else {
-      quantity = 1;
-      unitPrice = ht.toFixed(2);
-    }
   } else {
     return null;
   }
 
-  console.log('[extractQuoteData] line values:', { surface: quantity, unitPricePerM2: unitPrice, totalHT: (quantity * parseFloat(unitPrice)).toFixed(2) });
+  console.log('[extractQuoteData] line values:', { quantity, unitPrice, totalHT: (quantity * parseFloat(unitPrice)).toFixed(2) });
 
-  // Description : "Quantité : X | Total m² : Y | Délai de production + livraison : environ 14 jours"
-  const descParts = [];
-  if (orderQty > 0) descParts.push(`Quantité : ${orderQty}`);
-  if (quantity > 0) descParts.push(`Total m² : ${quantity}`);
-  descParts.push('Délai de production + livraison : environ 14 jours');
-  const description = descParts.join(' | ');
+  // Description : uniquement pour le sur mesure
+  let description: string | undefined;
+  if (!isCatalogue) {
+    const descParts = [];
+    if (orderQty > 0) descParts.push(`Quantité : ${orderQty}`);
+    if (quantity > 0) descParts.push(`Total m² : ${quantity}`);
+    descParts.push('Délai de production + livraison : environ 14 jours');
+    description = descParts.join(' | ');
+  }
 
   const lines: QuoteLine[] = [{
     type: 'product',
@@ -180,7 +235,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     description,
     quantity,
     unitPrice,
-    unit: 'm2',
+    unit: isCatalogue ? 'piece' : 'm2',
   }];
 
   // Détecter livraison offerte
@@ -207,21 +262,22 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   console.log('[extractQuoteData] final email (from SDK replyTo):', finalEmail);
 
   // Extraire le nom depuis le corps du mail (prioritaire sur le SDK)
-  const nameFromBody = getField(/(?:name|nom\s*complet)/);
+  // Supporte : Name, Nom, Nombre, Name, Naam, Nome + variantes "complet"
+  const nameFromBody = getField(/(?:name|nom(?:\s*complet)?|nombre(?:\s*completo)?|naam|nome)/);
   const nameFromSDK = context?.customerName || '';
   // Ignorer les noms Shopify
-  const isJunkName = (n: string) => !n || /shopify|filet.*camouflage|noreply/i.test(n);
+  const isJunkName = (n: string) => !n || /shopify|filet.*camouflage|noreply|camuflaje|camouflage/i.test(n);
   const finalName = !isJunkName(nameFromBody) ? nameFromBody : !isJunkName(nameFromSDK) ? nameFromSDK : '';
 
   let customer: QuoteCustomer | undefined;
 
-  // Détecter la raison sociale (entreprise, IUT, collectivité, etc.)
-  const raisonSocialeRaw = getField(/(?:raison\s*sociale|entreprise|société)(?:\s*\([^)]*\))?/);
+  // Détecter la raison sociale (FR/ES/DE/NL/IT)
+  const raisonSocialeRaw = getField(/(?:raison\s*sociale|entreprise|société|empresa|razón\s*social|firma|unternehmen|bedrijf|azienda|ditta)(?:\s*\([^)]*\))?/);
   const companyName = raisonSocialeRaw;
   const isCompany = companyName.length > 0;
 
-  // Chercher "Nom et prénom" (même ligne ou ligne suivante)
-  const nomPrenomRaw = getField(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom)/);
+  // Chercher "Nom et prénom" / "Nombre" / "Name" (même ligne ou ligne suivante)
+  const nomPrenomRaw = getField(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom|nombre(?:\s*(?:y\s*)?apellidos?)?|nombre\s*completo|vor-?\s*und\s*nachname|naam|nome(?:\s*e\s*cognome)?)/);
   const nomPrenomParts = nomPrenomRaw.split(/\s+/).filter(Boolean);
   const nomPrenomMatch = nomPrenomParts.length >= 2 ? nomPrenomParts : null;
 
@@ -261,26 +317,41 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   console.log('[extractQuoteData] customer:', { isCompany, companyName, nomPrenom: nomPrenomMatch?.join(' '), type: customer?.type });
   console.log('[extractQuoteData] customer payload:', JSON.stringify(customer));
 
-  // Extraire l'adresse depuis le texte (format libre français)
-  // 1. Code postal + ville : "13500 Martigues" (5 chiffres + mot(s) sur la même ligne)
-  // Split par lignes pour extraire CP+ville proprement (éviter que \s matche \n)
+  // Extraire l'adresse depuis le texte (multi-langues)
+  // 1. Code postal + ville : "13500 Martigues", "CP 07141, Marratxí", "28001 Madrid"
+  // Supporte formats FR/ES/DE/IT/NL (4-5 chiffres + ville)
   const cpVilleMatch = (() => {
     for (const line of text.split('\n')) {
-      const m = line.match(/\b(\d{5})\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/);
+      // Pattern "CP 07141, Marratxí" ou "C.P. 07141 Marratxí"
+      const cpES = line.match(/(?:CP|C\.?P\.?)\s*(\d{4,5})[,\s]+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/i);
+      if (cpES) return cpES;
+      // Pattern générique "12345 Ville" (FR/DE/IT/ES)
+      const m = line.match(/\b(\d{4,5})\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/);
       if (m) return m;
+      // Pattern NL "1234 AB Ville"
+      const nl = line.match(/\b(\d{4}\s*[A-Z]{2})\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/);
+      if (nl) return nl;
     }
     return null;
   })();
 
-  // 2. Rue : ligne contenant un numéro + type de voie
-  const rueMatch = text.match(/(\d+[\s,]+(?:rue|avenue|boulevard|impasse|chemin|allée|place|cours|passage|voie|route)\s+[^\n]{2,50})/i);
+  // 2. Rue : FR/ES/DE/NL/IT/EN types de voie
+  const rueMatch = text.match(
+    /(\d+[\s,]+(?:rue|avenue|boulevard|impasse|chemin|allée|place|cours|passage|voie|route|calle|avenida|paseo|plaza|camino|carrer|carretera|straße|strasse|weg|platz|gasse|straat|laan|plein|via|viale|piazza|corso|street|road|lane|drive|close|crescent|terrace|way|court)\s+[^\n]{2,50})/i
+  ) || text.match(
+    // Pattern ES/IT inversé : "Calle Tamarell, 5"
+    /((?:calle|avenida|paseo|plaza|camino|carrer|carretera|via|viale|piazza|corso|straße|strasse)\s+[^\n,]{2,40}[,\s]+\d+[^\n]*)/i
+  ) || text.match(
+    // Pattern EN : "5 Baker Street" ou "123 Main Road"
+    /(\d+\s+[A-Za-zÀ-ÿ]+\s+(?:street|road|lane|drive|avenue|close|crescent|terrace|way|court|place)[^\n]*)/i
+  );
 
-  // 3. Fallback : pattern "adresse :" suivi du contenu (même ligne ou ligne suivante)
-  const adresseLabelMatch = text.match(/(?:adresse(?:\s*(?:de\s*facturation|postale|complète))?)\s*[:=]\s*\n?\s*([^\n]+)/i);
+  // 3. Fallback : "adresse/dirección/indirizzo/adres/Adresse/address :" suivi du contenu
+  const adresseLabelMatch = text.match(/(?:adresse(?:\s*(?:de\s*facturation|postale|complète))?|dirección|indirizzo|adres|anschrift|address)\s*[:=]\s*\n?\s*([^\n]+)/i);
 
-  // 4. Téléphone (même ligne ou ligne suivante)
-  const phoneMatch = text.match(/(?:tél(?:éphone)?|portable|mobile|tel|phone)\s*[:=]?\s*\n?\s*([\d\s.+-]{10,})/i)
-    || text.match(/(0[67][\s.]?[\d\s.]{8,})/);
+  // 4. Téléphone (multi-langues + EN)
+  const phoneMatch = text.match(/(?:tél(?:éphone)?|portable|mobile|tel(?:éfono)?|phone|telefon[oa]?|telefoon)\s*[:=]?\s*\n?\s*([\d\s.+-]{10,})/i)
+    || text.match(/((?:0|\+\d{1,3})[67][\s.]?[\d\s.]{8,})/);
 
   console.log('[extractQuoteData] address matches:', {
     cpVille: cpVilleMatch ? cpVilleMatch[1] + ' ' + cpVilleMatch[2] : null,
@@ -309,6 +380,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     customer,
     lines,
     subject,
+    extractedVatPercent: extractedVatPercent,
   };
 }
 
@@ -352,12 +424,13 @@ export function getMissingFields(quote: ExtractedQuote): MissingField[] {
 
 // --- Calculs ---
 
-export function computeTotals(lines: QuoteLine[]): { totalHT: number; totalTTC: number } {
+export function computeTotals(lines: QuoteLine[], vatPercent?: number | null): { totalHT: number; totalTTC: number } {
   let totalHT = 0;
   for (const line of lines) {
     totalHT += line.quantity * parseFloat(line.unitPrice || '0');
   }
-  const totalTTC = totalHT * 1.2;
+  const rate = vatPercent !== null && vatPercent !== undefined ? vatPercent : 20;
+  const totalTTC = totalHT * (1 + rate / 100);
   return {
     totalHT: Math.round(totalHT * 100) / 100,
     totalTTC: Math.round(totalTTC * 100) / 100,
@@ -366,7 +439,21 @@ export function computeTotals(lines: QuoteLine[]): { totalHT: number; totalTTC: 
 
 // --- Formatage payload ---
 
-export function formatQuotePayload(quote: ExtractedQuote, _storeCode: string, inboxName: string) {
+export function formatQuotePayload(quote: ExtractedQuote, storeCode: string, inboxName: string) {
+  // Dériver le pays depuis le n° TVA intra du client, l'adresse, ou le marché du store
+  const vatCountry = quote.customer?.vatNumber?.match(/^([A-Z]{2})/)?.[1];
+  const addressCountry = quote.customer?.address?.country;
+  const defaultCountry = STORE_DEFAULT_COUNTRY[storeCode] || 'FR';
+  const customerCountry = vatCountry || addressCountry || defaultCountry;
+
+  // Déterminer le code TVA Pennylane depuis le taux extrait du brouillon
+  const extractedRate = quote.extractedVatPercent;
+  const vatCode = extractedRate !== null && extractedRate !== undefined
+    ? toPennylaneVatCode(extractedRate, extractedRate === 0 ? 'FR' : customerCountry)
+    : `${defaultCountry}_${defaultCountry === 'FR' ? '200' : defaultCountry === 'ES' ? '210' : defaultCountry === 'DE' ? '190' : defaultCountry === 'IT' ? '220' : defaultCountry === 'NL' ? '210' : '200'}`;
+
+  console.log('[formatQuotePayload] country:', customerCountry, 'vatCode:', vatCode, 'storeCode:', storeCode);
+
   return {
     customer: quote.customer
       ? {
@@ -382,7 +469,7 @@ export function formatQuotePayload(quote: ExtractedQuote, _storeCode: string, in
                 street: quote.customer.address.address,
                 zipCode: quote.customer.address.postalCode,
                 city: quote.customer.address.city,
-                country: 'FR',
+                country: customerCountry,
               }
             : undefined,
         }
@@ -393,7 +480,8 @@ export function formatQuotePayload(quote: ExtractedQuote, _storeCode: string, in
       description: l.description,
       quantity: l.quantity,
       unitPrice: parseFloat(l.unitPrice),
-      vatRate: 'FR_200',
+      vatRate: vatCode,
+      unit: l.unit,
     })),
     subject: quote.subject,
     inboxName,

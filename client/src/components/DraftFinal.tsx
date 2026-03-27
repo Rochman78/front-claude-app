@@ -19,12 +19,66 @@ export function usePushDraft(context: FrontSingleConversationContext) {
   const [pushSuccess, setPushSuccess] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
 
-  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string) {
+  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string, mailThread?: string, storeCode?: string) {
     setPushing(true);
     setPushError(null);
     setPushSuccess(false);
 
     try {
+      // Traduire le brouillon si le client n'écrit pas en français
+      // Si mailThread est vide (conversation restaurée depuis cache), récupérer depuis le SDK
+      let mailContent = mailThread || '';
+      if (!mailContent) {
+        try {
+          const msgsRes = await context.listMessages();
+          const msgs = msgsRes.results as unknown as { content?: { body?: string }; author?: { name?: string } }[];
+          mailContent = msgs.map((m) => {
+            const body = m.content?.body || '';
+            const text = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            return text;
+          }).filter(Boolean).join('\n\n');
+        } catch { /* fallback: pas de traduction */ }
+      }
+
+      // Pour les stores non-FR, forcer la langue cible (pas de détection auto)
+      const STORE_TARGET_LANG: Record<string, string> = {
+        TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
+      };
+      const forcedLangCode = storeCode ? STORE_TARGET_LANG[storeCode] : undefined;
+      if (forcedLangCode) {
+        console.log('[push] forcing target language from store:', storeCode, '→', forcedLangCode);
+      }
+
+      let finalText = cleaned;
+      if (mailContent || forcedLangCode) {
+        try {
+          console.log('[push] translating draft if needed...');
+          const translateBody: Record<string, string> = { text: cleaned };
+          if (forcedLangCode) {
+            translateBody.targetLanguage = forcedLangCode;
+          }
+          if (mailContent) {
+            translateBody.mailContent = mailContent;
+          }
+          const translateRes = await fetch(`${API_BASE}/api/plugin/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(translateBody),
+          });
+          if (translateRes.ok) {
+            const translateData = await translateRes.json();
+            if (translateData.wasTranslated) {
+              console.log(`[push] draft translated fr → ${translateData.detectedLanguage}`);
+              finalText = translateData.translatedText;
+            } else {
+              console.log('[push] no translation needed (client speaks French)');
+            }
+          }
+        } catch (translateErr) {
+          console.warn('[push] translation failed, using original text:', translateErr);
+        }
+      }
+
       if (pdfUrl) {
         console.log('[plugin] pushing draft with PDF attachment');
         const response = await fetch(`${API_BASE}/api/plugin/push-draft`, {
@@ -32,7 +86,7 @@ export function usePushDraft(context: FrontSingleConversationContext) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conversationId: context.conversation.id,
-            body: textToHtml(cleaned),
+            body: textToHtml(finalText),
             pdfUrl,
             pdfFilename: quoteNumber ? `Devis-${quoteNumber}.pdf` : 'devis.pdf',
           }),
@@ -54,7 +108,7 @@ export function usePushDraft(context: FrontSingleConversationContext) {
           const response = await fetch(`${API_BASE}/api/plugin/push-draft`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ conversationId: convId, body: textToHtml(cleaned) }),
+            body: JSON.stringify({ conversationId: convId, body: textToHtml(finalText) }),
           });
           const responseText = await response.text();
           console.log('[push] step 2: push-draft response status:', response.status);
@@ -94,7 +148,7 @@ export function usePushDraft(context: FrontSingleConversationContext) {
           console.log('[push] step 4c: replying to message:', latestMessageId);
 
           await context.createDraft({
-            content: { body: textToHtml(cleaned), type: 'html' },
+            content: { body: textToHtml(finalText), type: 'html' },
             replyOptions: { type: 'reply', originalMessageId: latestMessageId },
           });
           console.log('[push] step 5: draft created via SDK');

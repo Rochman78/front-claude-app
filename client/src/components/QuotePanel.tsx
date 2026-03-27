@@ -8,6 +8,12 @@ import {
 
 const API_BASE = window.location.origin;
 
+/** Langue par défaut de chaque boutique */
+const STORE_LANG: Record<string, string> = {
+  LFC: 'fr', LVO: 'fr', COCO: 'fr', MON: 'fr', UNI: 'fr',
+  TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
+};
+
 interface QuotePanelProps {
   /** Texte brut de tous les messages Claude */
   claudeText: string;
@@ -40,6 +46,11 @@ export default function QuotePanel({
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [extractedQuote, setExtractedQuote] = useState<ExtractedQuote | null>(null);
+
+  // Exposer handleClick au parent — DOIT être avant tout return conditionnel
+  useEffect(() => {
+    onRegisterClick?.(handleClick);
+  });
 
   // ─── ÉTAT 3 : Devis créé ───
   if (state === 'done' && result) {
@@ -156,11 +167,6 @@ export default function QuotePanel({
     );
   }
 
-  // Exposer handleClick au parent pour que le bouton soit dans le container
-  useEffect(() => {
-    onRegisterClick?.(handleClick);
-  });
-
   // ─── ÉTAT 1 : idle — pas de bouton ici, il est dans le container PluginMain ───
   if (state === 'idle') {
     return error ? <p style={{ color: 'var(--error)', fontSize: '12px' }}>{error}</p> : null;
@@ -205,6 +211,43 @@ export default function QuotePanel({
 
     try {
       const payload = formatQuotePayload(quote, storeCode, inboxName);
+
+      // Traduire les labels produit si la boutique n'est pas française
+      const storeLang = STORE_LANG[storeCode] || 'fr';
+      if (storeLang !== 'fr') {
+        const langNames: Record<string, string> = {
+          es: 'espagnol', de: 'allemand', nl: 'néerlandais', it: 'italien', en: 'anglais',
+        };
+        const targetLang = langNames[storeLang] || storeLang;
+        for (const line of payload.lines) {
+          if (line.label) {
+            try {
+              const res = await fetch(`${API_BASE}/api/plugin/translate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  text: line.label,
+                  mailContent: `Traduis ce nom de produit en ${targetLang}. Le client parle ${targetLang}. Texte du mail du client : produit en ${targetLang}.`,
+                }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                line.label = data.translatedText;
+                console.log(`[QuotePanel] label traduit → ${storeLang}:`, line.label);
+              }
+            } catch { /* garder le label français en fallback */ }
+          }
+        }
+        // Traduire le sujet du devis (remplacement direct, pas besoin d'API)
+        if (payload.subject) {
+          const devisWord: Record<string, string> = {
+            es: 'Presupuesto', de: 'Angebot', nl: 'Offerte', it: 'Preventivo', en: 'Quote',
+          };
+          const word = devisWord[storeLang] || 'Devis';
+          payload.subject = payload.subject.replace(/^Devis/i, word);
+        }
+      }
+
       const response = await fetch(`${API_BASE}/api/plugin/create-quote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -338,9 +338,8 @@ export default function PluginMain({ context }: PluginMainProps) {
               const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
               setQuoteDraftText(
                 `Bonjour ${prenom},\n\n` +
-                `Veuillez trouver ci-joint votre devis pour votre filet de camouflage sur mesure.\n\n` +
+                `Veuillez trouver ci-joint votre devis.\n\n` +
                 `Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
-                `La mise en production sera lancée dès réception du règlement, avec un délai de fabrication et de livraison d'environ 14 jours.\n\n` +
                 `N'hésitez pas à nous contacter si vous avez la moindre question.`
               );
               setManualValidation(true);
@@ -364,7 +363,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                 onClick={() => {
                   const content = quoteDraftText || lastAssistantMsg?.content || '';
                   const cleaned = quoteDraftText ? content : cleanDraft(content);
-                  pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined);
+                  pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined, mailThread, store?.code);
                 }}
                 disabled={pushDraft.pushing}
               >

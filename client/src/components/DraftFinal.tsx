@@ -19,7 +19,7 @@ export function usePushDraft(context: FrontSingleConversationContext) {
   const [pushSuccess, setPushSuccess] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
 
-  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string, mailThread?: string) {
+  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string, mailThread?: string, storeCode?: string) {
     setPushing(true);
     setPushError(null);
     setPushSuccess(false);
@@ -38,6 +38,15 @@ export function usePushDraft(context: FrontSingleConversationContext) {
             return text;
           }).filter(Boolean).join('\n\n');
         } catch { /* fallback: pas de traduction */ }
+      }
+
+      // Fallback : si pas de mailContent mais store non-FR, forcer la langue cible
+      const STORE_LANG: Record<string, string> = {
+        TAR: 'allemand', HET: 'néerlandais', RED: 'espagnol', RETE: 'italien',
+      };
+      if (!mailContent && storeCode && STORE_LANG[storeCode]) {
+        mailContent = `Ce client parle ${STORE_LANG[storeCode]}. Langue du mail : ${STORE_LANG[storeCode]}.`;
+        console.log('[push] no mailContent, forcing language from store:', storeCode, '→', STORE_LANG[storeCode]);
       }
 
       let finalText = cleaned;

@@ -119,6 +119,15 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     text.match(/ttc\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
     text.match(/montant\s*ttc\s*[:=—–-]\s*(\d+[.,]\d+)\s*€/i);
 
+  // Extraire le taux de TVA depuis le texte (AVANT le calcul des prix)
+  const tvaRateMatch =
+    text.match(/(?:TVA|tva|IVA|TVA applicable)\s*\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    text.match(/(?:taux\s*(?:de\s*)?(?:TVA|tva|IVA))\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    text.match(/TVA\s*\(\s*(\d+(?:[.,]\d+)?)\s*%\s*\)/i);
+  const extractedVatPercent = tvaRateMatch ? parseNumber(tvaRateMatch[1]) : null;
+  const vatMultiplier = 1 + (extractedVatPercent !== null ? extractedVatPercent : 20) / 100;
+  console.log('[extractQuoteData] extracted VAT rate:', extractedVatPercent !== null ? `${extractedVatPercent}%` : 'not found (default 20%)', 'multiplier:', vatMultiplier);
+
   console.log('[extractQuoteData] matches:', {
     prixUnitaire: prixUnitaireMatch?.[1],
     surface: surfaceMatch?.[1],
@@ -129,7 +138,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   // On peut construire une ligne si on a :
   // - prix unitaire + surface, OU
   // - total HT, OU
-  // - total TTC (on calcule le HT en divisant par 1.2)
+  // - total TTC (on calcule le HT avec le vrai taux TVA)
   if (!totalHTMatch && !totalTTCMatch && !(prixUnitaireMatch && surfaceMatch)) return null;
 
   // Extraire les dimensions — supporte × et x, entiers et décimaux
@@ -153,10 +162,24 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   const label = labelParts.join(' - ') || 'Produit sur mesure';
 
   // Déterminer quantité et prix
+  // RÈGLE : le prix dans le catalogue et les mails = prix TTC
+  // On calcule le HT à partir du TTC en divisant par le vrai taux TVA
   let quantity: number;
   let unitPrice: string;
 
-  if (surfaceMatch && prixUnitaireMatch) {
+  if (totalTTCMatch) {
+    // Priorité au TTC : c'est le prix de référence (catalogue / mails)
+    const ttc = parseNumber(totalTTCMatch[1]);
+    const ht = ttc / vatMultiplier;
+    if (surfaceMatch) {
+      quantity = parseNumber(surfaceMatch[1]);
+      unitPrice = (ht / quantity).toFixed(2);
+    } else {
+      quantity = 1;
+      unitPrice = ht.toFixed(2);
+    }
+    console.log('[extractQuoteData] TTC→HT conversion:', { ttc, vatMultiplier, ht: ht.toFixed(2) });
+  } else if (surfaceMatch && prixUnitaireMatch) {
     quantity = parseNumber(surfaceMatch[1]);
     unitPrice = parseNumber(prixUnitaireMatch[1]).toFixed(2);
   } else if (totalHTMatch && surfaceMatch) {
@@ -165,17 +188,6 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   } else if (totalHTMatch) {
     quantity = 1;
     unitPrice = parseNumber(totalHTMatch[1]).toFixed(2);
-  } else if (totalTTCMatch) {
-    // Calculer le HT depuis le TTC (TVA 20%)
-    const ttc = parseNumber(totalTTCMatch[1]);
-    const ht = ttc / 1.2;
-    if (surfaceMatch) {
-      quantity = parseNumber(surfaceMatch[1]);
-      unitPrice = (ht / quantity).toFixed(2);
-    } else {
-      quantity = 1;
-      unitPrice = ht.toFixed(2);
-    }
   } else {
     return null;
   }
@@ -197,14 +209,6 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     unitPrice,
     unit: 'm2',
   }];
-
-  // Extraire le taux de TVA depuis le texte
-  const tvaRateMatch =
-    text.match(/(?:TVA|tva|IVA|TVA applicable)\s*\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
-    text.match(/(?:taux\s*(?:de\s*)?(?:TVA|tva|IVA))\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
-    text.match(/TVA\s*\(\s*(\d+(?:[.,]\d+)?)\s*%\s*\)/i);
-  const extractedVatPercent = tvaRateMatch ? parseNumber(tvaRateMatch[1]) : null;
-  console.log('[extractQuoteData] extracted VAT rate:', extractedVatPercent !== null ? `${extractedVatPercent}%` : 'not found (will use default)');
 
   // Détecter livraison offerte
   const livraisonOfferte = /livraison\s*(?:offerte|gratuite|incluse)/i.test(text);

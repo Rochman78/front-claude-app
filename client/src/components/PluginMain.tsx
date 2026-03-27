@@ -364,7 +364,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                 onClick={() => {
                   const content = quoteDraftText || lastAssistantMsg?.content || '';
                   const cleaned = quoteDraftText ? content : cleanDraft(content);
-                  pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined);
+                  pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined, mailThread);
                 }}
                 disabled={pushDraft.pushing}
               >

@@ -227,7 +227,7 @@ export default function QuotePanel({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   text: line.label,
-                  mailContent: `Client écrit en ${targetLang}. Langue cible : ${targetLang}.`,
+                  mailContent: `Traduis ce nom de produit en ${targetLang}. Le client parle ${targetLang}. Texte du mail du client : produit en ${targetLang}.`,
                 }),
               });
               if (res.ok) {
@@ -238,22 +238,13 @@ export default function QuotePanel({
             } catch { /* garder le label français en fallback */ }
           }
         }
-        // Traduire aussi le sujet du devis
+        // Traduire le sujet du devis (remplacement direct, pas besoin d'API)
         if (payload.subject) {
-          try {
-            const res = await fetch(`${API_BASE}/api/plugin/translate`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                text: payload.subject,
-                mailContent: `Client écrit en ${targetLang}. Langue cible : ${targetLang}.`,
-              }),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              payload.subject = data.translatedText;
-            }
-          } catch { /* fallback français */ }
+          const devisWord: Record<string, string> = {
+            es: 'Presupuesto', de: 'Angebot', nl: 'Offerte', it: 'Preventivo', en: 'Quote',
+          };
+          const word = devisWord[storeLang] || 'Devis';
+          payload.subject = payload.subject.replace(/^Devis/i, word);
         }
       }
 

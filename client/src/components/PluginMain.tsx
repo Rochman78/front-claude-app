@@ -84,6 +84,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [quotePennylaneUrl, setQuotePennylaneUrl] = useState<string | null>(null);
   const [quoteDraftText, setQuoteDraftText] = useState<string | null>(null);
   const [mailThread, setMailThread] = useState<string>('');
+  const [showQuoteConfirm, setShowQuoteConfirm] = useState(false);
   const [resolvedEmail, setResolvedEmail] = useState<string>('');
   const [resolvedName, setResolvedName] = useState<string>('');
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -106,6 +107,7 @@ export default function PluginMain({ context }: PluginMainProps) {
     setQuoteNumber(null);
     setQuotePennylaneUrl(null);
     setQuoteDraftText(null);
+    setShowQuoteConfirm(false);
 
     // Résoudre l'email/nom client depuis le SDK (replyTo.handle) à chaque conversation
     (async () => {
@@ -336,17 +338,54 @@ export default function PluginMain({ context }: PluginMainProps) {
               setQuotePdfUrl(pdfUrl);
               setQuoteNumber(qNumber);
               setQuotePennylaneUrl(pennylaneUrl);
-              const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
-              setQuoteDraftText(
-                `Bonjour ${prenom},\n\n` +
-                `Veuillez trouver ci-joint votre devis.\n\n` +
-                `Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
-                `N'hésitez pas à nous contacter si vous avez la moindre question.`
-              );
               setManualValidation(true);
+              // Demander si on remplace le brouillon par le mail générique devis
+              setShowQuoteConfirm(true);
             }}
           />
         </ErrorBoundary>
+      )}
+
+      {/* Popup confirmation remplacement brouillon par mail devis */}
+      {showQuoteConfirm && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '320px', width: '90%',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+          }}>
+            <p style={{ fontSize: '14px', marginBottom: '16px', lineHeight: '1.5' }}>
+              Remplacer le brouillon par le mail d'accompagnement du devis ?
+            </p>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                className="btn-outline"
+                style={{ flex: 1 }}
+                onClick={() => setShowQuoteConfirm(false)}
+              >
+                Non
+              </button>
+              <button
+                className="btn-primary"
+                style={{ flex: 1 }}
+                onClick={() => {
+                  const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
+                  setQuoteDraftText(
+                    `Bonjour ${prenom},\n\n` +
+                    `Veuillez trouver ci-joint votre devis.\n\n` +
+                    `Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
+                    `N'hésitez pas à nous contacter si vous avez la moindre question.`
+                  );
+                  setShowQuoteConfirm(false);
+                }}
+              >
+                Oui
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       </div>

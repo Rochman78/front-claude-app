@@ -230,21 +230,22 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   console.log('[extractQuoteData] final email (from SDK replyTo):', finalEmail);
 
   // Extraire le nom depuis le corps du mail (prioritaire sur le SDK)
-  const nameFromBody = getField(/(?:name|nom\s*complet)/);
+  // Supporte : Name, Nom, Nombre, Name, Naam, Nome + variantes "complet"
+  const nameFromBody = getField(/(?:name|nom(?:\s*complet)?|nombre(?:\s*completo)?|naam|nome)/);
   const nameFromSDK = context?.customerName || '';
   // Ignorer les noms Shopify
-  const isJunkName = (n: string) => !n || /shopify|filet.*camouflage|noreply/i.test(n);
+  const isJunkName = (n: string) => !n || /shopify|filet.*camouflage|noreply|camuflaje|camouflage/i.test(n);
   const finalName = !isJunkName(nameFromBody) ? nameFromBody : !isJunkName(nameFromSDK) ? nameFromSDK : '';
 
   let customer: QuoteCustomer | undefined;
 
-  // Détecter la raison sociale (entreprise, IUT, collectivité, etc.)
-  const raisonSocialeRaw = getField(/(?:raison\s*sociale|entreprise|société)(?:\s*\([^)]*\))?/);
+  // Détecter la raison sociale (FR/ES/DE/NL/IT)
+  const raisonSocialeRaw = getField(/(?:raison\s*sociale|entreprise|société|empresa|razón\s*social|firma|unternehmen|bedrijf|azienda|ditta)(?:\s*\([^)]*\))?/);
   const companyName = raisonSocialeRaw;
   const isCompany = companyName.length > 0;
 
-  // Chercher "Nom et prénom" (même ligne ou ligne suivante)
-  const nomPrenomRaw = getField(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom)/);
+  // Chercher "Nom et prénom" / "Nombre" / "Name" (même ligne ou ligne suivante)
+  const nomPrenomRaw = getField(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom|nombre(?:\s*(?:y\s*)?apellidos?)?|nombre\s*completo|vor-?\s*und\s*nachname|naam|nome(?:\s*e\s*cognome)?)/);
   const nomPrenomParts = nomPrenomRaw.split(/\s+/).filter(Boolean);
   const nomPrenomMatch = nomPrenomParts.length >= 2 ? nomPrenomParts : null;
 
@@ -284,26 +285,41 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   console.log('[extractQuoteData] customer:', { isCompany, companyName, nomPrenom: nomPrenomMatch?.join(' '), type: customer?.type });
   console.log('[extractQuoteData] customer payload:', JSON.stringify(customer));
 
-  // Extraire l'adresse depuis le texte (format libre français)
-  // 1. Code postal + ville : "13500 Martigues" (5 chiffres + mot(s) sur la même ligne)
-  // Split par lignes pour extraire CP+ville proprement (éviter que \s matche \n)
+  // Extraire l'adresse depuis le texte (multi-langues)
+  // 1. Code postal + ville : "13500 Martigues", "CP 07141, Marratxí", "28001 Madrid"
+  // Supporte formats FR/ES/DE/IT/NL (4-5 chiffres + ville)
   const cpVilleMatch = (() => {
     for (const line of text.split('\n')) {
-      const m = line.match(/\b(\d{5})\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/);
+      // Pattern "CP 07141, Marratxí" ou "C.P. 07141 Marratxí"
+      const cpES = line.match(/(?:CP|C\.?P\.?)\s*(\d{4,5})[,\s]+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/i);
+      if (cpES) return cpES;
+      // Pattern générique "12345 Ville" (FR/DE/IT/ES)
+      const m = line.match(/\b(\d{4,5})\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/);
       if (m) return m;
+      // Pattern NL "1234 AB Ville"
+      const nl = line.match(/\b(\d{4}\s*[A-Z]{2})\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/);
+      if (nl) return nl;
     }
     return null;
   })();
 
-  // 2. Rue : ligne contenant un numéro + type de voie
-  const rueMatch = text.match(/(\d+[\s,]+(?:rue|avenue|boulevard|impasse|chemin|allée|place|cours|passage|voie|route)\s+[^\n]{2,50})/i);
+  // 2. Rue : FR/ES/DE/NL/IT/EN types de voie
+  const rueMatch = text.match(
+    /(\d+[\s,]+(?:rue|avenue|boulevard|impasse|chemin|allée|place|cours|passage|voie|route|calle|avenida|paseo|plaza|camino|carrer|carretera|straße|strasse|weg|platz|gasse|straat|laan|plein|via|viale|piazza|corso|street|road|lane|drive|close|crescent|terrace|way|court)\s+[^\n]{2,50})/i
+  ) || text.match(
+    // Pattern ES/IT inversé : "Calle Tamarell, 5"
+    /((?:calle|avenida|paseo|plaza|camino|carrer|carretera|via|viale|piazza|corso|straße|strasse)\s+[^\n,]{2,40}[,\s]+\d+[^\n]*)/i
+  ) || text.match(
+    // Pattern EN : "5 Baker Street" ou "123 Main Road"
+    /(\d+\s+[A-Za-zÀ-ÿ]+\s+(?:street|road|lane|drive|avenue|close|crescent|terrace|way|court|place)[^\n]*)/i
+  );
 
-  // 3. Fallback : pattern "adresse :" suivi du contenu (même ligne ou ligne suivante)
-  const adresseLabelMatch = text.match(/(?:adresse(?:\s*(?:de\s*facturation|postale|complète))?)\s*[:=]\s*\n?\s*([^\n]+)/i);
+  // 3. Fallback : "adresse/dirección/indirizzo/adres/Adresse/address :" suivi du contenu
+  const adresseLabelMatch = text.match(/(?:adresse(?:\s*(?:de\s*facturation|postale|complète))?|dirección|indirizzo|adres|anschrift|address)\s*[:=]\s*\n?\s*([^\n]+)/i);
 
-  // 4. Téléphone (même ligne ou ligne suivante)
-  const phoneMatch = text.match(/(?:tél(?:éphone)?|portable|mobile|tel|phone)\s*[:=]?\s*\n?\s*([\d\s.+-]{10,})/i)
-    || text.match(/(0[67][\s.]?[\d\s.]{8,})/);
+  // 4. Téléphone (multi-langues + EN)
+  const phoneMatch = text.match(/(?:tél(?:éphone)?|portable|mobile|tel(?:éfono)?|phone|telefon[oa]?|telefoon)\s*[:=]?\s*\n?\s*([\d\s.+-]{10,})/i)
+    || text.match(/((?:0|\+\d{1,3})[67][\s.]?[\d\s.]{8,})/);
 
   console.log('[extractQuoteData] address matches:', {
     cpVille: cpVilleMatch ? cpVilleMatch[1] + ' ' + cpVilleMatch[2] : null,

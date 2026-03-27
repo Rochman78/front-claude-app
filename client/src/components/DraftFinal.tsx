@@ -40,13 +40,14 @@ export function usePushDraft(context: FrontSingleConversationContext) {
         } catch { /* fallback: pas de traduction */ }
       }
 
-      // Fallback : si pas de mailContent mais store non-FR, forcer la langue cible
+      // Pour les stores non-FR, forcer la langue cible (pas de détection auto)
       const STORE_LANG: Record<string, string> = {
         TAR: 'allemand', HET: 'néerlandais', RED: 'espagnol', RETE: 'italien',
       };
-      if (!mailContent && storeCode && STORE_LANG[storeCode]) {
-        mailContent = `Ce client parle ${STORE_LANG[storeCode]}. Langue du mail : ${STORE_LANG[storeCode]}.`;
-        console.log('[push] no mailContent, forcing language from store:', storeCode, '→', STORE_LANG[storeCode]);
+      const forcedLang = storeCode ? STORE_LANG[storeCode] : undefined;
+      if (forcedLang) {
+        mailContent = `Ce client parle ${forcedLang}. Tous les mails du client sont en ${forcedLang}. Langue cible : ${forcedLang}.`;
+        console.log('[push] forcing language from store:', storeCode, '→', forcedLang);
       }
 
       let finalText = cleaned;

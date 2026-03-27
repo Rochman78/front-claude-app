@@ -8,6 +8,12 @@ import {
 
 const API_BASE = window.location.origin;
 
+/** Langue par défaut de chaque boutique */
+const STORE_LANG: Record<string, string> = {
+  LFC: 'fr', LVO: 'fr', COCO: 'fr', MON: 'fr', UNI: 'fr',
+  TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
+};
+
 interface QuotePanelProps {
   /** Texte brut de tous les messages Claude */
   claudeText: string;
@@ -205,6 +211,52 @@ export default function QuotePanel({
 
     try {
       const payload = formatQuotePayload(quote, storeCode, inboxName);
+
+      // Traduire les labels produit si la boutique n'est pas française
+      const storeLang = STORE_LANG[storeCode] || 'fr';
+      if (storeLang !== 'fr') {
+        const langNames: Record<string, string> = {
+          es: 'espagnol', de: 'allemand', nl: 'néerlandais', it: 'italien', en: 'anglais',
+        };
+        const targetLang = langNames[storeLang] || storeLang;
+        for (const line of payload.lines) {
+          if (line.label) {
+            try {
+              const res = await fetch(`${API_BASE}/api/plugin/translate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  text: line.label,
+                  mailContent: `Client écrit en ${targetLang}. Langue cible : ${targetLang}.`,
+                }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                line.label = data.translatedText;
+                console.log(`[QuotePanel] label traduit → ${storeLang}:`, line.label);
+              }
+            } catch { /* garder le label français en fallback */ }
+          }
+        }
+        // Traduire aussi le sujet du devis
+        if (payload.subject) {
+          try {
+            const res = await fetch(`${API_BASE}/api/plugin/translate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text: payload.subject,
+                mailContent: `Client écrit en ${targetLang}. Langue cible : ${targetLang}.`,
+              }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              payload.subject = data.translatedText;
+            }
+          } catch { /* fallback français */ }
+        }
+      }
+
       const response = await fetch(`${API_BASE}/api/plugin/create-quote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -15,7 +15,21 @@ export interface QuoteCustomer {
     address?: string;
     postalCode?: string;
     city?: string;
+    country?: string;
   };
+}
+
+/** Mapping store_code → pays par défaut du marché */
+const STORE_DEFAULT_COUNTRY: Record<string, string> = {
+  LFC: 'FR', LVO: 'FR', COCO: 'FR', MON: 'FR', UNI: 'FR',
+  TAR: 'DE', HET: 'NL', RED: 'ES', RETE: 'IT',
+};
+
+/** Convertit un taux TVA (%) + pays en code Pennylane (ex: 'ES_210') */
+function toPennylaneVatCode(rate: number, country: string): string {
+  if (rate === 0) return 'tax_free_0';
+  const rateInt = Math.round(rate * 10);
+  return `${country}_${rateInt}`;
 }
 
 export interface QuoteLine {
@@ -32,6 +46,7 @@ export interface ExtractedQuote {
   customer?: QuoteCustomer;
   lines: QuoteLine[];
   subject?: string;
+  extractedVatPercent?: number | null;
 }
 
 export interface MissingField {
@@ -183,6 +198,14 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     unit: 'm2',
   }];
 
+  // Extraire le taux de TVA depuis le texte
+  const tvaRateMatch =
+    text.match(/(?:TVA|tva|IVA|TVA applicable)\s*\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    text.match(/(?:taux\s*(?:de\s*)?(?:TVA|tva|IVA))\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    text.match(/TVA\s*\(\s*(\d+(?:[.,]\d+)?)\s*%\s*\)/i);
+  const extractedVatPercent = tvaRateMatch ? parseNumber(tvaRateMatch[1]) : null;
+  console.log('[extractQuoteData] extracted VAT rate:', extractedVatPercent !== null ? `${extractedVatPercent}%` : 'not found (will use default)');
+
   // Détecter livraison offerte
   const livraisonOfferte = /livraison\s*(?:offerte|gratuite|incluse)/i.test(text);
   if (livraisonOfferte) {
@@ -309,6 +332,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     customer,
     lines,
     subject,
+    extractedVatPercent: extractedVatPercent,
   };
 }
 
@@ -352,12 +376,13 @@ export function getMissingFields(quote: ExtractedQuote): MissingField[] {
 
 // --- Calculs ---
 
-export function computeTotals(lines: QuoteLine[]): { totalHT: number; totalTTC: number } {
+export function computeTotals(lines: QuoteLine[], vatPercent?: number | null): { totalHT: number; totalTTC: number } {
   let totalHT = 0;
   for (const line of lines) {
     totalHT += line.quantity * parseFloat(line.unitPrice || '0');
   }
-  const totalTTC = totalHT * 1.2;
+  const rate = vatPercent !== null && vatPercent !== undefined ? vatPercent : 20;
+  const totalTTC = totalHT * (1 + rate / 100);
   return {
     totalHT: Math.round(totalHT * 100) / 100,
     totalTTC: Math.round(totalTTC * 100) / 100,
@@ -366,7 +391,21 @@ export function computeTotals(lines: QuoteLine[]): { totalHT: number; totalTTC: 
 
 // --- Formatage payload ---
 
-export function formatQuotePayload(quote: ExtractedQuote, _storeCode: string, inboxName: string) {
+export function formatQuotePayload(quote: ExtractedQuote, storeCode: string, inboxName: string) {
+  // Dériver le pays depuis le n° TVA intra du client, l'adresse, ou le marché du store
+  const vatCountry = quote.customer?.vatNumber?.match(/^([A-Z]{2})/)?.[1];
+  const addressCountry = quote.customer?.address?.country;
+  const defaultCountry = STORE_DEFAULT_COUNTRY[storeCode] || 'FR';
+  const customerCountry = vatCountry || addressCountry || defaultCountry;
+
+  // Déterminer le code TVA Pennylane depuis le taux extrait du brouillon
+  const extractedRate = quote.extractedVatPercent;
+  const vatCode = extractedRate !== null && extractedRate !== undefined
+    ? toPennylaneVatCode(extractedRate, extractedRate === 0 ? 'FR' : customerCountry)
+    : `${defaultCountry}_${defaultCountry === 'FR' ? '200' : defaultCountry === 'ES' ? '210' : defaultCountry === 'DE' ? '190' : defaultCountry === 'IT' ? '220' : defaultCountry === 'NL' ? '210' : '200'}`;
+
+  console.log('[formatQuotePayload] country:', customerCountry, 'vatCode:', vatCode, 'storeCode:', storeCode);
+
   return {
     customer: quote.customer
       ? {
@@ -382,7 +421,7 @@ export function formatQuotePayload(quote: ExtractedQuote, _storeCode: string, in
                 street: quote.customer.address.address,
                 zipCode: quote.customer.address.postalCode,
                 city: quote.customer.address.city,
-                country: 'FR',
+                country: customerCountry,
               }
             : undefined,
         }
@@ -393,7 +432,7 @@ export function formatQuotePayload(quote: ExtractedQuote, _storeCode: string, in
       description: l.description,
       quantity: l.quantity,
       unitPrice: parseFloat(l.unitPrice),
-      vatRate: 'FR_200',
+      vatRate: vatCode,
     })),
     subject: quote.subject,
     inboxName,

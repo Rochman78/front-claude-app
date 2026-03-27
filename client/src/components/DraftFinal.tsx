@@ -26,14 +26,28 @@ export function usePushDraft(context: FrontSingleConversationContext) {
 
     try {
       // Traduire le brouillon si le client n'écrit pas en français
+      // Si mailThread est vide (conversation restaurée depuis cache), récupérer depuis le SDK
+      let mailContent = mailThread || '';
+      if (!mailContent) {
+        try {
+          const msgsRes = await context.listMessages();
+          const msgs = msgsRes.results as unknown as { content?: { body?: string }; author?: { name?: string } }[];
+          mailContent = msgs.map((m) => {
+            const body = m.content?.body || '';
+            const text = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            return text;
+          }).filter(Boolean).join('\n\n');
+        } catch { /* fallback: pas de traduction */ }
+      }
+
       let finalText = cleaned;
-      if (mailThread) {
+      if (mailContent) {
         try {
           console.log('[push] translating draft if needed...');
           const translateRes = await fetch(`${API_BASE}/api/plugin/translate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: cleaned, mailContent: mailThread }),
+            body: JSON.stringify({ text: cleaned, mailContent }),
           });
           if (translateRes.ok) {
             const translateData = await translateRes.json();

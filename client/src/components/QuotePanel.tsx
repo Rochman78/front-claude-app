@@ -256,11 +256,20 @@ export default function QuotePanel({
         }
         // Traduire le sujet du devis (remplacement direct, pas besoin d'API)
         if (payload.subject) {
-          const devisWord: Record<string, string> = {
-            es: 'Presupuesto', de: 'Angebot', nl: 'Offerte', it: 'Preventivo', en: 'Quote',
+          const subjectMap: Record<string, { devis: string; surMesure: string; standard: string }> = {
+            es: { devis: 'Presupuesto', surMesure: 'red a medida', standard: 'red estándar' },
+            de: { devis: 'Angebot', surMesure: 'Tarnnetz nach Maß', standard: 'Tarnnetz Standard' },
+            nl: { devis: 'Offerte', surMesure: 'net op maat', standard: 'net standaard' },
+            it: { devis: 'Preventivo', surMesure: 'rete su misura', standard: 'rete standard' },
+            en: { devis: 'Quote', surMesure: 'custom net', standard: 'standard net' },
           };
-          const word = devisWord[storeLang] || 'Devis';
-          payload.subject = payload.subject.replace(/^Devis/i, word);
+          const map = subjectMap[storeLang];
+          if (map) {
+            payload.subject = payload.subject
+              .replace(/^Devis/i, map.devis)
+              .replace(/filet sur mesure/i, map.surMesure)
+              .replace(/filet standard/i, map.standard);
+          }
         }
       }
 

@@ -273,7 +273,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   const nameFromBody = getField(/(?:name|nom(?:\s*complet)?|nombre(?:\s*completo)?|naam|nome)/);
   const nameFromSDK = context?.customerName || '';
   // Ignorer les noms Shopify
-  const isJunkName = (n: string) => !n || /shopify|filet.*camouflage|noreply|camuflaje|camouflage/i.test(n);
+  const isJunkName = (n: string) => !n || /shopify|filet.*camouflage|noreply|camuflaje|camouflage|numéro|telefon|téléphone|phone|email|adresse|address|dirección/i.test(n);
   const finalName = !isJunkName(nameFromBody) ? nameFromBody : !isJunkName(nameFromSDK) ? nameFromSDK : '';
 
   let customer: QuoteCustomer | undefined;

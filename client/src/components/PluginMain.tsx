@@ -92,6 +92,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const prevConvId = useRef<string>('');
   const pushDraft = usePushDraft(context);
   const quoteClickRef = useRef<(() => void) | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const recipient = context.conversation.recipient;
   const subject = context.conversation.subject;
@@ -276,10 +277,17 @@ export default function PluginMain({ context }: PluginMainProps) {
   // QuotePanel visible dès qu'il y a au moins un message Claude
   const showQuotePanel = hasMessages && !claude.isStreaming;
 
+  // Auto-scroll vers le bas quand du contenu change
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [claude.messages, claude.streamingContent, showDraft, manualValidation, draftInvalidated, quotePdfUrl]);
+
   return (
     <div className="plugin-shell">
       {/* Zone scrollable */}
-      <div className="plugin-scroll">
+      <div className="plugin-scroll" ref={scrollRef}>
         <MailPreview
           storeCode={store.code}
           customerName={recipient?.name || ''}

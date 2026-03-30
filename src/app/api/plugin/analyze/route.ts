@@ -116,7 +116,10 @@ export async function POST(req: NextRequest) {
     );
 
     // 5. Construire le message utilisateur avec le contexte mail
-    const userMessage = `Voici le fil de mails du client ${customerName || ''} (${customerEmail || ''}) :\n\n${mailContent}`;
+    const isResume = existingMessages.length > 0;
+    const userMessage = isResume
+      ? `[Suite de la conversation] Le client a répondu. Voici le fil de mails COMPLET et MIS À JOUR (les messages les plus récents sont les plus importants). Tiens compte de tout ce que tu as échangé avec le gérant précédemment et propose un nouveau brouillon cohérent avec le déroulé de la conversation. Donne plus de poids aux messages les plus récents du client.\n\nClient : ${customerName || ''} (${customerEmail || ''})\n\n${mailContent}`
+      : `[Analyse demandée] Voici le fil de mails du client ${customerName || ''} (${customerEmail || ''}) :\n\n${mailContent}`;
 
     // Sauvegarder le message user en BDD
     const userMsgId = crypto.randomUUID();

@@ -26,6 +26,13 @@ export function cleanDraft(text: string): string {
     }
   }
 
+  // Supprimer les commentaires internes de Claude entre crochets [⚠️ ...]
+  cleaned = cleaned.replace(/\n?\[⚠️[^\]]*\]/g, '');
+  cleaned = cleaned.replace(/\n?\[⚠[^\]]*\]/g, '');
+  cleaned = cleaned.replace(/\n?\[ATTENTION[^\]]*\]/g, '');
+  cleaned = cleaned.replace(/\n?\[INFO MANQUANTE[^\]]*\]/g, '');
+  cleaned = cleaned.replace(/\n?\[PJ À JOINDRE[^\]]*\]/g, '');
+
   // Supprimer les signatures et formules de politesse en fin de mail
   const banned = [
     'Cordialement', 'Bien à vous', 'Bien cordialement',

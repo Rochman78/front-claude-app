@@ -469,27 +469,13 @@ export default function PluginMain({ context }: PluginMainProps) {
               className="btn-outline"
               style={{ fontSize: '12px', opacity: 0.8, flex: 1 }}
               onClick={async () => {
-                try {
-                  const msgsRes = await context.listMessages();
-                  const msgs = msgsRes.results as unknown as FrontMessage[];
-                  const mailContent = msgs
-                    .map((msg) => {
-                      const author = msg.author?.name || msg.author?.email || 'Inconnu';
-                      const date = new Date(msg.date * 1000).toLocaleString('fr-FR');
-                      const text = extractText(msg);
-                      return text ? `[${date}] ${author} :\n${text}` : '';
-                    })
-                    .filter(Boolean)
-                    .join('\n\n---\n\n');
-                  setMailThread(mailContent);
-                  setManualValidation(false);
-                  setDraftInvalidated(true);
-                  setQuoteDraftText(null);
-                  setShowQuoteConfirm(false);
-                  await claude.sendMessage(`Voici la suite de la conversation avec le client. Lis les nouveaux messages et propose un nouveau brouillon en tenant compte de tout l'historique :\n\n${mailContent}`);
-                } catch (err) {
-                  console.error('[plugin] reprendre avec claude error:', err);
-                }
+                setManualValidation(false);
+                setDraftInvalidated(true);
+                setQuoteDraftText(null);
+                setShowQuoteConfirm(false);
+                // Relancer handleAnalyze — recharge les mails et envoie à Claude
+                // avec l'historique existant en BDD (invisible pour le gérant)
+                await handleAnalyze();
               }}
             >
               Reprendre avec Claude

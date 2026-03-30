@@ -146,8 +146,8 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   const dimMatch = text.match(/(\d+[.,]?\d*)\s*[x×]\s*(\d+[.,]?\d*)\s*m/i);
 
   // Extraire matière/finition et couleur
-  const matiereMatch = text.match(/(?:matière|finition|type)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
-  const couleurMatch = text.match(/(?:couleur)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
+  const matiereMatch = text.match(/(?:matière|finition|type|materia[le]?|material|contour|contorno|câble|cable|polyester|tipo)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
+  const couleurMatch = text.match(/(?:couleur|color|colore|farbe|kleur)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
 
   // Extraire la quantité (nombre de filets commandés)
   const qtyMatch = text.match(/(?:quantité|qté|qty)\s*[:=]?\s*(\d+)/i);

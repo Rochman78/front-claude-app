@@ -227,33 +227,43 @@ export default function QuotePanel({
     try {
       const payload = formatQuotePayload(quote, storeCode, inboxName);
 
-      // Traduire les labels produit si la boutique n'est pas française
+      // Traduire les labels si la boutique n'est pas française
       const storeLang = STORE_LANG[storeCode] || 'fr';
       if (storeLang !== 'fr') {
-        const langNames: Record<string, string> = {
-          es: 'espagnol', de: 'allemand', nl: 'néerlandais', it: 'italien', en: 'anglais',
+        // Mapping direct pour les labels (pas d'API — évite les commentaires de Claude)
+        const labelMap: Record<string, { surMesure: string; transport: string; remise: string; description: string }> = {
+          es: { surMesure: 'Red de camuflaje reforzada a medida', transport: 'Transporte a medida', remise: 'Descuento transporte a medida', description: 'Cantidad : {qty} | Total m² : {m2} | Plazo de producción + entrega : aprox. 14 días' },
+          de: { surMesure: 'Tarnnetz verstärkt nach Maß', transport: 'Versand nach Maß', remise: 'Versandrabatt nach Maß', description: 'Menge : {qty} | Gesamt m² : {m2} | Produktions- + Lieferzeit : ca. 14 Tage' },
+          nl: { surMesure: 'Camouflagenet versterkt op maat', transport: 'Verzending op maat', remise: 'Verzendkorting op maat', description: 'Aantal : {qty} | Totaal m² : {m2} | Productie + levertijd : ca. 14 dagen' },
+          it: { surMesure: 'Rete di camuffamento rinforzata su misura', transport: 'Trasporto su misura', remise: 'Sconto trasporto su misura', description: 'Quantità : {qty} | Totale m² : {m2} | Tempi di produzione + consegna : circa 14 giorni' },
+          en: { surMesure: 'Reinforced camouflage net custom made', transport: 'Custom shipping', remise: 'Custom shipping discount', description: 'Quantity : {qty} | Total m² : {m2} | Production + delivery time : approx. 14 days' },
         };
-        const targetLang = langNames[storeLang] || storeLang;
-        for (const line of payload.lines) {
-          if (line.label) {
-            try {
-              const res = await fetch(`${API_BASE}/api/plugin/translate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  text: line.label,
-                  mailContent: `Traduis ce nom de produit en ${targetLang}. Le client parle ${targetLang}. Texte du mail du client : produit en ${targetLang}.`,
-                }),
-              });
-              if (res.ok) {
-                const data = await res.json();
-                line.label = data.translatedText;
-                console.log(`[QuotePanel] label traduit → ${storeLang}:`, line.label);
-              }
-            } catch { /* garder le label français en fallback */ }
+        const map = labelMap[storeLang];
+        if (map) {
+          for (const line of payload.lines) {
+            if (line.label && /filet de camouflage renforcé/i.test(line.label)) {
+              // Extraire couleur et dimensions du label français
+              const dimPart = line.label.match(/(\d+[.,]?\d*x\d+[.,]?\d*\s*m)/i)?.[1] || '';
+              const couleurPart = line.label.match(/^([^-]+)\s*-/)?.[1]?.trim() || '';
+              const parts = [couleurPart, dimPart, map.surMesure].filter(Boolean);
+              line.label = parts.join(' — ');
+            } else if (line.label && /^Transport sur mesure$/i.test(line.label)) {
+              line.label = map.transport;
+            } else if (line.label && /^Remise transport sur mesure$/i.test(line.label)) {
+              line.label = map.remise;
+            }
+            // Traduire la description (délai, quantité, m²)
+            if (line.description && /Quantité|Total m²|Délai/i.test(line.description)) {
+              const qtyMatch = line.description.match(/Quantité\s*:\s*(\d+)/);
+              const m2Match = line.description.match(/Total m²\s*:\s*([\d.,]+)/);
+              line.description = map.description
+                .replace('{qty}', qtyMatch?.[1] || '1')
+                .replace('{m2}', m2Match?.[1] || String(line.quantity));
+            }
           }
         }
-        // Traduire le sujet du devis (remplacement direct, pas besoin d'API)
+
+        // Traduire le sujet du devis (remplacement direct)
         if (payload.subject) {
           const subjectMap: Record<string, { devis: string; surMesure: string; standard: string }> = {
             es: { devis: 'Presupuesto', surMesure: 'red a medida', standard: 'red estándar' },
@@ -262,12 +272,12 @@ export default function QuotePanel({
             it: { devis: 'Preventivo', surMesure: 'rete su misura', standard: 'rete standard' },
             en: { devis: 'Quote', surMesure: 'custom net', standard: 'standard net' },
           };
-          const map = subjectMap[storeLang];
-          if (map) {
+          const sMap = subjectMap[storeLang];
+          if (sMap) {
             payload.subject = payload.subject
-              .replace(/^Devis/i, map.devis)
-              .replace(/filet sur mesure/i, map.surMesure)
-              .replace(/filet standard/i, map.standard);
+              .replace(/^Devis/i, sMap.devis)
+              .replace(/filet sur mesure/i, sMap.surMesure)
+              .replace(/filet standard/i, sMap.standard);
           }
         }
       }

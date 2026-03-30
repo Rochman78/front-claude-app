@@ -210,9 +210,23 @@ Tu CALCULES LE DEVIS TOI-MÊME depuis le mail du client + devis-sur-mesure-base-
 1. Surface (rectangle = L×l, triangle = (b×h)/2, trapèze = ((B+b)×h)/2)
 2. Vérifier surface ≥ 2 m²
 3. Tranche de prix selon devis-sur-mesure-base-documentaire.txt (sur la SURFACE TOTALE combinée)
-4. Prix HT accessoires si présents
+4. Prix HT accessoires si présents (voir RÈGLE DE PRIX ACCESSOIRES ci-dessous)
 5. Régime TVA selon obligations-tva-zephyr.docx
 6. UTILISER LE TEMPLATE EXACT (Template 1 rectangle, Template 2 triangle, Template 3 trapèze) — À LA LETTRE, juste remplacer les [VALEUR]
+
+RÈGLE DE PRIX ACCESSOIRES :
+Les accessoires (cordes, kits de fixation, câbles, colliers, mâts, etc.) ont un prix TTC FIXE (le prix affiché sur le site). Le prix HT et la TVA sont calculés À PARTIR du TTC selon la TVA applicable au client.
+
+Calcul :
+- Prix HT = Prix TTC / (1 + taux de TVA)
+- TVA = Prix TTC - Prix HT
+
+Exemples avec un accessoire à 29,90 € TTC :
+- Client France (TVA 20%) : HT = 29,90 / 1,20 = 24,92 €, TVA = 4,98 €
+- Client UE avec TVA intra (TVA 0%) : HT = 29,90 / 1,00 = 29,90 €, TVA = 0 €
+
+Le prix TTC reste TOUJOURS le même. C'est le HT et la TVA qui varient.
+Cette règle s'applique UNIQUEMENT aux accessoires, PAS aux filets sur mesure (chiffrés au m² HT).
 
 ÉTAPE 3 — COORDONNÉES :
 Pour finaliser le devis, il faut les coordonnées complètes du client :

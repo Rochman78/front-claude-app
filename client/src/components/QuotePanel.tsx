@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   type ExtractedQuote,
+  type MissingField,
   getMissingFields,
   formatQuotePayload,
   extractQuoteData,
@@ -48,6 +49,7 @@ export default function QuotePanel({
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [extractedQuote, setExtractedQuote] = useState<ExtractedQuote | null>(null);
+  const [missingFieldsSnapshot, setMissingFieldsSnapshot] = useState<MissingField[]>([]);
 
   // Exposer handleClick au parent — DOIT être avant tout return conditionnel
   useEffect(() => {
@@ -91,32 +93,26 @@ export default function QuotePanel({
     const merged = mergeFormData(extractedQuote, formData);
     const missing = getMissingFields(merged);
 
-    if (missing.length === 0) {
-      // Plus rien ne manque après saisie → lancer la création
-      handleCreate(merged);
-      return (
-        <div className="quote-panel">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div className="loading-spinner" />
-            <span style={{ fontSize: '13px' }}>Génération du devis en cours...</span>
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="quote-panel">
         <div className="quote-panel-header">Informations manquantes</div>
-        <div className="quote-panel-missing">
-          <ul>
-            {missing.map((f) => (
-              <li key={f.key}>{f.label}</li>
-            ))}
-          </ul>
-        </div>
+        {missing.length > 0 ? (
+          <div className="quote-panel-missing">
+            <ul>
+              {missing.map((f) => (
+                <li key={f.key}>{f.label}</li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p style={{ fontSize: '12px', color: 'var(--success)', marginBottom: '8px' }}>Toutes les informations sont complètes.</p>
+        )}
         {error && <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>}
         <div className="quote-panel-actions">
-          <button className="btn-secondary" onClick={() => setState('form')}>
+          <button className="btn-secondary" onClick={() => {
+            setMissingFieldsSnapshot(missing);
+            setState('form');
+          }}>
             Remplir manuellement
           </button>
           <button
@@ -133,7 +129,7 @@ export default function QuotePanel({
             className="btn-secondary"
             onClick={() => handleCreate(merged)}
           >
-            Ignorer
+            {missing.length === 0 ? 'Générer le devis' : 'Ignorer'}
           </button>
         </div>
       </div>
@@ -142,14 +138,14 @@ export default function QuotePanel({
 
   // ─── Formulaire saisie manuelle ───
   if (state === 'form' && extractedQuote) {
-    const merged = mergeFormData(extractedQuote, formData);
-    const missing = getMissingFields(merged);
+    // Utiliser le snapshot des champs manquants (figé au moment du clic "Remplir")
+    const fieldsToShow = missingFieldsSnapshot.length > 0 ? missingFieldsSnapshot : getMissingFields(extractedQuote);
 
     return (
       <div className="quote-panel">
         <div className="quote-panel-header">Compléter les informations</div>
         <div className="quote-panel-form">
-          {missing.map((field) => (
+          {fieldsToShow.map((field) => (
             <div key={field.key} className="form-field">
               <label>{field.label}</label>
               <input
@@ -163,7 +159,10 @@ export default function QuotePanel({
         </div>
         <div className="quote-panel-actions">
           <button className="btn-secondary" onClick={() => setState('missing')}>Annuler</button>
-          <button className="btn-primary" onClick={() => setState('missing')} style={{ width: 'auto' }}>Valider</button>
+          <button className="btn-primary" onClick={() => {
+            const merged = mergeFormData(extractedQuote, formData);
+            handleCreate(merged);
+          }} style={{ width: 'auto' }}>Générer le devis</button>
         </div>
       </div>
     );

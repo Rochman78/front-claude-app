@@ -246,7 +246,9 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   }
 
   // Construire le sujet
-  const subject = `Devis ${matiere ? matiere.toLowerCase() + ' ' : ''}${couleur ? couleur.toLowerCase() + ' ' : ''}${dimLabel || 'sur mesure'}`.trim();
+  const subject = isCatalogue
+    ? `Devis filet standard${dimLabel ? ' ' + dimLabel : ''}`
+    : `Devis filet sur mesure${dimLabel ? ' ' + dimLabel : ''}`;
 
   // Construire le customer depuis le contexte + texte
 

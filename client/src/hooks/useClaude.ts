@@ -30,6 +30,7 @@ export function useClaude(): UseClaudeReturn {
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const conversationIdRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const msgIdCounter = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -118,7 +119,7 @@ export function useClaude(): UseClaudeReturn {
 
       // Récupérer le conversationId depuis le header
       const convId = response.headers.get('X-Conversation-Id');
-      if (convId) setConversationId(convId);
+      if (convId) { setConversationId(convId); conversationIdRef.current = convId; }
 
       const fullText = await readStream(response, setStreamingContent, controller.signal);
 
@@ -141,7 +142,8 @@ export function useClaude(): UseClaudeReturn {
   }, []);
 
   const sendMessage = useCallback(async (message: string) => {
-    if (!conversationId) {
+    const currentConvId = conversationIdRef.current;
+    if (!currentConvId) {
       setError('Pas de conversation active. Lancez une analyse d\'abord.');
       return;
     }
@@ -162,7 +164,7 @@ export function useClaude(): UseClaudeReturn {
       const response = await fetch(`${API_BASE}/api/plugin/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId, message }),
+        body: JSON.stringify({ conversationId: currentConvId, message }),
         signal: controller.signal,
       });
 
@@ -189,13 +191,14 @@ export function useClaude(): UseClaudeReturn {
         setIsStreaming(false);
       }
     }
-  }, [conversationId]);
+  }, []);
 
   /** Restaurer un historique existant (depuis le cache ou la BDD) */
   const restore = useCallback((msgs: Message[], convId: string) => {
     abortCurrent();
     setMessages(msgs);
     setConversationId(convId);
+    conversationIdRef.current = convId;
     setStreamingContent('');
     setIsStreaming(false);
     setError(null);
@@ -206,6 +209,7 @@ export function useClaude(): UseClaudeReturn {
     abortCurrent();
     setMessages([]);
     setConversationId(null);
+    conversationIdRef.current = null;
     setStreamingContent('');
     setIsStreaming(false);
     setError(null);

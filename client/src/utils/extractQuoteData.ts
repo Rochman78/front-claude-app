@@ -25,11 +25,73 @@ const STORE_DEFAULT_COUNTRY: Record<string, string> = {
   TAR: 'DE', HET: 'NL', RED: 'ES', RETE: 'IT',
 };
 
-/** Convertit un taux TVA (%) + pays en code Pennylane (ex: 'ES_210') */
+/** Taux TVA normaux par pays (2026) — pour résoudre pays depuis le taux */
+const VAT_RATES_BY_COUNTRY: Record<string, number> = {
+  AT: 20, BE: 21, BG: 20, HR: 25, CY: 19, CZ: 21, DK: 25,
+  EE: 24, FI: 25.5, FR: 20, DE: 19, GR: 24, HU: 27, IE: 23,
+  IT: 22, LV: 21, LT: 21, LU: 17, MT: 18, NL: 21, PL: 23,
+  PT: 23, RO: 19, SK: 20, SI: 22, ES: 21, SE: 25,
+};
+
+/** Détecte le pays depuis le texte de l'adresse (noms de pays, codes postaux) */
+function detectCountryFromText(text: string): string | null {
+  const lower = text.toLowerCase();
+  const countryNames: Record<string, string[]> = {
+    FR: ['france', 'français'],
+    DE: ['germany', 'deutschland', 'allemagne', 'alemania', 'germania', 'duitsland'],
+    AT: ['austria', 'österreich', 'autriche', 'oostenrijk'],
+    BE: ['belgium', 'belgique', 'belgien', 'belgio', 'belgië'],
+    NL: ['netherlands', 'pays-bas', 'niederlande', 'paesi bassi', 'nederland'],
+    ES: ['spain', 'españa', 'espagne', 'spanien', 'spagna', 'spanje'],
+    IT: ['italy', 'italia', 'italie', 'italien', 'italië'],
+    PT: ['portugal'],
+    CH: ['switzerland', 'suisse', 'schweiz', 'svizzera', 'zwitserland'],
+    LU: ['luxembourg', 'luxemburg', 'lussemburgo'],
+    IE: ['ireland', 'irlande', 'irland', 'irlanda', 'ierland'],
+    PL: ['poland', 'pologne', 'polen', 'polonia'],
+    CZ: ['czech', 'tchéquie', 'tschechien', 'cechia'],
+    DK: ['denmark', 'danemark', 'dänemark', 'danimarca', 'denemarken'],
+    SE: ['sweden', 'suède', 'schweden', 'svezia', 'zweden'],
+    FI: ['finland', 'finlande', 'finnland', 'finlandia'],
+    GR: ['greece', 'grèce', 'griechenland', 'grecia', 'griekenland'],
+    HU: ['hungary', 'hongrie', 'ungarn', 'ungheria', 'hongarije'],
+    RO: ['romania', 'roumanie', 'rumänien'],
+    BG: ['bulgaria', 'bulgarie', 'bulgarien'],
+    HR: ['croatia', 'croatie', 'kroatien', 'croazia', 'kroatië'],
+    SK: ['slovakia', 'slovaquie', 'slowakei', 'slovacchia'],
+    SI: ['slovenia', 'slovénie', 'slowenien'],
+    EE: ['estonia', 'estonie', 'estland'],
+    LV: ['latvia', 'lettonie', 'lettland'],
+    LT: ['lithuania', 'lituanie', 'litauen'],
+  };
+  for (const [code, names] of Object.entries(countryNames)) {
+    if (names.some((n) => lower.includes(n))) return code;
+  }
+  return null;
+}
+
+/** Convertit un taux TVA (%) + pays en code Pennylane (ex: 'AT_200') */
 function toPennylaneVatCode(rate: number, country: string): string {
   if (rate === 0) return 'tax_free_0';
   const rateInt = Math.round(rate * 10);
   return `${country}_${rateInt}`;
+}
+
+/** Trouve le pays à partir du taux TVA et du texte complet */
+function resolveCountryFromVatRate(rate: number, fullText: string, defaultCountry: string): string {
+  // 1. Chercher le pays dans le texte (noms de pays)
+  const fromText = detectCountryFromText(fullText);
+  if (fromText) return fromText;
+
+  // 2. Si le taux est unique à un pays, l'utiliser
+  const matchingCountries = Object.entries(VAT_RATES_BY_COUNTRY).filter(([, r]) => r === rate).map(([c]) => c);
+  if (matchingCountries.length === 1) return matchingCountries[0];
+
+  // 3. Si le taux matche le pays par défaut du store, l'utiliser
+  if (VAT_RATES_BY_COUNTRY[defaultCountry] === rate) return defaultCountry;
+
+  // 4. Fallback
+  return defaultCountry;
 }
 
 export interface QuoteLine {
@@ -47,6 +109,7 @@ export interface ExtractedQuote {
   lines: QuoteLine[];
   subject?: string;
   extractedVatPercent?: number | null;
+  _fullText?: string;
 }
 
 export interface MissingField {
@@ -400,6 +463,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     lines,
     subject,
     extractedVatPercent: extractedVatPercent,
+    _fullText: text,
   };
 }
 
@@ -459,19 +523,28 @@ export function computeTotals(lines: QuoteLine[], vatPercent?: number | null): {
 // --- Formatage payload ---
 
 export function formatQuotePayload(quote: ExtractedQuote, storeCode: string, inboxName: string) {
-  // Dériver le pays depuis le n° TVA intra du client, l'adresse, ou le marché du store
-  const vatCountry = quote.customer?.vatNumber?.match(/^([A-Z]{2})/)?.[1];
-  const addressCountry = quote.customer?.address?.country;
   const defaultCountry = STORE_DEFAULT_COUNTRY[storeCode] || 'FR';
-  const customerCountry = vatCountry || addressCountry || defaultCountry;
-
-  // Déterminer le code TVA Pennylane depuis le taux extrait du brouillon
   const extractedRate = quote.extractedVatPercent;
+
+  // 1. Pays depuis le n° TVA intra du client
+  const vatCountry = quote.customer?.vatNumber?.match(/^([A-Z]{2})/)?.[1];
+  // 2. Pays depuis l'adresse (détection dans le texte)
+  const addressCountry = quote.customer?.address?.country;
+  // 3. Pays résolu depuis le taux TVA + texte du devis (détecte "Autriche", "Österreich", etc.)
+  const fullText = quote.lines.map(l => `${l.label} ${l.description || ''}`).join(' ') +
+    ` ${quote.customer?.address?.address || ''} ${quote.customer?.address?.city || ''}`;
+  const rateCountry = extractedRate !== null && extractedRate !== undefined
+    ? resolveCountryFromVatRate(extractedRate, quote._fullText || fullText, defaultCountry)
+    : null;
+
+  const customerCountry = vatCountry || addressCountry || rateCountry || defaultCountry;
+
+  // Déterminer le code TVA Pennylane
   const vatCode = extractedRate !== null && extractedRate !== undefined
     ? toPennylaneVatCode(extractedRate, extractedRate === 0 ? 'FR' : customerCountry)
-    : `${defaultCountry}_${defaultCountry === 'FR' ? '200' : defaultCountry === 'ES' ? '210' : defaultCountry === 'DE' ? '190' : defaultCountry === 'IT' ? '220' : defaultCountry === 'NL' ? '210' : '200'}`;
+    : toPennylaneVatCode(VAT_RATES_BY_COUNTRY[defaultCountry] || 20, defaultCountry);
 
-  console.log('[formatQuotePayload] country:', customerCountry, 'vatCode:', vatCode, 'storeCode:', storeCode);
+  console.log('[formatQuotePayload] country:', customerCountry, 'vatCode:', vatCode, 'storeCode:', storeCode, 'extractedRate:', extractedRate);
 
   return {
     customer: quote.customer

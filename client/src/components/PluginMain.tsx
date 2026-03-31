@@ -156,11 +156,13 @@ export default function PluginMain({ context }: PluginMainProps) {
       }
       setLoadingHistory(false);
     });
-  }, [frontConvId, store, claude, conversationCache]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frontConvId, store?.code]);
 
   // Sauvegarder dans le cache quand les messages changent
+  // IMPORTANT : ne pas écraser le cache avec un tableau vide (arrive lors du changement de conv)
   useEffect(() => {
-    if (claude.messages.length > 0 && claude.conversationId && frontConvId) {
+    if (claude.messages.length > 0 && claude.conversationId && frontConvId && frontConvId === prevConvId.current) {
       conversationCache.setInCache(frontConvId, {
         conversationId: claude.conversationId,
         messages: claude.messages,

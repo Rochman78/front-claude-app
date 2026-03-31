@@ -22,7 +22,7 @@ function getTemplateId(inboxName: string): number {
   return store?.pennylaneTemplateId || 253634; // fallback LFC
 }
 
-export async function findCustomerByEmail(email: string): Promise<string | null> {
+export async function findCustomerByEmail(email: string): Promise<{ id: string; type: string } | null> {
   try {
     const t0 = Date.now();
     const res = await fetch(
@@ -33,7 +33,13 @@ export async function findCustomerByEmail(email: string): Promise<string | null>
     if (res.ok) {
       const data = await res.json();
       const items = data.items || [];
-      if (items.length > 0) return items[0].id;
+      if (items.length > 0) {
+        const customer = items[0];
+        // Pennylane : customer_type = 'individual' ou 'company'
+        const type = customer.customer_type || (customer.name ? 'company' : 'individual');
+        console.log(`[pennylane] found customer ${customer.id} type=${type}`);
+        return { id: customer.id, type };
+      }
     }
   } catch { /* ignore */ }
   return null;
@@ -128,14 +134,16 @@ export async function resolveCustomerId(customer?: Record<string, unknown>, cust
   // Chercher un client existant par email
   let resolved: string | null = null;
   if (customer.email) {
-    resolved = await findCustomerByEmail(customer.email as string);
-    if (resolved) {
-      console.log(`[pennylane] found existing customer ${resolved} by email, but requested type=${requestedType}`);
-      // Si le type demandé est "company" mais le client existant est un particulier,
-      // créer un nouveau client company (Pennylane a des endpoints séparés)
-      if (requestedType === 'company') {
-        console.log('[pennylane] creating new company customer (ignoring existing individual)');
-        resolved = null; // forcer la création
+    const found = await findCustomerByEmail(customer.email as string);
+    if (found) {
+      console.log(`[pennylane] found existing customer ${found.id} type=${found.type}, requested type=${requestedType}`);
+      if (found.type === requestedType) {
+        // Même type → réutiliser le client existant
+        resolved = found.id;
+      } else {
+        // Type différent → créer un nouveau client du bon type
+        console.log(`[pennylane] type mismatch: existing=${found.type}, requested=${requestedType} → creating new`);
+        resolved = null;
       }
     }
   }

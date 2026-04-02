@@ -210,7 +210,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
 
   // Extraire matière/finition et couleur
   const matiereMatch = priceText.match(/(?:matière|finition|type|materia[le]?|material|contour|contorno|câble|cable|polyester|tipo)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
-  const couleurMatch = priceText.match(/(?:couleur|color|colore|farbe|kleur)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
+  const couleurMatch = priceText.match(/(?:couleur|coloris|couleurs|color(?!\w)|colore|farbe|kleur)\s*[:=]?\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)(?:\n|$|,|—)/i);
 
   // Extraire la quantité (nombre de filets commandés)
   const qtyMatch = priceText.match(/(?:quantité|qté|qty)\s*[:=]?\s*(\d+)/i);
@@ -247,21 +247,24 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   console.log('[extractQuoteData] multi-filets:', isMultiFilet ? multiFilets.length : 'non', multiFilets);
 
   // Déterminer le prix unitaire HT/m² (commun à tous les filets)
+  // PRIORITÉ : prix unitaire explicite > total HT / surface > total TTC / surface
   let unitPrice: string;
   if (isCatalogue) {
     const ttc = parseNumber(totalTTCMatch![1]);
     const ht = ttc / vatMultiplier;
     unitPrice = (ht / orderQty).toFixed(2);
     console.log('[extractQuoteData] catalogue TTC→HT:', { ttc, vatMultiplier, htUnit: unitPrice, qty: orderQty });
+  } else if (prixUnitaireMatch) {
+    // Prix unitaire HT explicite = priorité absolue pour le sur mesure
+    unitPrice = parseNumber(prixUnitaireMatch[1]).toFixed(2);
+    console.log('[extractQuoteData] prix unitaire explicite:', unitPrice);
+  } else if (totalHTMatch && surfaceMatch) {
+    unitPrice = (parseNumber(totalHTMatch[1]) / parseNumber(surfaceMatch[1])).toFixed(2);
   } else if (totalTTCMatch && surfaceMatch) {
     const ttc = parseNumber(totalTTCMatch[1]);
     const ht = ttc / vatMultiplier;
     const surf = parseNumber(surfaceMatch[1]);
     unitPrice = (ht / surf).toFixed(2);
-  } else if (prixUnitaireMatch) {
-    unitPrice = parseNumber(prixUnitaireMatch[1]).toFixed(2);
-  } else if (totalHTMatch && surfaceMatch) {
-    unitPrice = (parseNumber(totalHTMatch[1]) / parseNumber(surfaceMatch[1])).toFixed(2);
   } else if (totalHTMatch) {
     unitPrice = parseNumber(totalHTMatch[1]).toFixed(2);
   } else {

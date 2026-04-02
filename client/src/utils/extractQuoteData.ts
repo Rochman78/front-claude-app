@@ -468,10 +468,10 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     // Extraire ville depuis "Ville: xxx" si cpVilleMatch n'a pas de ville
     let city = cpVilleMatch ? cpVilleMatch[2].trim() : '';
     if (!city || formLabels.test(city)) {
-      const villeMatch = text.match(/(?:ville|city|ciudad|stadt|città)\s*[:：]\s*([A-Za-zÀ-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+){0,3})/i);
+      const villeMatch = text.match(/(?:ville|city|ciudad|stadt|città)\s*[:：]\s*([^\n:]{1,40})/i);
       city = villeMatch ? villeMatch[1].trim() : '';
-      // Couper la ville aux mots parasites (labels de formulaire suivants)
-      city = city.replace(/\s+(?:code|postal|pays|country|email|phone|tél|form|type|souhaite|corps|quantité|indicatif).*/i, '').trim();
+      // Couper au premier mot parasite ou début de phrase
+      city = city.replace(/\s+(?:code|postal|pays|country|email|phone|tél|form|type|corps|quantité|indicatif|souhait|voulez|merci|n'hésitez|pour|comment|nous).*/i, '').trim();
     }
     // Extraire pays depuis "Pays: xxx" et convertir en code ISO
     let country = customer.address?.country || '';

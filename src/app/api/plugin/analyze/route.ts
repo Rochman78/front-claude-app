@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool, { initDB } from '@/lib/db';
 import { createChatStream } from '@/lib/services/claudeService';
-import { selectDocumentNames, filterRelevantFiles, buildDocumentsText } from '@/lib/documentSelector';
+import { buildDocumentsText } from '@/lib/documentSelector';
 import { getStoreByCode } from '@/lib/stores';
 
 /**

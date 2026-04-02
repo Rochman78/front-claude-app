@@ -86,6 +86,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [quoteDraftText, setQuoteDraftText] = useState<string | null>(null);
   const [mailThread, setMailThread] = useState<string>('');
   const [showQuoteConfirm, setShowQuoteConfirm] = useState(false);
+  const [preAnalyzeNote, setPreAnalyzeNote] = useState<string>('');
   const [resolvedEmail, setResolvedEmail] = useState<string>('');
   const [resolvedName, setResolvedName] = useState<string>('');
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -235,11 +236,16 @@ export default function PluginMain({ context }: PluginMainProps) {
         .filter(Boolean)
         .join('\n\n---\n\n');
 
+      // Ajouter les instructions du gérant si fournies
+      const finalMailContent = preAnalyzeNote
+        ? `[INSTRUCTIONS DU GÉRANT : ${preAnalyzeNote}]\n\n${mailContent}`
+        : mailContent;
+
       const payload = {
         storeCode: store!.code,
         customerEmail,
         customerName,
-        mailContent,
+        mailContent: finalMailContent,
         frontConversationId: context.conversation.id,
         subject,
       };
@@ -310,6 +316,16 @@ export default function PluginMain({ context }: PluginMainProps) {
 
       {!hasMessages && !claude.isStreaming && !loadingHistory && (
         <div className="plugin-actions">
+          <textarea
+            value={preAnalyzeNote}
+            onChange={(e) => setPreAnalyzeNote(e.target.value)}
+            placeholder="Instructions pour Claude (optionnel) : ex. propose un avoir, le client est pressé..."
+            style={{
+              width: '100%', minHeight: '50px', maxHeight: '120px', padding: '8px', fontSize: '12px',
+              border: '1px solid #ddd', borderRadius: '6px', resize: 'vertical', marginBottom: '8px',
+              fontFamily: 'inherit',
+            }}
+          />
           <button className="btn-primary" onClick={handleAnalyze}>
             Analyser avec Claude
           </button>

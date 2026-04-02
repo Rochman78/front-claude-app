@@ -417,17 +417,20 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   // Extraire l'adresse depuis le texte (multi-langues)
   // 1. Code postal + ville : "13500 Martigues", "CP 07141, Marratxí", "28001 Madrid"
   // Supporte formats FR/ES/DE/IT/NL (4-5 chiffres + ville)
+  // Mots-clés de formulaire à exclure comme nom de ville
+  const formLabels = /^(?:pays|country|ciudad|stadt|land|città|paese|ville|code|postal|email|phone|tél|form|type|corps|quantité)$/i;
+
   const cpVilleMatch = (() => {
     for (const line of text.split('\n')) {
       // Pattern "CP 07141, Marratxí" ou "C.P. 07141 Marratxí"
       const cpES = line.match(/(?:CP|C\.?P\.?)\s*(\d{4,5})[,\s]+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/i);
-      if (cpES) return cpES;
+      if (cpES && !formLabels.test(cpES[2])) return cpES;
       // Pattern générique "12345 Ville" (FR/DE/IT/ES)
       const m = line.match(/\b(\d{4,5})\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/);
-      if (m) return m;
+      if (m && !formLabels.test(m[2])) return m;
       // Pattern NL "1234 AB Ville"
       const nl = line.match(/\b(\d{4}\s*[A-Z]{2})\s+([A-ZÀ-Ü][a-zà-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/);
-      if (nl) return nl;
+      if (nl && !formLabels.test(nl[2])) return nl;
     }
     return null;
   })();
@@ -459,12 +462,27 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   });
 
   if (customer) {
-    const rue = rueMatch?.[1]?.trim() || adresseLabelMatch?.[1]?.trim() || '';
-    if (rue || cpVilleMatch) {
+    let rue = rueMatch?.[1]?.trim() || adresseLabelMatch?.[1]?.trim() || '';
+    // Nettoyer : couper aux labels de formulaire parasites (Ville:, Code Postal:, Pays:, etc.)
+    rue = rue.replace(/\s+(?:ville|code\s*postal|pays|city|postal\s*code|country|ciudad|código\s*postal|país|stadt|plz|land|città|cap|paese)\s*[:：].*/i, '').trim();
+    // Extraire ville depuis "Ville: xxx" si cpVilleMatch n'a pas de ville
+    let city = cpVilleMatch ? cpVilleMatch[2].trim() : '';
+    if (!city || formLabels.test(city)) {
+      const villeMatch = text.match(/(?:ville|city|ciudad|stadt|città)\s*[:：]\s*([A-Za-zÀ-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/i);
+      city = villeMatch ? villeMatch[1].trim() : '';
+    }
+    // Extraire pays depuis "Pays: xxx"
+    let country = customer.address?.country || '';
+    if (!country) {
+      const paysMatch = text.match(/(?:pays|country|país|land|paese)\s*[:：]\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)/i);
+      if (paysMatch) country = paysMatch[1].trim();
+    }
+    if (rue || cpVilleMatch || city) {
       customer.address = {
         address: rue,
         postalCode: cpVilleMatch ? cpVilleMatch[1] : '',
-        city: cpVilleMatch ? cpVilleMatch[2].trim() : '',
+        city,
+        country,
       };
     }
     if (phoneMatch && !customer.phone) {

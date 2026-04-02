@@ -203,7 +203,8 @@ export default function QuotePanel({
 
         {/* Récap */}
         {(() => {
-          const totalHT = f.lines.reduce((s, l) => s + parseFloat(l.quantity || '0') * parseFloat(l.unitPrice || '0'), 0);
+          const p = (v: string) => parseFloat((v || '0').replace(',', '.'));
+          const totalHT = f.lines.reduce((s, l) => s + p(l.quantity) * p(l.unitPrice), 0);
           const vat = parseFloat(f.vatPercent || '0');
           const totalTTC = totalHT * (1 + vat / 100);
           return (
@@ -296,8 +297,8 @@ export default function QuotePanel({
         type: 'product',
         label: l.label,
         description: l.unit === 'm2' ? `Quantité : 1 | Total m² : ${l.quantity} | Délai de production + livraison : environ 14 jours` : undefined,
-        quantity: parseFloat(l.quantity) || 1,
-        unitPrice: parseFloat(l.unitPrice) || 0,
+        quantity: parseFloat(l.quantity.replace(',', '.')) || 1,
+        unitPrice: parseFloat(l.unitPrice.replace(',', '.')) || 0,
         unit: l.unit,
         vatRate: '',
       }));

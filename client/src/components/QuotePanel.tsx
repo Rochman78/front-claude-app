@@ -204,7 +204,8 @@ export default function QuotePanel({
         {/* Récap */}
         {(() => {
           const p = (v: string) => parseFloat((v || '0').replace(',', '.'));
-          const totalHT = f.lines.reduce((s, l) => s + p(l.quantity) * p(l.unitPrice), 0);
+          const r2 = (n: number) => Math.round(n * 100) / 100;
+          const totalHT = f.lines.reduce((s, l) => s + r2(p(l.quantity) * p(l.unitPrice)), 0);
           const vat = parseFloat(f.vatPercent || '0');
           const totalTTC = totalHT * (1 + vat / 100);
           return (

@@ -119,20 +119,27 @@ export function useClaude(): UseClaudeReturn {
 
       // Récupérer le conversationId depuis le header
       const convId = response.headers.get('X-Conversation-Id');
+      const myConvId = convId || 'unknown';
       if (convId) { setConversationId(convId); conversationIdRef.current = convId; }
 
-      const fullText = await readStream(response, setStreamingContent, controller.signal);
+      const fullText = await readStream(response, (text) => {
+        // Ne mettre à jour le streaming que si on est toujours sur la même conversation
+        if (conversationIdRef.current === myConvId) {
+          setStreamingContent(text);
+        }
+      }, controller.signal);
 
-      // Vérifier qu'on n'a pas été annulé entre-temps
-      if (controller.signal.aborted) return;
+      // Vérifier qu'on est toujours sur la même conversation
+      if (controller.signal.aborted || conversationIdRef.current !== myConvId) return;
 
-      // Ajouter uniquement la réponse Claude (pas le message technique d'analyse)
       setMessages([
         { id: nextId(), role: 'assistant', content: fullText },
       ]);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      if (conversationIdRef.current !== null) {
+        setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      }
     } finally {
       if (!controller.signal.aborted) {
         setStreamingContent('');
@@ -173,9 +180,13 @@ export function useClaude(): UseClaudeReturn {
         throw new Error(err.error || `Erreur ${response.status}`);
       }
 
-      const fullText = await readStream(response, setStreamingContent, controller.signal);
+      const fullText = await readStream(response, (text) => {
+        if (conversationIdRef.current === currentConvId) {
+          setStreamingContent(text);
+        }
+      }, controller.signal);
 
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || conversationIdRef.current !== currentConvId) return;
 
       // Ajouter la réponse assistant
       setMessages((prev) => [
@@ -184,7 +195,9 @@ export function useClaude(): UseClaudeReturn {
       ]);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      if (conversationIdRef.current === currentConvId) {
+        setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      }
     } finally {
       if (!controller.signal.aborted) {
         setStreamingContent('');
@@ -195,7 +208,8 @@ export function useClaude(): UseClaudeReturn {
 
   /** Restaurer un historique existant (depuis le cache ou la BDD) */
   const restore = useCallback((msgs: Message[], convId: string) => {
-    abortCurrent();
+    // NE PAS aborter le stream en cours — le serveur continue et sauve en BDD
+    // Le stream orphelin sera ignoré grâce au check controller.signal.aborted
     setMessages(msgs);
     setConversationId(convId);
     conversationIdRef.current = convId;
@@ -206,7 +220,7 @@ export function useClaude(): UseClaudeReturn {
 
   /** Reset complet (nouveau mail sans historique) */
   const reset = useCallback(() => {
-    abortCurrent();
+    // NE PAS aborter — même raison que restore
     setMessages([]);
     setConversationId(null);
     conversationIdRef.current = null;

@@ -17,7 +17,7 @@ export default function App() {
         </div>
       );
     case 'singleConversation':
-      return <PluginMain key={context.conversation.id} context={context} />;
+      return <PluginMain context={context} />;
     case 'multiConversations':
       return (
         <div className="plugin-empty">

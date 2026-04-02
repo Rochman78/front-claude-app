@@ -292,6 +292,17 @@ export default function PluginMain({ context }: PluginMainProps) {
     }
   }, [claude.messages, claude.streamingContent, showDraft, manualValidation, draftInvalidated, quotePdfUrl]);
 
+  // Auto-scroll quand le DOM change dans la zone scrollable (ex: QuotePanel ouvre un formulaire)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const observer = new MutationObserver(() => {
+      setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
+    });
+    observer.observe(el, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className="plugin-shell">
       {/* Zone scrollable */}

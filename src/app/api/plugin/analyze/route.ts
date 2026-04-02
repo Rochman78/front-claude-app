@@ -83,13 +83,12 @@ export async function POST(req: NextRequest) {
       ...sharedFiles.map((f) => ({ name: f.name, content: f.content, shared: true })),
     ];
 
-    const relevantDocNames = selectDocumentNames(mailContent);
-    const filteredFiles = filterRelevantFiles(allFiles, relevantDocNames);
-    const documents = buildDocumentsText(filteredFiles);
+    // Charger TOUS les documents (l'agent a toujours accès à tout)
+    const documents = buildDocumentsText(allFiles);
 
     const systemPromptSize = (agent.instructions || '').length;
     const docsSize = documents.length;
-    console.log(`[plugin/analyze] store=${storeCode} agent=${agent.name} docs=${filteredFiles.length}/${allFiles.length} selected=[${filteredFiles.map(f => f.name).join(', ')}]`);
+    console.log(`[plugin/analyze] store=${storeCode} agent=${agent.name} docs=${allFiles.length} [${allFiles.map(f => f.name).join(', ')}]`);
     console.log(`[plugin/analyze] sizes: systemPrompt=${systemPromptSize} chars, documents=${docsSize} chars, total=${systemPromptSize + docsSize} chars (~${Math.round((systemPromptSize + docsSize) / 4)} tokens)`);
 
     // 3. Récupérer ou créer la conversation en BDD
@@ -146,8 +145,7 @@ export async function POST(req: NextRequest) {
 
     console.log(`[plugin/analyze] === CLAUDE API CALL ===`);
     console.log(`[plugin/analyze] system prompt: ${systemPrompt.length} chars`);
-    console.log(`[plugin/analyze] documents: ${filteredFiles.length} files, ${documents.length} chars`);
-    console.log(`[plugin/analyze] document names: [${filteredFiles.map(f => f.name).join(', ')}]`);
+    console.log(`[plugin/analyze] documents: ${allFiles.length} files, ${documents.length} chars`);
     console.log(`[plugin/analyze] history: ${existingMessages.length} existing + 1 new = ${messages.length} messages`);
     console.log(`[plugin/analyze] mail content: ${mailContent.length} chars`);
     console.log(`[plugin/analyze] total input estimate: ~${Math.round((systemPrompt.length + documents.length + messages.reduce((n, m) => n + m.content.length, 0)) / 4)} tokens`);

@@ -144,7 +144,7 @@ export function hasQuoteContent(text: string): boolean {
  * Parse UNIQUEMENT le texte naturel — jamais de JSON structuré
  * (qui pourrait contenir des données d'une ancienne conversation).
  */
-export function extractQuoteData(text: string, context?: { customerEmail?: string; customerName?: string; storeCode?: string }): ExtractedQuote | null {
+export function extractQuoteData(text: string, context?: { customerEmail?: string; customerName?: string; storeCode?: string; claudeText?: string }): ExtractedQuote | null {
   return extractFromText(text, context);
 }
 
@@ -153,41 +153,41 @@ export function extractQuoteData(text: string, context?: { customerEmail?: strin
  * Cherche dans tout le texte (tous les messages concaténés) :
  * dimensions, matière, couleur, surface, prix unitaire, total HT/TTC.
  */
-function extractFromText(text: string, context?: { customerEmail?: string; customerName?: string; storeCode?: string }): ExtractedQuote | null {
-  console.log('[extractQuoteData] input text (500 chars):', text.substring(0, 500));
-  console.log('[extractQuoteData] email regex test:', /(?:e-?mail|courriel)\s*[:：]\s*\n?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i.test(text));
-  console.log('[extractQuoteData] all emails found in text:', text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g));
-  console.log('[extractQuoteData] text length:', text.length);
+function extractFromText(text: string, context?: { customerEmail?: string; customerName?: string; storeCode?: string; claudeText?: string }): ExtractedQuote | null {
+  // Pour les prix/produits, utiliser claudeText (dernier brouillon) pour éviter les doublons
+  // depuis le mailThread. Pour les infos client, utiliser text (fullText = mail + claude).
+  const priceText = context?.claudeText || text;
+  console.log('[extractQuoteData] text length:', text.length, 'priceText length:', priceText.length);
 
   // Extraire le prix unitaire HT — patterns variés
   const prixUnitaireMatch =
-    text.match(/prix\s*unitaire\s*(?:hors\s*(?:tva|taxe)|ht)\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:\/\s*m[²2])?/i) ||
-    text.match(/(?:prix\s*(?:unitaire)?(?:\s*ht)?|tarif)\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:ht)?\s*(?:\/\s*m[²2])?/i) ||
-    text.match(/(\d+[.,]\d+)\s*€\s*(?:ht\s*)?(?:\/\s*m[²2]|par\s*m[²2])/i) ||
-    text.match(/(\d+[.,]\d+)\s*€\s*\/\s*m[²2]/i);
+    priceText.match(/prix\s*unitaire\s*(?:hors\s*(?:tva|taxe)|ht)\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:\/\s*m[²2])?/i) ||
+    priceText.match(/(?:prix\s*(?:unitaire)?(?:\s*ht)?|tarif)\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:ht)?\s*(?:\/\s*m[²2])?/i) ||
+    priceText.match(/(\d+[.,]\d+)\s*€\s*(?:ht\s*)?(?:\/\s*m[²2]|par\s*m[²2])/i) ||
+    priceText.match(/(\d+[.,]\d+)\s*€\s*\/\s*m[²2]/i);
 
   // Extraire la surface — patterns variés (supporte entiers et décimaux)
   const surfaceMatch =
-    text.match(/surface\s*(?:totale|unitaire)?\s*[:=]?\s*(\d+[.,]?\d*)\s*m[²2]/i) ||
-    text.match(/(\d+[.,]?\d*)\s*m[²2]\s*(?:au total|total)?/i);
+    priceText.match(/surface\s*(?:totale|unitaire)?\s*[:=]?\s*(\d+[.,]?\d*)\s*m[²2]/i) ||
+    priceText.match(/(\d+[.,]?\d*)\s*m[²2]\s*(?:au total|total)?/i);
 
   // Extraire le total HT — patterns variés
   const totalHTMatch =
-    text.match(/(?:total|montant)\s*(?:hors\s*(?:tva|taxe)|ht)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
-    text.match(/(?:total|montant)\s*ht\s*[:=]?\s*(\d+[.,]\d+)\s*€/i);
+    priceText.match(/(?:total|montant)\s*(?:hors\s*(?:tva|taxe)|ht)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/(?:total|montant)\s*ht\s*[:=]?\s*(\d+[.,]\d+)\s*€/i);
 
   // Extraire le montant TTC — patterns variés
   const totalTTCMatch =
-    text.match(/(?:total|montant)\s*ttc\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
-    text.match(/ttc\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
-    text.match(/montant\s*ttc\s*[:=—–-]\s*(\d+[.,]\d+)\s*€/i);
+    priceText.match(/(?:total|montant)\s*ttc\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/ttc\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/montant\s*ttc\s*[:=—–-]\s*(\d+[.,]\d+)\s*€/i);
 
   // Extraire le taux de TVA depuis le texte (AVANT le calcul des prix)
   const tvaRateMatch =
-    text.match(/(?:TVA|tva|IVA|TVA applicable)[^)]*?\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
-    text.match(/(?:taux\s*(?:de\s*)?(?:TVA|tva|IVA))[^)]*?[:=]?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
-    text.match(/TVA\s*\(\s*(\d+(?:[.,]\d+)?)\s*%\s*\)/i) ||
-    text.match(/(\d+(?:[.,]\d+)?)\s*%\s*(?:TVA|tva|IVA)/i);
+    priceText.match(/(?:TVA|tva|IVA|TVA applicable)[^)]*?\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    priceText.match(/(?:taux\s*(?:de\s*)?(?:TVA|tva|IVA))[^)]*?[:=]?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    priceText.match(/TVA\s*\(\s*(\d+(?:[.,]\d+)?)\s*%\s*\)/i) ||
+    priceText.match(/(\d+(?:[.,]\d+)?)\s*%\s*(?:TVA|tva|IVA)/i);
   const extractedVatPercent = tvaRateMatch ? parseNumber(tvaRateMatch[1]) : null;
   const vatMultiplier = 1 + (extractedVatPercent !== null ? extractedVatPercent : 20) / 100;
   console.log('[extractQuoteData] extracted VAT rate:', extractedVatPercent !== null ? `${extractedVatPercent}%` : 'not found (default 20%)', 'multiplier:', vatMultiplier);
@@ -206,14 +206,14 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   if (!totalHTMatch && !totalTTCMatch && !(prixUnitaireMatch && surfaceMatch)) return null;
 
   // Extraire les dimensions — supporte × et x, entiers et décimaux
-  const dimMatch = text.match(/(\d+[.,]?\d*)\s*[x×]\s*(\d+[.,]?\d*)\s*m/i);
+  const dimMatch = priceText.match(/(\d+[.,]?\d*)\s*[x×]\s*(\d+[.,]?\d*)\s*m/i);
 
   // Extraire matière/finition et couleur
-  const matiereMatch = text.match(/(?:matière|finition|type|materia[le]?|material|contour|contorno|câble|cable|polyester|tipo)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
-  const couleurMatch = text.match(/(?:couleur|color|colore|farbe|kleur)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
+  const matiereMatch = priceText.match(/(?:matière|finition|type|materia[le]?|material|contour|contorno|câble|cable|polyester|tipo)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
+  const couleurMatch = priceText.match(/(?:couleur|color|colore|farbe|kleur)\s*[:=]?\s*([A-Za-zÀ-ÿ\s]+?)(?:\n|$|,)/i);
 
   // Extraire la quantité (nombre de filets commandés)
-  const qtyMatch = text.match(/(?:quantité|qté|qty)\s*[:=]?\s*(\d+)/i);
+  const qtyMatch = priceText.match(/(?:quantité|qté|qty)\s*[:=]?\s*(\d+)/i);
   const orderQty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
 
   // Déterminer si c'est un produit catalogue (TTC) ou du sur mesure (HT/m²)
@@ -229,7 +229,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   // ─── Détecter multi-filets (Filet n°1, Filet n°2, etc.) ───
   // Détecter multi-filets : "Filet n°1 — Triangle 6,9 x 6,9 x 3,8 m" + "Surface : 12,60 m²"
   const multiFilets: { num: string; dims: string; surface: number }[] = [];
-  const filetHeaders = [...text.matchAll(/(?:filet|netz|red|rete|net|voile)\s*(?:n[°º.]?\s*)?(\d+)\s*[—–-]\s*([^\n]+)/gi)];
+  const filetHeaders = [...priceText.matchAll(/(?:filet|netz|red|rete|net|voile)\s*(?:n[°º.]?\s*)?(\d+)\s*[—–-]\s*([^\n]+)/gi)];
   for (const h of filetHeaders) {
     const num = h[1];
     const desc = h[2].trim();
@@ -237,7 +237,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     const dimMatch = desc.match(/([\d.,]+\s*[x×]\s*[\d.,]+(?:\s*[x×]\s*[\d.,]+)?)\s*m/i);
     const dims = dimMatch ? dimMatch[1].replace(/\s/g, '').replace(/,/g, '.') : '';
     // Chercher la surface après ce header (dans les 300 chars suivants)
-    const afterHeader = text.substring(h.index! + h[0].length, h.index! + h[0].length + 300);
+    const afterHeader = priceText.substring(h.index! + h[0].length, h.index! + h[0].length + 300);
     const surfaceMatch = afterHeader.match(/surface\s*(?:unitaire|totale)?\s*[:=]?\s*(\d+[.,]\d*)\s*m[²2]/i);
     if (surfaceMatch) {
       multiFilets.push({ num, dims, surface: parseNumber(surfaceMatch[1]) });
@@ -290,7 +290,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   } else if (isCatalogue) {
     // Produit catalogue
     let label: string;
-    const productLineMatch = text.match(/(?:^|\n)\s*((?:filet|red|rete|net|netz|toile|coco|voile|parasol|rideau|brise-vue|cortina|tenda|Schutznetz|camouflagenet)[^\n]{5,80})/im);
+    const productLineMatch = priceText.match(/(?:^|\n)\s*((?:filet|red|rete|net|netz|toile|coco|voile|parasol|rideau|brise-vue|cortina|tenda|Schutznetz|camouflagenet)[^\n]{5,80})/im);
     if (productLineMatch) {
       label = productLineMatch[1].trim()
         .replace(/\s*[-—–]\s*(?:quantité|cantidad|qty|anzahl|aantal|quantità)\s*[:=]?\s*\d+/i, '')
@@ -324,7 +324,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   }
 
   // Détecter livraison offerte
-  const livraisonOfferte = /livraison\s*(?:offerte|gratuite|incluse|kostenlos|gratis|gratuita)/i.test(text);
+  const livraisonOfferte = /livraison\s*(?:offerte|gratuite|incluse|kostenlos|gratis|gratuita)/i.test(priceText);
   if (livraisonOfferte) {
     lines.push({ type: 'transport', label: 'Transport sur mesure', quantity: 1, unitPrice: '19.99', unit: 'piece' });
     lines.push({ type: 'transport_discount', label: 'Remise transport sur mesure', quantity: 1, unitPrice: '-19.99', unit: 'piece' });

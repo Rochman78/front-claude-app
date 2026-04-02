@@ -248,7 +248,7 @@ export default function QuotePanel({
     }
 
     const fullText = resolvedMailThread + '\n\n---\n\n' + claudeText;
-    const quote = extractQuoteData(fullText, { customerEmail, customerName, storeCode });
+    const quote = extractQuoteData(fullText, { customerEmail, customerName, storeCode, claudeText });
 
     if (!quote) {
       setError('Aucun chiffrage détecté dans la réponse de Claude. Demandez-lui d\'abord de calculer le devis.');

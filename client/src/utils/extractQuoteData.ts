@@ -368,7 +368,9 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
 
   // Détecter la raison sociale (FR/ES/DE/NL/IT)
   const raisonSocialeRaw = getField(/(?:raison\s*sociale|entreprise|société|empresa|razón\s*social|firma|unternehmen|bedrijf|azienda|ditta)(?:\s*\([^)]*\))?(?:\s*\/[^:]*)?/);
-  const companyName = raisonSocialeRaw;
+  // Filtrer les fausses raisons sociales (labels de formulaire, numéros de téléphone, etc.)
+  const isJunkCompany = (n: string) => !n || /^numéro|^téléphone|^phone|^email|^adresse|^n°|^\d{6,}|^0\d/i.test(n);
+  const companyName = isJunkCompany(raisonSocialeRaw) ? '' : raisonSocialeRaw;
   const isCompany = companyName.length > 0;
 
   // Chercher "Nom et prénom" / "Nombre" / "Name" (même ligne ou ligne suivante)

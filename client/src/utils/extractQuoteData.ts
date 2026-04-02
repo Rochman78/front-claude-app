@@ -468,14 +468,21 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     // Extraire ville depuis "Ville: xxx" si cpVilleMatch n'a pas de ville
     let city = cpVilleMatch ? cpVilleMatch[2].trim() : '';
     if (!city || formLabels.test(city)) {
-      const villeMatch = text.match(/(?:ville|city|ciudad|stadt|città)\s*[:：]\s*([A-Za-zÀ-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+)*)/i);
+      const villeMatch = text.match(/(?:ville|city|ciudad|stadt|città)\s*[:：]\s*([A-Za-zÀ-ÿ]+(?:[\s-][A-Za-zÀ-ÿ]+){0,3})/i);
       city = villeMatch ? villeMatch[1].trim() : '';
+      // Couper la ville aux mots parasites (labels de formulaire suivants)
+      city = city.replace(/\s+(?:code|postal|pays|country|email|phone|tél|form|type|souhaite|corps|quantité|indicatif).*/i, '').trim();
     }
-    // Extraire pays depuis "Pays: xxx"
+    // Extraire pays depuis "Pays: xxx" et convertir en code ISO
     let country = customer.address?.country || '';
     if (!country) {
-      const paysMatch = text.match(/(?:pays|country|país|land|paese)\s*[:：]\s*([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)/i);
-      if (paysMatch) country = paysMatch[1].trim();
+      const paysMatch = text.match(/(?:pays|country|país|land|paese)\s*[:：]\s*([A-Za-zÀ-ÿ]+)/i);
+      if (paysMatch) {
+        const paysName = paysMatch[1].trim().toLowerCase();
+        // Convertir nom de pays → code ISO
+        const countryCode = detectCountryFromText(paysName);
+        country = countryCode || paysName.toUpperCase().substring(0, 2);
+      }
     }
     if (rue || cpVilleMatch || city) {
       customer.address = {

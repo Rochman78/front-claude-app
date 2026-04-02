@@ -227,14 +227,24 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   console.log('[extractQuoteData] isCatalogue:', isCatalogue);
 
   // ─── Détecter multi-filets (Filet n°1, Filet n°2, etc.) ───
-  const multiFiletPattern = /(?:filet|netz|red|rete|net|voile)\s*(?:n[°º.]?\s*)?(\d+)\s*[—–-]\s*(?:dimensions?\s*[:=]?\s*)?(\d+[.,]\d*)\s*[x×]\s*(\d+[.,]\d*)\s*m\s*[—–-]?\s*(?:surface|fläche|superficie|oppervlakte)?\s*[:=]?\s*(\d+[.,]\d*)\s*m[²2]/gi;
-  const multiFilets: { num: string; l: string; w: string; surface: number }[] = [];
-  let mfMatch;
-  while ((mfMatch = multiFiletPattern.exec(text)) !== null) {
-    multiFilets.push({ num: mfMatch[1], l: mfMatch[2].replace(',', '.'), w: mfMatch[3].replace(',', '.'), surface: parseNumber(mfMatch[4]) });
+  // Détecter multi-filets : "Filet n°1 — Triangle 6,9 x 6,9 x 3,8 m" + "Surface : 12,60 m²"
+  const multiFilets: { num: string; dims: string; surface: number }[] = [];
+  const filetHeaders = [...text.matchAll(/(?:filet|netz|red|rete|net|voile)\s*(?:n[°º.]?\s*)?(\d+)\s*[—–-]\s*([^\n]+)/gi)];
+  for (const h of filetHeaders) {
+    const num = h[1];
+    const desc = h[2].trim();
+    // Extraire dimensions (2 ou 3 valeurs x)
+    const dimMatch = desc.match(/([\d.,]+\s*[x×]\s*[\d.,]+(?:\s*[x×]\s*[\d.,]+)?)\s*m/i);
+    const dims = dimMatch ? dimMatch[1].replace(/\s/g, '').replace(/,/g, '.') : '';
+    // Chercher la surface après ce header (dans les 300 chars suivants)
+    const afterHeader = text.substring(h.index! + h[0].length, h.index! + h[0].length + 300);
+    const surfaceMatch = afterHeader.match(/surface\s*(?:unitaire|totale)?\s*[:=]?\s*(\d+[.,]\d*)\s*m[²2]/i);
+    if (surfaceMatch) {
+      multiFilets.push({ num, dims, surface: parseNumber(surfaceMatch[1]) });
+    }
   }
   const isMultiFilet = multiFilets.length > 1;
-  console.log('[extractQuoteData] multi-filets:', isMultiFilet ? multiFilets.length : 'non');
+  console.log('[extractQuoteData] multi-filets:', isMultiFilet ? multiFilets.length : 'non', multiFilets);
 
   // Déterminer le prix unitaire HT/m² (commun à tous les filets)
   let unitPrice: string;
@@ -265,7 +275,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     // Multi-filets sur mesure : une ligne par filet
     const finition = matiere ? `Filet de camouflage renforcé ${matiere.toLowerCase()}` : 'Filet de camouflage renforcé sur mesure';
     for (const filet of multiFilets) {
-      const filetDim = `${filet.l}x${filet.w} m`;
+      const filetDim = `${filet.dims} m`;
       const filetLabel = [couleur, filetDim, finition].filter(Boolean).join(' - ');
       lines.push({
         type: 'product',

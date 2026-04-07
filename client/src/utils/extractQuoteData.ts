@@ -303,6 +303,8 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     }
     if (accessoryLines.length > 0) break;
   }
+  console.log('[extractQuoteData] accessoryLines:', accessoryLines.length, accessoryLines.map(a => `${a.label} x${a.quantity} @ ${a.unitPrice}`));
+
   const extractedVatPercent = tvaRateMatch ? parseNumber(tvaRateMatch[1]) : null;
   const vatMultiplier = 1 + (extractedVatPercent !== null ? extractedVatPercent : 20) / 100;
   console.log('[extractQuoteData] extracted VAT rate:', extractedVatPercent !== null ? `${extractedVatPercent}%` : 'not found (default 20%)', 'multiplier:', vatMultiplier);
@@ -493,25 +495,29 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   const finalEmail = context?.customerEmail || '';
   console.log('[extractQuoteData] final email (from SDK replyTo):', finalEmail);
 
-  // Extraire le nom depuis le corps du mail (prioritaire sur le SDK)
-  // Supporte : Name, Nom, Nombre, Name, Naam, Nome + variantes "complet"
-  const nameFromBody = getField(/(?:name|nom(?:\s*complet)?|nombre(?:\s*completo)?|naam|nome)/);
+  // Nom client : le SDK Front (replyTo.contact.name) est la source la plus fiable
   const nameFromSDK = context?.customerName || '';
-  // Ignorer les noms Shopify
-  const isJunkName = (n: string) => !n || /shopify|filet.*camouflage|noreply|camuflaje|camouflage|numéro|telefon|téléphone|phone|email|adresse|address|dirección/i.test(n);
-  const finalName = !isJunkName(nameFromBody) ? nameFromBody : !isJunkName(nameFromSDK) ? nameFromSDK : '';
+  // Extraire le nom depuis le corps du mail (fallback uniquement si le SDK n'a pas de nom)
+  // Word boundaries (\b) pour éviter de matcher "Achternaam" au lieu de "Naam"
+  const nameFromBody = getField(/(?:\bname\b|\bnom\b(?:\s*complet)?|\bnombre\b(?:\s*completo)?|\bnaam\b|\bnome\b)/);
+  // Ignorer les noms Shopify ou parasites
+  const isJunkName = (n: string) => !n || /shopify|filet.*camouflage|noreply|camuflaje|camouflage|numéro|telefon|téléphone|phone|email|adresse|address|dirección|instal/i.test(n);
+  // Priorité SDK > corps du mail
+  const finalName = !isJunkName(nameFromSDK) ? nameFromSDK : !isJunkName(nameFromBody) ? nameFromBody : '';
 
   let customer: QuoteCustomer | undefined;
 
   // Détecter la raison sociale (FR/ES/DE/NL/IT)
-  const raisonSocialeRaw = getField(/(?:raison\s*sociale|entreprise|société|empresa|razón\s*social|firma|unternehmen|bedrijf|azienda|ditta)(?:\s*\([^)]*\))?(?:\s*\/[^:]*)?/);
+  // Exclure "Btw Nummer (Indien Bedrijf)" qui est un label de formulaire, pas un nom d'entreprise
+  const raisonSocialeRaw = getField(/(?:raison\s*sociale|entreprise|société|empresa|razón\s*social|firma|unternehmen|\bbedrijf\b|azienda|ditta)(?:\s*\([^)]*\))?(?:\s*\/[^:]*)?/);
   // Filtrer les fausses raisons sociales (labels de formulaire, numéros de téléphone, etc.)
-  const isJunkCompany = (n: string) => !n || /^numéro|^téléphone|^phone|^email|^adresse|^n°|^\d{6,}|^0\d/i.test(n);
+  const isJunkCompany = (n: string) => !n || /^numéro|^téléphone|^phone|^email|^adresse|^n°|^\d{6,}|^0\d|^btw|^achternaam|^indien/i.test(n);
   const companyName = isJunkCompany(raisonSocialeRaw) ? '' : raisonSocialeRaw;
   const isCompany = companyName.length > 0;
 
   // Chercher "Nom et prénom" / "Nombre" / "Name" (même ligne ou ligne suivante)
-  const nomPrenomRaw = getField(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom|nombre(?:\s*(?:y\s*)?apellidos?)?|nombre\s*completo|vor-?\s*und\s*nachname|naam|nome(?:\s*e\s*cognome)?)/);
+  // Word boundaries pour éviter les faux positifs (ex: "Achternaam" ne doit pas matcher "naam")
+  const nomPrenomRaw = getField(/(?:nom\s*(?:et\s*)?prénom|prénom\s*(?:et\s*)?nom|nombre(?:\s*(?:y\s*)?apellidos?)?|nombre\s*completo|vor-?\s*und\s*nachname|\bnaam\b|nome(?:\s*e\s*cognome)?)/);
   const nomPrenomParts = nomPrenomRaw.split(/\s+/).filter(Boolean);
   const nomPrenomMatch = nomPrenomParts.length >= 2 ? nomPrenomParts : null;
 

@@ -26,6 +26,7 @@ RÈGLES STRICTES :
 - Chaque produit/accessoire = une ligne séparée dans "lines".
 - Le type de ligne est "product" pour les filets/produits principaux, "accessory" pour les accessoires (kits, câbles, etc.).
 - Si la livraison est offerte/gratuite, ajoute une ligne type "transport" et une ligne "transport_discount" avec le même montant en négatif.
+- Les labels des produits (champ "label") et le sujet (champ "subject") doivent être rédigés dans la LANGUE DU CLIENT (la langue utilisée dans la réponse service client). Ne traduis PAS en français si le texte est en néerlandais, allemand, espagnol, italien, etc.
 - Réponds UNIQUEMENT avec le JSON, sans texte avant ou après, sans backticks.`;
 
     const userMessage = `Extrait les données du devis depuis ce texte.

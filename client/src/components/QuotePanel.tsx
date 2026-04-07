@@ -262,35 +262,31 @@ export default function QuotePanel({
 
     const quote = extractQuoteData(fullText, { customerEmail, customerName, storeCode, claudeText: quoteClaudeMsg });
 
-    if (!quote) {
-      setError('Aucun chiffrage détecté dans la réponse de Claude. Demandez-lui d\'abord de calculer le devis.');
-      return;
-    }
-
     setExtractedQuote(quote);
 
-    // Construire le formulaire de vérification pré-rempli
-    const c = quote.customer;
-    const isCatalogue = quote.lines.some(l => l.unit === 'piece');
+    // Construire le formulaire de vérification pré-rempli (valeurs par défaut si pas de chiffrage détecté)
+    const c = quote?.customer;
+    const isCatalogue = quote?.lines.some(l => l.unit === 'piece') ?? false;
+    const productLines = quote?.lines.filter(l => l.type === 'product') ?? [];
 
     setVerifyForm({
       clientType: c?.type || 'individual',
       firstName: c?.firstName || '',
       lastName: c?.lastName || '',
       companyName: c?.name || '',
-      email: c?.email || '',
+      email: c?.email || customerEmail || '',
       phone: c?.phone || '',
       vatNumber: c?.vatNumber || '',
       street: c?.address?.address || '',
       postalCode: c?.address?.postalCode || '',
       city: c?.address?.city || '',
       country: c?.address?.country || '',
-      lines: quote.lines
-        .filter(l => l.type === 'product')
-        .map(l => ({ label: l.label, quantity: String(l.quantity), unitPrice: l.unitPrice, unit: l.unit || 'm2' })),
-      vatPercent: quote.extractedVatPercent !== null && quote.extractedVatPercent !== undefined ? String(quote.extractedVatPercent) : '20',
-      freeShipping: quote.lines.some(l => l.type === 'transport'),
-      subject: quote.subject || (isCatalogue ? 'Devis filet standard' : 'Devis filet sur mesure'),
+      lines: productLines.length > 0
+        ? productLines.map(l => ({ label: l.label, quantity: String(l.quantity), unitPrice: String(l.unitPrice), unit: l.unit || 'm2' }))
+        : [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2' }],
+      vatPercent: quote?.extractedVatPercent !== null && quote?.extractedVatPercent !== undefined ? String(quote.extractedVatPercent) : '20',
+      freeShipping: quote?.lines.some(l => l.type === 'transport') ?? false,
+      subject: quote?.subject || (isCatalogue ? 'Devis filet standard' : 'Devis filet sur mesure'),
     });
 
     setState('verify');

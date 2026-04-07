@@ -120,6 +120,9 @@ export interface MissingField {
 // --- Détection ---
 
 export function hasQuoteContent(text: string): boolean {
+  // Détection rapide d'un bloc JSON devis
+  if (/```json[\s\S]*?"lines"\s*:/.test(text)) return true;
+
   const lower = text.toLowerCase();
 
   const hasContext = lower.includes('devis') || lower.includes('chiffrage') || lower.includes('voici le chiffrage');
@@ -141,11 +144,73 @@ export function hasQuoteContent(text: string): boolean {
 
 /**
  * Extrait les données devis depuis la réponse Claude.
- * Parse UNIQUEMENT le texte naturel — jamais de JSON structuré
- * (qui pourrait contenir des données d'une ancienne conversation).
+ * Tente d'abord de parser un bloc JSON structuré (```json ... ```),
+ * puis fallback sur le parsing texte naturel.
  */
 export function extractQuoteData(text: string, context?: { customerEmail?: string; customerName?: string; storeCode?: string; claudeText?: string }): ExtractedQuote | null {
+  // 1. Essayer de parser un bloc JSON dans la réponse Claude
+  const sourceText = context?.claudeText || text;
+  const jsonQuote = extractFromJSON(sourceText, context);
+  if (jsonQuote) return jsonQuote;
+
+  // 2. Fallback sur le parsing texte naturel
   return extractFromText(text, context);
+}
+
+/**
+ * Tente d'extraire un devis depuis un bloc JSON (```json ... ```) dans la réponse Claude.
+ */
+function extractFromJSON(text: string, context?: { customerEmail?: string; customerName?: string; storeCode?: string }): ExtractedQuote | null {
+  // Chercher un bloc ```json ... ```
+  const jsonBlockMatch = text.match(/```json\s*\n([\s\S]*?)\n\s*```/);
+  if (!jsonBlockMatch) return null;
+
+  try {
+    const parsed = JSON.parse(jsonBlockMatch[1]);
+
+    // Vérifier que ça ressemble à un devis (a des lignes produit)
+    if (!parsed.lines || !Array.isArray(parsed.lines) || parsed.lines.length === 0) return null;
+
+    const lines: QuoteLine[] = parsed.lines.map((l: Record<string, unknown>) => ({
+      type: (l.type as string) || 'product',
+      label: (l.label as string) || '',
+      description: (l.description as string) || undefined,
+      quantity: Number(l.quantity) || 1,
+      unitPrice: String(l.unitPrice ?? '0'),
+      unit: (l.unit as string) || undefined,
+    }));
+
+    const customerType = parsed.customer?.type === 'company' ? 'company' as const : 'individual' as const;
+    const customer: QuoteCustomer | undefined = parsed.customer ? {
+      type: customerType,
+      firstName: (parsed.customer.firstName as string) || '',
+      lastName: (parsed.customer.lastName as string) || '',
+      name: (parsed.customer.companyName as string) || (parsed.customer.name as string) || '',
+      email: (parsed.customer.email as string) || context?.customerEmail || '',
+      phone: (parsed.customer.phone as string) || '',
+      vatNumber: (parsed.customer.vatNumber as string) || '',
+      address: parsed.customer.address ? {
+        address: (parsed.customer.address.address as string) || '',
+        postalCode: (parsed.customer.address.postalCode as string) || '',
+        city: (parsed.customer.address.city as string) || '',
+        country: (parsed.customer.address.country as string) || '',
+      } : undefined,
+    } : undefined;
+
+    console.log('[extractQuoteData] JSON block parsed successfully:', lines.length, 'lines');
+
+    return {
+      store: (parsed.store as string) || context?.storeCode,
+      customer,
+      lines,
+      subject: (parsed.subject as string) || undefined,
+      extractedVatPercent: parsed.vatPercent !== undefined ? Number(parsed.vatPercent) : null,
+      _fullText: text,
+    };
+  } catch (e) {
+    console.warn('[extractQuoteData] JSON parse failed:', e);
+    return null;
+  }
 }
 
 /**

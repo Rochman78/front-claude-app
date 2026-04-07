@@ -25,6 +25,12 @@ const STORE_DEFAULT_COUNTRY: Record<string, string> = {
   TAR: 'DE', HET: 'NL', RED: 'ES', RETE: 'IT',
 };
 
+/** Mapping store_code → langue des labels devis */
+const STORE_LABEL_LANG: Record<string, string> = {
+  LFC: 'fr', LVO: 'fr', COCO: 'fr', MON: 'fr', UNI: 'fr',
+  TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
+};
+
 /** Taux TVA normaux par pays (2026) — pour résoudre pays depuis le taux */
 const VAT_RATES_BY_COUNTRY: Record<string, number> = {
   AT: 20, BE: 21, BG: 20, HR: 25, CY: 19, CZ: 21, DK: 25,
@@ -224,35 +230,79 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   const priceText = context?.claudeText || text;
   console.log('[extractQuoteData] text length:', text.length, 'priceText length:', priceText.length);
 
-  // Extraire le prix unitaire HT — patterns variés
+  // Extraire le prix unitaire HT — patterns variés (FR/NL/DE/ES/IT/EN)
   const prixUnitaireMatch =
     priceText.match(/prix\s*unitaire\s*(?:hors\s*(?:tva|taxe)|ht)\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:\/\s*m[²2])?/i) ||
     priceText.match(/(?:prix\s*(?:unitaire)?(?:\s*ht)?|tarif)\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:ht)?\s*(?:\/\s*m[²2])?/i) ||
+    priceText.match(/eenheidsprijs\s*(?:excl\.?\s*btw)?\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:\/\s*m[²2])?/i) ||
+    priceText.match(/(?:einzelpreis|stückpreis)\s*(?:(?:ohne|exkl\.?)\s*(?:mwst|ust))?\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:\/\s*m[²2])?/i) ||
+    priceText.match(/(?:precio\s*unitario|prezzo\s*unitario|unit\s*price)\s*(?:(?:sin|excl\.?|ex)\s*(?:iva|iva|vat))?\s*[:=]?\s*(\d+[.,]\d+)\s*€?\s*(?:\/\s*m[²2])?/i) ||
     priceText.match(/(\d+[.,]\d+)\s*€\s*(?:ht\s*)?(?:\/\s*m[²2]|par\s*m[²2])/i) ||
     priceText.match(/(\d+[.,]\d+)\s*€\s*\/\s*m[²2]/i);
 
-  // Extraire la surface — patterns variés (supporte entiers et décimaux)
+  // Extraire la surface — patterns variés (supporte entiers et décimaux, FR/NL/DE/ES/IT/EN)
   const surfaceMatch =
-    priceText.match(/surface\s*(?:totale|unitaire)?\s*[:=]?\s*(\d+[.,]?\d*)\s*m[²2]/i) ||
-    priceText.match(/(\d+[.,]?\d*)\s*m[²2]\s*(?:au total|total)?/i);
+    priceText.match(/(?:surface|oppervlakte|fläche|superficie|area)\s*(?:totale?|unitaire|per\s*eenheid|gesamt)?\s*[:=]?\s*(\d+[.,]?\d*)\s*m[²2]/i) ||
+    priceText.match(/(?:totale?\s*(?:oppervlakte|surface|fläche|superficie))\s*[:=]?\s*(\d+[.,]?\d*)\s*m[²2]/i) ||
+    priceText.match(/(\d+[.,]?\d*)\s*m[²2]\s*(?:au total|total|totaal|gesamt|in totale)?/i);
 
-  // Extraire le total HT — patterns variés
+  // Extraire le total HT — patterns variés (FR/NL/DE/ES/IT/EN)
   const totalHTMatch =
     priceText.match(/(?:total|montant)\s*(?:hors\s*(?:tva|taxe)|ht)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
-    priceText.match(/(?:total|montant)\s*ht\s*[:=]?\s*(\d+[.,]\d+)\s*€/i);
+    priceText.match(/(?:total|montant)\s*ht\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/(?:totaal|bedrag)\s*(?:excl\.?\s*btw)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/(?:gesamt|summe)\s*(?:(?:ohne|exkl\.?)\s*(?:mwst|ust)|netto)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/(?:total|importe)\s*(?:sin\s*iva|excl\.?\s*iva)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/(?:total|importo)\s*(?:esclusa?\s*iva)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i);
 
-  // Extraire le montant TTC — patterns variés
+  // Extraire le montant TTC — patterns variés (FR/NL/DE/ES/IT/EN)
   const totalTTCMatch =
     priceText.match(/(?:total|montant)\s*ttc\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
     priceText.match(/ttc\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
-    priceText.match(/montant\s*ttc\s*[:=—–-]\s*(\d+[.,]\d+)\s*€/i);
+    priceText.match(/montant\s*ttc\s*[:=—–-]\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/(?:bedrag|totaal)\s*(?:incl\.?\s*btw)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/(?:gesamt|summe)\s*(?:(?:inkl\.?|mit)\s*(?:mwst|ust)|brutto)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/(?:total|importe)\s*(?:con\s*iva|incl\.?\s*iva)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i) ||
+    priceText.match(/(?:total|importo)\s*(?:inclusa?\s*iva)\s*[:=]?\s*(\d+[.,]\d+)\s*€/i);
 
   // Extraire le taux de TVA depuis le texte (AVANT le calcul des prix)
   const tvaRateMatch =
     priceText.match(/(?:TVA|tva|IVA|TVA applicable)[^)]*?\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
     priceText.match(/(?:taux\s*(?:de\s*)?(?:TVA|tva|IVA))[^)]*?[:=]?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
     priceText.match(/TVA\s*\(\s*(\d+(?:[.,]\d+)?)\s*%\s*\)/i) ||
-    priceText.match(/(\d+(?:[.,]\d+)?)\s*%\s*(?:TVA|tva|IVA)/i);
+    priceText.match(/(\d+(?:[.,]\d+)?)\s*%\s*(?:TVA|tva|IVA)/i) ||
+    priceText.match(/(?:btw|BTW)\s*\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    priceText.match(/(\d+(?:[.,]\d+)?)\s*%\s*(?:btw|BTW)/i) ||
+    priceText.match(/(?:MwSt|USt|Mwst)\s*\(?\s*(\d+(?:[.,]\d+)?)\s*%/i) ||
+    priceText.match(/(\d+(?:[.,]\d+)?)\s*%\s*(?:MwSt|USt|Mwst)/i);
+
+  // Extraire les accessoires depuis le texte (FR/NL/DE/ES/IT/EN)
+  // Pattern : "Label – Quantité: N → N × prix € = total €" ou "Label : N × prix €"
+  const accessoryLines: QuoteLine[] = [];
+  const accessoryPatterns = [
+    // NL: "Bevestigingskit – Hoeveelheid: 2 → 2 × 24,71 € = 49,42 €"
+    /^(.+?)\s*[–—-]\s*(?:hoeveelheid|aantal|quantité|cantidad|quantità|quantity|anzahl|menge)\s*[:=]?\s*(\d+)\s*→?\s*\d+\s*[×x]\s*(\d+[.,]\d+)\s*€/gim,
+    // FR: "Kit de fixation : 2 × 24,71 €"
+    /^(.+?)\s*[:=]\s*(\d+)\s*[×x]\s*(\d+[.,]\d+)\s*€/gim,
+  ];
+  for (const pattern of accessoryPatterns) {
+    let accMatch;
+    while ((accMatch = pattern.exec(priceText)) !== null) {
+      const label = accMatch[1].trim();
+      // Ignorer si c'est une ligne de filet/net/produit principal
+      if (/(?:filet|net\b|netz|red\b|rete\b|voile|camouflag)/i.test(label)) continue;
+      // Ignorer si c'est un total/transport
+      if (/(?:total|transport|verzend|livraison|versand|envío|spedizione)/i.test(label)) continue;
+      accessoryLines.push({
+        type: 'accessory',
+        label,
+        quantity: parseInt(accMatch[2], 10),
+        unitPrice: parseNumber(accMatch[3]).toFixed(2),
+        unit: 'piece',
+      });
+    }
+    if (accessoryLines.length > 0) break;
+  }
   const extractedVatPercent = tvaRateMatch ? parseNumber(tvaRateMatch[1]) : null;
   const vatMultiplier = 1 + (extractedVatPercent !== null ? extractedVatPercent : 20) / 100;
   console.log('[extractQuoteData] extracted VAT rate:', extractedVatPercent !== null ? `${extractedVatPercent}%` : 'not found (default 20%)', 'multiplier:', vatMultiplier);
@@ -312,7 +362,9 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
   console.log('[extractQuoteData] multi-filets:', isMultiFilet ? multiFilets.length : 'non', multiFilets);
 
   // Déterminer le prix unitaire HT/m² (commun à tous les filets)
-  // PRIORITÉ : prix unitaire explicite > total HT / surface > total TTC / surface
+  // PRIORITÉ : prix unitaire explicite > (total HT - accessoires) / surface > total TTC / surface
+  // IMPORTANT : ne jamais recalculer le prix unitaire depuis le total global quand il y a des accessoires
+  const accessoiresTotalHT = accessoryLines.reduce((s, l) => s + l.quantity * parseNumber(l.unitPrice), 0);
   let unitPrice: string;
   if (isCatalogue) {
     const ttc = parseNumber(totalTTCMatch![1]);
@@ -324,31 +376,46 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     unitPrice = parseNumber(prixUnitaireMatch[1]).toFixed(2);
     console.log('[extractQuoteData] prix unitaire explicite:', unitPrice);
   } else if (totalHTMatch && surfaceMatch) {
-    unitPrice = (parseNumber(totalHTMatch[1]) / parseNumber(surfaceMatch[1])).toFixed(2);
+    // Soustraire les accessoires du total HT avant de diviser par la surface
+    const totalHT = parseNumber(totalHTMatch[1]);
+    const netHT = totalHT - accessoiresTotalHT;
+    unitPrice = (netHT / parseNumber(surfaceMatch[1])).toFixed(2);
+    console.log('[extractQuoteData] totalHT - accessoires:', { totalHT, accessoiresTotalHT, netHT, unitPrice });
   } else if (totalTTCMatch && surfaceMatch) {
     const ttc = parseNumber(totalTTCMatch[1]);
     const ht = ttc / vatMultiplier;
+    const netHT = ht - accessoiresTotalHT;
     const surf = parseNumber(surfaceMatch[1]);
-    unitPrice = (ht / surf).toFixed(2);
+    unitPrice = (netHT / surf).toFixed(2);
   } else if (totalHTMatch) {
     unitPrice = parseNumber(totalHTMatch[1]).toFixed(2);
   } else {
     return null;
   }
 
+  // ─── Labels traduits par langue de boutique ───
+  const storeLang = context?.storeCode ? (STORE_LABEL_LANG[context.storeCode] || 'fr') : 'fr';
+  const labelTemplates: Record<string, { surMesure: string; surMesureMatiere: (m: string) => string; catalogue: string; devis: string; standard: string }> = {
+    fr: { surMesure: 'Filet de camouflage renforcé sur mesure', surMesureMatiere: (m) => `Filet de camouflage renforcé ${m.toLowerCase()}`, catalogue: 'Produit catalogue', devis: 'Devis', standard: 'filet standard' },
+    nl: { surMesure: 'Camouflagenet versterkt op maat', surMesureMatiere: (m) => `Camouflagenet versterkt ${m.toLowerCase()}`, catalogue: 'Catalogusproduct', devis: 'Offerte', standard: 'net standaard' },
+    de: { surMesure: 'Tarnnetz verstärkt nach Maß', surMesureMatiere: (m) => `Tarnnetz verstärkt ${m.toLowerCase()}`, catalogue: 'Katalogprodukt', devis: 'Angebot', standard: 'Tarnnetz Standard' },
+    es: { surMesure: 'Red de camuflaje reforzada a medida', surMesureMatiere: (m) => `Red de camuflaje reforzada ${m.toLowerCase()}`, catalogue: 'Producto catálogo', devis: 'Presupuesto', standard: 'red estándar' },
+    it: { surMesure: 'Rete mimetica rinforzata su misura', surMesureMatiere: (m) => `Rete mimetica rinforzata ${m.toLowerCase()}`, catalogue: 'Prodotto catalogo', devis: 'Preventivo', standard: 'rete standard' },
+  };
+  const tpl = labelTemplates[storeLang] || labelTemplates.fr;
+
   // ─── Construire les lignes produit ───
   const lines: QuoteLine[] = [];
 
   if (isMultiFilet && !isCatalogue) {
     // Multi-filets sur mesure : une ligne par filet
-    const finition = matiere ? `Filet de camouflage renforcé ${matiere.toLowerCase()}` : 'Filet de camouflage renforcé sur mesure';
+    const finition = matiere ? tpl.surMesureMatiere(matiere) : tpl.surMesure;
     for (const filet of multiFilets) {
       const filetDim = `${filet.dims} m`;
       const filetLabel = [couleur, filetDim, finition].filter(Boolean).join(' - ');
       lines.push({
         type: 'product',
         label: filetLabel,
-        description: `Quantité : 1 | Total m² : ${filet.surface} | Délai de production + livraison : environ 14 jours`,
         quantity: filet.surface,
         unitPrice,
         unit: 'm2',
@@ -366,7 +433,7 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
         .trim();
     } else {
       const parts = [dimLabel, couleur, matiere].filter(Boolean);
-      label = parts.length > 0 ? parts.join(' — ') : 'Produit catalogue';
+      label = parts.length > 0 ? parts.join(' — ') : tpl.catalogue;
     }
     lines.push({
       type: 'product',
@@ -377,31 +444,36 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     });
   } else {
     // Sur mesure simple (1 filet)
-    const finition = matiere ? `Filet de camouflage renforcé ${matiere.toLowerCase()}` : 'Filet de camouflage renforcé sur mesure';
+    const finition = matiere ? tpl.surMesureMatiere(matiere) : tpl.surMesure;
     const labelParts = [couleur, dimLabel, finition].filter(Boolean);
-    const label = labelParts.join(' - ') || 'Produit sur mesure';
+    const label = labelParts.join(' - ') || tpl.surMesure;
     const quantity = surfaceMatch ? parseNumber(surfaceMatch[1]) : 1;
     lines.push({
       type: 'product',
       label,
-      description: `Quantité : ${orderQty} | Total m² : ${quantity} | Délai de production + livraison : environ 14 jours`,
       quantity,
       unitPrice,
       unit: 'm2',
     });
   }
 
-  // Détecter livraison offerte
-  const livraisonOfferte = /livraison\s*(?:offerte|gratuite|incluse|kostenlos|gratis|gratuita)/i.test(priceText);
+  // Ajouter les accessoires détectés
+  for (const acc of accessoryLines) {
+    lines.push(acc);
+  }
+
+  // Détecter livraison offerte (FR/NL/DE/ES/IT/EN)
+  const livraisonOfferte = /livraison\s*(?:offerte|gratuite|incluse)|kostenlos|gratis\s*verzending|gratuita|(?:free|complimentary)\s*(?:shipping|delivery)/i.test(priceText);
   if (livraisonOfferte) {
     lines.push({ type: 'transport', label: 'Transport sur mesure', quantity: 1, unitPrice: '19.99', unit: 'piece' });
     lines.push({ type: 'transport_discount', label: 'Remise transport sur mesure', quantity: 1, unitPrice: '-19.99', unit: 'piece' });
   }
 
   // Construire le sujet
+  const surMesureLabel = storeLang === 'fr' ? 'filet sur mesure' : (storeLang === 'nl' ? 'net op maat' : (storeLang === 'de' ? 'Tarnnetz nach Maß' : (storeLang === 'es' ? 'red a medida' : (storeLang === 'it' ? 'rete su misura' : 'custom net'))));
   const subject = isCatalogue
-    ? `Devis filet standard${dimLabel ? ' ' + dimLabel : ''}`
-    : `Devis filet sur mesure${isMultiFilet ? ` ${multiFilets.length} filets` : (dimLabel ? ' ' + dimLabel : '')}`;
+    ? `${tpl.devis} ${tpl.standard}${dimLabel ? ' ' + dimLabel : ''}`
+    : `${tpl.devis} ${surMesureLabel}${isMultiFilet ? ` ${multiFilets.length}` : (dimLabel ? ' ' + dimLabel : '')}`;
 
   // Construire le customer depuis le contexte + texte
 

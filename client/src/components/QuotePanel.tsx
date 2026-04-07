@@ -47,7 +47,7 @@ interface VerifyFormData {
   city: string;
   country: string;
   // Lignes produit (tableau)
-  lines: { label: string; quantity: string; unitPrice: string; unit: string }[];
+  lines: { label: string; quantity: string; unitPrice: string; unit: string; type?: string }[];
   // TVA
   vatPercent: string;
   // Livraison offerte
@@ -110,7 +110,7 @@ export default function QuotePanel({
       setVerifyForm({ ...f, lines: newLines });
     };
     const addLine = () => {
-      setVerifyForm({ ...f, lines: [...f.lines, { label: '', quantity: '1', unitPrice: '0', unit: 'm2' }] });
+      setVerifyForm({ ...f, lines: [...f.lines, { label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }] });
     };
     const removeLine = (idx: number) => {
       if (f.lines.length <= 1) return;
@@ -267,7 +267,8 @@ export default function QuotePanel({
     // Construire le formulaire de vérification pré-rempli (valeurs par défaut si pas de chiffrage détecté)
     const c = quote?.customer;
     const isCatalogue = quote?.lines.some(l => l.unit === 'piece') ?? false;
-    const productLines = quote?.lines.filter(l => l.type === 'product') ?? [];
+    // Inclure toutes les lignes sauf transport (géré par la checkbox "Livraison offerte")
+    const displayLines = quote?.lines.filter(l => l.type !== 'transport' && l.type !== 'transport_discount') ?? [];
 
     setVerifyForm({
       clientType: c?.type || 'individual',
@@ -281,9 +282,9 @@ export default function QuotePanel({
       postalCode: c?.address?.postalCode || '',
       city: c?.address?.city || '',
       country: c?.address?.country || '',
-      lines: productLines.length > 0
-        ? productLines.map(l => ({ label: l.label, quantity: String(l.quantity), unitPrice: String(l.unitPrice), unit: l.unit || 'm2' }))
-        : [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2' }],
+      lines: displayLines.length > 0
+        ? displayLines.map(l => ({ label: l.label, quantity: String(l.quantity), unitPrice: String(l.unitPrice), unit: l.unit || 'm2', type: l.type }))
+        : [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }],
       vatPercent: quote?.extractedVatPercent !== null && quote?.extractedVatPercent !== undefined ? String(quote.extractedVatPercent) : '20',
       freeShipping: quote?.lines.some(l => l.type === 'transport') ?? false,
       subject: quote?.subject || (isCatalogue ? 'Devis filet standard' : 'Devis filet sur mesure'),
@@ -300,9 +301,9 @@ export default function QuotePanel({
     try {
       const f = verifyForm;
 
-      // Construire les lignes produit
+      // Construire les lignes produit + accessoires
       const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => ({
-        type: 'product',
+        type: l.type || 'product',
         label: l.label,
         description: l.unit === 'm2' ? `Quantité : 1 | Total m² : ${l.quantity} | Délai de production + livraison : environ 14 jours` : undefined,
         quantity: parseFloat(l.quantity.replace(',', '.')) || 1,

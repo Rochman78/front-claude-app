@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
   type ExtractedQuote,
-  extractQuoteData,
 } from '../utils/extractQuoteData';
 
 const API_BASE = window.location.origin;
@@ -56,7 +55,7 @@ interface VerifyFormData {
   subject: string;
 }
 
-type PanelState = 'idle' | 'verify' | 'creating' | 'done';
+type PanelState = 'idle' | 'extracting' | 'verify' | 'creating' | 'done';
 
 export default function QuotePanel({
   claudeText, mailThread, customerEmail, customerName, storeCode, inboxName, onSendMessage: _onSendMessage, onQuoteCreated, onRegisterClick, onListMessages,
@@ -83,6 +82,18 @@ export default function QuotePanel({
           className="btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '10px' }}>
           Modifier le devis PDF
         </a>
+      </div>
+    );
+  }
+
+  // ─── Extraction des données en cours ───
+  if (state === 'extracting') {
+    return (
+      <div className="quote-panel">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="loading-spinner" />
+          <span style={{ fontSize: '13px' }}>Extraction des données du devis...</span>
+        </div>
       </div>
     );
   }
@@ -235,62 +246,103 @@ export default function QuotePanel({
 
   async function handleClick() {
     setError(null);
+    setState('extracting');
 
-    let resolvedMailThread = mailThread;
-    if (!resolvedMailThread && onListMessages) {
-      try {
-        const msgsRes = await onListMessages();
-        const msgs = msgsRes.results as unknown as { content?: { body?: string } }[];
-        resolvedMailThread = msgs.map((m) => {
-          const body = m.content?.body || '';
-          return body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        }).filter(Boolean).join('\n\n');
-      } catch { /* fallback */ }
-    }
-
-    const fullText = resolvedMailThread + '\n\n---\n\n' + claudeText;
-    // Chercher le message Claude qui contient le chiffrage (du plus récent au plus ancien)
-    const claudeMsgs = claudeText.split('\n\n---\n\n').reverse();
-    let quoteClaudeMsg = '';
-    for (const msg of claudeMsgs) {
-      if (/(?:total\s*(?:ht|ttc|hors)|prix\s*unitaire|€\s*\/\s*m[²2]|\d+[.,]\d+\s*€)/i.test(msg)) {
-        quoteClaudeMsg = msg;
-        break;
+    try {
+      // Récupérer le fil de mails si pas déjà disponible
+      let resolvedMailThread = mailThread;
+      if (!resolvedMailThread && onListMessages) {
+        try {
+          const msgsRes = await onListMessages();
+          const msgs = msgsRes.results as unknown as { content?: { body?: string } }[];
+          resolvedMailThread = msgs.map((m) => {
+            const body = m.content?.body || '';
+            return body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          }).filter(Boolean).join('\n\n');
+        } catch { /* fallback */ }
       }
+
+      // Appeler Claude pour extraire les données structurées du devis
+      console.log('[QuotePanel] calling extract-quote API...');
+      const response = await fetch(`${API_BASE}/api/plugin/extract-quote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          claudeText,
+          mailThread: resolvedMailThread,
+          customerEmail,
+          customerName,
+          storeCode,
+        }),
+      });
+
+      let parsed: Record<string, unknown> | null = null;
+      if (response.ok) {
+        parsed = await response.json();
+        console.log('[QuotePanel] extract-quote result:', parsed);
+      } else {
+        const err = await response.json().catch(() => ({ error: 'Erreur extraction' }));
+        console.warn('[QuotePanel] extract-quote failed:', err);
+      }
+
+      // Construire le formulaire pré-rempli (données Claude si dispo, sinon vide)
+      const customer = parsed?.customer as Record<string, unknown> | undefined;
+      const lines = (parsed?.lines as Record<string, unknown>[]) || [];
+      const displayLines = lines.filter(l => l.type !== 'transport' && l.type !== 'transport_discount');
+      const hasTransport = lines.some(l => l.type === 'transport');
+      const isCatalogue = displayLines.some(l => l.unit === 'piece');
+
+      setExtractedQuote(parsed as unknown as ExtractedQuote | null);
+
+      setVerifyForm({
+        clientType: (customer?.type === 'company' ? 'company' : 'individual'),
+        firstName: String(customer?.firstName || ''),
+        lastName: String(customer?.lastName || ''),
+        companyName: String(customer?.companyName || customer?.name || ''),
+        email: String(customer?.email || customerEmail || ''),
+        phone: String(customer?.phone || ''),
+        vatNumber: String(customer?.vatNumber || ''),
+        street: String((customer?.address as Record<string, unknown>)?.address || ''),
+        postalCode: String((customer?.address as Record<string, unknown>)?.postalCode || ''),
+        city: String((customer?.address as Record<string, unknown>)?.city || ''),
+        country: String((customer?.address as Record<string, unknown>)?.country || ''),
+        lines: displayLines.length > 0
+          ? displayLines.map(l => ({
+              label: String(l.label || ''),
+              quantity: String(l.quantity || '1'),
+              unitPrice: String(l.unitPrice || '0'),
+              unit: String(l.unit || 'm2'),
+              type: String(l.type || 'product'),
+            }))
+          : [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }],
+        vatPercent: parsed?.vatPercent !== undefined && parsed?.vatPercent !== null ? String(parsed.vatPercent) : '20',
+        freeShipping: hasTransport,
+        subject: String(parsed?.subject || (isCatalogue ? 'Devis' : 'Devis')),
+      });
+
+      setState('verify');
+    } catch (err) {
+      console.error('[QuotePanel] handleClick error:', err);
+      // En cas d'erreur, afficher quand même le formulaire vide
+      setVerifyForm({
+        clientType: 'individual',
+        firstName: '',
+        lastName: '',
+        companyName: '',
+        email: customerEmail || '',
+        phone: '',
+        vatNumber: '',
+        street: '',
+        postalCode: '',
+        city: '',
+        country: '',
+        lines: [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }],
+        vatPercent: '20',
+        freeShipping: false,
+        subject: 'Devis',
+      });
+      setState('verify');
     }
-    if (!quoteClaudeMsg) quoteClaudeMsg = claudeMsgs[0] || claudeText;
-
-    const quote = extractQuoteData(fullText, { customerEmail, customerName, storeCode, claudeText: quoteClaudeMsg });
-
-    setExtractedQuote(quote);
-
-    // Construire le formulaire de vérification pré-rempli (valeurs par défaut si pas de chiffrage détecté)
-    const c = quote?.customer;
-    const isCatalogue = quote?.lines.some(l => l.unit === 'piece') ?? false;
-    // Inclure toutes les lignes sauf transport (géré par la checkbox "Livraison offerte")
-    const displayLines = quote?.lines.filter(l => l.type !== 'transport' && l.type !== 'transport_discount') ?? [];
-
-    setVerifyForm({
-      clientType: c?.type || 'individual',
-      firstName: c?.firstName || '',
-      lastName: c?.lastName || '',
-      companyName: c?.name || '',
-      email: c?.email || customerEmail || '',
-      phone: c?.phone || '',
-      vatNumber: c?.vatNumber || '',
-      street: c?.address?.address || '',
-      postalCode: c?.address?.postalCode || '',
-      city: c?.address?.city || '',
-      country: c?.address?.country || '',
-      lines: displayLines.length > 0
-        ? displayLines.map(l => ({ label: l.label, quantity: String(l.quantity), unitPrice: String(l.unitPrice), unit: l.unit || 'm2', type: l.type }))
-        : [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }],
-      vatPercent: quote?.extractedVatPercent !== null && quote?.extractedVatPercent !== undefined ? String(quote.extractedVatPercent) : '20',
-      freeShipping: quote?.lines.some(l => l.type === 'transport') ?? false,
-      subject: quote?.subject || (isCatalogue ? 'Devis filet standard' : 'Devis filet sur mesure'),
-    });
-
-    setState('verify');
   }
 
   async function handleCreateFromForm() {

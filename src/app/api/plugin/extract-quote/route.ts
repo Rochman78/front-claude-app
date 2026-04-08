@@ -25,6 +25,7 @@ RÈGLES STRICTES :
 - Les prix doivent correspondre EXACTEMENT à ceux du texte (pas de recalcul).
 - Chaque produit/accessoire = une ligne séparée dans "lines".
 - Le type de ligne est "product" pour les filets/produits principaux, "accessory" pour les accessoires (kits, câbles, etc.).
+- IMPORTANT pour les filets (unit="m2") : "quantity" = surface TOTALE en m² (nombre de filets × largeur × hauteur). Ex : 3 filets de 2.90×3.80m → quantity = 33.06. "unitPrice" = prix HT par m². NE PAS mettre le nombre de pièces dans quantity.
 - Si la livraison est offerte/gratuite, ajoute une ligne type "transport" et une ligne "transport_discount" avec le même montant en négatif.
 - Les labels des produits (champ "label") et le sujet (champ "subject") doivent être rédigés dans la LANGUE DU CLIENT (la langue utilisée dans la réponse service client). Ne traduis PAS en français si le texte est en néerlandais, allemand, espagnol, italien, etc.
 - Réponds UNIQUEMENT avec le JSON, sans texte avant ou après, sans backticks.`;
@@ -64,8 +65,8 @@ ${claudeText}
     {
       "type": "product|accessory|transport|transport_discount",
       "label": "description du produit",
-      "quantity": nombre,
-      "unitPrice": "prix unitaire HT en string",
+      "quantity": nombre (IMPORTANT pour les filets/produits en m² : quantity = surface TOTALE en m², PAS le nombre de pièces. Ex : 3 filets de 2.90×3.80m → quantity = 3 × 2.90 × 3.80 = 33.06),
+      "unitPrice": "prix unitaire HT par m² en string",
       "unit": "m2 ou piece"
     }
   ]

@@ -373,7 +373,7 @@ export default function QuotePanel({
       // Déterminer le code TVA
       const vatPercent = parseFloat(f.vatPercent) || 0;
       const country = f.vatNumber?.match(/^([A-Z]{2})/)?.[1] || f.country || 'FR';
-      const vatCode = vatPercent === 0 ? 'tax_free_0' : `${country}_${Math.round(vatPercent * 10)}`;
+      const vatCode = vatPercent === 0 ? 'exempt' : `${country}_${Math.round(vatPercent * 10)}`;
 
       // Appliquer le vatCode à toutes les lignes
       for (const line of allLines) {

@@ -34,6 +34,7 @@ export function useClaude(): UseClaudeReturn {
   const [error, setError] = useState<string | null>(null);
   const msgIdCounter = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const frontConvIdRef = useRef<string | null>(null);
 
   function nextId(): string {
     return `msg-${++msgIdCounter.current}`;
@@ -99,6 +100,10 @@ export function useClaude(): UseClaudeReturn {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // Capturer le frontConversationId au moment du lancement
+    const myFrontConvId = params.frontConversationId;
+    frontConvIdRef.current = myFrontConvId;
+
     setIsStreaming(true);
     setStreamingContent('');
     setError(null);
@@ -119,29 +124,28 @@ export function useClaude(): UseClaudeReturn {
 
       // Récupérer le conversationId depuis le header
       const convId = response.headers.get('X-Conversation-Id');
-      const myConvId = convId || 'unknown';
       if (convId) { setConversationId(convId); conversationIdRef.current = convId; }
 
       const fullText = await readStream(response, (text) => {
-        // Ne mettre à jour le streaming que si on est toujours sur la même conversation
-        if (conversationIdRef.current === myConvId) {
+        // Ne mettre à jour le streaming que si on est toujours sur la même conversation Front
+        if (frontConvIdRef.current === myFrontConvId) {
           setStreamingContent(text);
         }
       }, controller.signal);
 
-      // Vérifier qu'on est toujours sur la même conversation
-      if (controller.signal.aborted || conversationIdRef.current !== myConvId) return;
+      // Vérifier qu'on est toujours sur la même conversation Front
+      if (controller.signal.aborted || frontConvIdRef.current !== myFrontConvId) return;
 
       setMessages([
         { id: nextId(), role: 'assistant', content: fullText },
       ]);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      if (conversationIdRef.current !== null) {
+      if (frontConvIdRef.current === myFrontConvId) {
         setError(err instanceof Error ? err.message : 'Erreur inconnue');
       }
     } finally {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && frontConvIdRef.current === myFrontConvId) {
         setStreamingContent('');
         setIsStreaming(false);
       }
@@ -150,6 +154,7 @@ export function useClaude(): UseClaudeReturn {
 
   const sendMessage = useCallback(async (message: string) => {
     const currentConvId = conversationIdRef.current;
+    const myFrontConvId = frontConvIdRef.current;
     if (!currentConvId) {
       setError('Pas de conversation active. Lancez une analyse d\'abord.');
       return;
@@ -181,12 +186,12 @@ export function useClaude(): UseClaudeReturn {
       }
 
       const fullText = await readStream(response, (text) => {
-        if (conversationIdRef.current === currentConvId) {
+        if (frontConvIdRef.current === myFrontConvId) {
           setStreamingContent(text);
         }
       }, controller.signal);
 
-      if (controller.signal.aborted || conversationIdRef.current !== currentConvId) return;
+      if (controller.signal.aborted || frontConvIdRef.current !== myFrontConvId) return;
 
       // Ajouter la réponse assistant
       setMessages((prev) => [
@@ -195,11 +200,11 @@ export function useClaude(): UseClaudeReturn {
       ]);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      if (conversationIdRef.current === currentConvId) {
+      if (frontConvIdRef.current === myFrontConvId) {
         setError(err instanceof Error ? err.message : 'Erreur inconnue');
       }
     } finally {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && frontConvIdRef.current === myFrontConvId) {
         setStreamingContent('');
         setIsStreaming(false);
       }
@@ -208,8 +213,9 @@ export function useClaude(): UseClaudeReturn {
 
   /** Restaurer un historique existant (depuis le cache ou la BDD) */
   const restore = useCallback((msgs: Message[], convId: string) => {
-    // NE PAS aborter le stream en cours — le serveur continue et sauve en BDD
-    // Le stream orphelin sera ignoré grâce au check controller.signal.aborted
+    // NE PAS aborter — le serveur continue et sauve en BDD pour le multitask
+    // Le guard frontConvIdRef empêche le stream orphelin d'écraser l'UI
+    frontConvIdRef.current = null;
     setMessages(msgs);
     setConversationId(convId);
     conversationIdRef.current = convId;
@@ -220,7 +226,8 @@ export function useClaude(): UseClaudeReturn {
 
   /** Reset complet (nouveau mail sans historique) */
   const reset = useCallback(() => {
-    // NE PAS aborter — même raison que restore
+    // NE PAS aborter — même raison que restore (multitask)
+    frontConvIdRef.current = null;
     setMessages([]);
     setConversationId(null);
     conversationIdRef.current = null;

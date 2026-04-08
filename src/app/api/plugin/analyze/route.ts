@@ -212,8 +212,14 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Erreur inconnue';
-    console.error('[plugin/analyze] error:', message);
+    const rawMessage = error instanceof Error ? error.message : 'Erreur inconnue';
+    console.error('[plugin/analyze] error:', rawMessage);
+    let message = rawMessage;
+    if (rawMessage.includes('Overloaded') || rawMessage.includes('overloaded')) {
+      message = 'Les serveurs Claude sont temporairement surchargés. Réessayez dans quelques secondes.';
+    } else if (rawMessage.includes('ENOTFOUND') || rawMessage.includes('ECONNREFUSED')) {
+      message = 'Impossible de se connecter à la base de données. Contactez l\'administrateur.';
+    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

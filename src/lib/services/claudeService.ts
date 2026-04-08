@@ -117,11 +117,17 @@ export function createChatStream(options: StreamChatOptions): { stream: Readable
         const usage = finalMessage.usage as unknown as Record<string, number>;
         console.log(`[claude] done in ${Date.now() - t0}ms | input=${usage.input_tokens} cache_create=${usage.cache_creation_input_tokens ?? 0} cache_read=${usage.cache_read_input_tokens ?? 0} output=${usage.output_tokens}`);
       } catch (streamErr) {
-        const msg = streamErr instanceof Error ? streamErr.message : 'Erreur stream';
-        console.error('[claude] Stream error:', msg);
-        // Erreurs billing/crédit : signaler clairement, pas de retry
-        if (msg.includes('credit') || msg.includes('billing') || msg.includes('balance')) {
+        const rawMsg = streamErr instanceof Error ? streamErr.message : 'Erreur stream';
+        console.error('[claude] Stream error:', rawMsg);
+        // Traduire les erreurs API en messages lisibles
+        let msg = rawMsg;
+        if (rawMsg.includes('Overloaded') || rawMsg.includes('overloaded')) {
+          msg = 'Les serveurs Claude sont temporairement surchargés. Réessayez dans quelques secondes.';
+        } else if (rawMsg.includes('credit') || rawMsg.includes('billing') || rawMsg.includes('balance')) {
+          msg = 'Erreur de facturation — crédits API insuffisants.';
           console.error('[claude] BILLING ERROR — ne pas réessayer');
+        } else if (rawMsg.includes('rate_limit') || rawMsg.includes('rate limit')) {
+          msg = 'Trop de requêtes simultanées. Réessayez dans quelques secondes.';
         }
         controller.enqueue(encoder.encode(`__ERROR__${msg}`));
       } finally {

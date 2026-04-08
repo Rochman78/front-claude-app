@@ -399,8 +399,15 @@ export default function QuotePanel({
         },
         lines: allLines,
         subject: f.subject,
+        freeText: undefined as string | undefined,
         inboxName,
       };
+
+      // Mention légale obligatoire pour l'intracommunautaire (UE hors France, TVA 0%, n° TVA intra)
+      const euCountries = ['AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','GR','HR','HU','IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK'];
+      if (vatPercent === 0 && euCountries.includes(country) && f.vatNumber) {
+        payload.freeText = 'VAT exempt – Intra-Community supply – Article 138 of Directive 2006/112/EC.';
+      }
 
       // Traduire labels si boutique non-FR
       const storeLang = STORE_LANG[storeCode] || 'fr';

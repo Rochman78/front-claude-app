@@ -125,11 +125,14 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
 
   const invoiceLines = params.lines.map((line) => {
     const isProduct = (line.type || 'free') === 'product';
+    // Normalise les codes TVA invalides
+    let vatRate = line.vatRate || 'FR_200';
+    if (vatRate === 'tax_free_0' || vatRate === 'tax_free') vatRate = 'exempt';
     return {
       label: line.label || '',
       quantity: line.quantity || 1,
       raw_currency_unit_price: String(line.unitPrice || 0),
-      vat_rate: line.vatRate || 'FR_200',
+      vat_rate: vatRate,
       unit: isProduct ? 'm2' : 'piece',
       product_id: isProduct ? PRODUCT_ID_FILET : PRODUCT_ID_GENERIC,
       ...(line.description ? { description: line.description } : {}),

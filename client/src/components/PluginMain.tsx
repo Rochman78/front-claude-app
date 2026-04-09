@@ -141,7 +141,7 @@ export default function PluginMain({ context }: PluginMainProps) {
     const cached = conversationCache.getFromCache(frontConvId);
     if (cached) {
       console.log(`[plugin] cache hit for ${frontConvId}: ${cached.messages.length} msgs`);
-      claude.restore(cached.messages, cached.conversationId);
+      claude.restore(cached.messages, cached.conversationId, frontConvId);
       return;
     }
 
@@ -151,10 +151,10 @@ export default function PluginMain({ context }: PluginMainProps) {
     conversationCache.loadFromDB(frontConvId, store.code).then((result) => {
       if (result && frontConvId === prevConvId.current) {
         console.log(`[plugin] DB hit for ${frontConvId}: ${result.messages.length} msgs`);
-        claude.restore(result.messages, result.conversationId);
+        claude.restore(result.messages, result.conversationId, frontConvId);
       } else if (frontConvId === prevConvId.current) {
         // Pas d'historique → reset
-        claude.reset();
+        claude.reset(frontConvId);
       }
       setLoadingHistory(false);
     });
@@ -520,7 +520,7 @@ export default function PluginMain({ context }: PluginMainProps) {
               onClick={async () => {
                 if (!store) return;
                 await conversationCache.deleteFromDB(frontConvId, store.code);
-                claude.reset();
+                claude.reset(frontConvId);
                 setManualValidation(false);
                 setDraftInvalidated(false);
                 setQuotePdfUrl(null);

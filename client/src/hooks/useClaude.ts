@@ -19,8 +19,8 @@ interface UseClaudeReturn {
     channel?: string;
   }) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
-  restore: (msgs: Message[], convId: string) => void;
-  reset: () => void;
+  restore: (msgs: Message[], convId: string, frontConvId: string) => void;
+  reset: (frontConvId?: string) => void;
   abort: () => void;
   setError: (error: string) => void;
   clearError: () => void;
@@ -218,10 +218,10 @@ export function useClaude(): UseClaudeReturn {
   }, []);
 
   /** Restaurer un historique existant (depuis le cache ou la BDD) */
-  const restore = useCallback((msgs: Message[], convId: string) => {
+  const restore = useCallback((msgs: Message[], convId: string, frontConvId: string) => {
     // NE PAS aborter — le serveur continue et sauve en BDD pour le multitask
-    // Le guard frontConvIdRef empêche le stream orphelin d'écraser l'UI
-    frontConvIdRef.current = null;
+    // Setter frontConvIdRef pour que les guards fonctionnent sur sendMessage
+    frontConvIdRef.current = frontConvId;
     setMessages(msgs);
     setConversationId(convId);
     conversationIdRef.current = convId;
@@ -231,9 +231,9 @@ export function useClaude(): UseClaudeReturn {
   }, []);
 
   /** Reset complet (nouveau mail sans historique) */
-  const reset = useCallback(() => {
+  const reset = useCallback((frontConvId?: string) => {
     // NE PAS aborter — même raison que restore (multitask)
-    frontConvIdRef.current = null;
+    frontConvIdRef.current = frontConvId || null;
     setMessages([]);
     setConversationId(null);
     conversationIdRef.current = null;

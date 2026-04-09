@@ -94,6 +94,8 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [mailThread, setMailThread] = useState<string>('');
   const [showQuoteConfirm, setShowQuoteConfirm] = useState(false);
   const [preAnalyzeNote, setPreAnalyzeNote] = useState<string>('');
+  const [showResumePopup, setShowResumePopup] = useState(false);
+  const [resumeNote, setResumeNote] = useState<string>('');
   const [resolvedEmail, setResolvedEmail] = useState<string>('');
   const [resolvedName, setResolvedName] = useState<string>('');
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -416,6 +418,57 @@ export default function PluginMain({ context }: PluginMainProps) {
       )}
 
       {/* Popup confirmation remplacement brouillon par mail devis */}
+      {/* Popup "Reprendre avec Claude" avec instructions optionnelles */}
+      {showResumePopup && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '320px', width: '90%',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+          }}>
+            <p style={{ fontSize: '14px', marginBottom: '12px', fontWeight: 600 }}>
+              Reprendre avec Claude
+            </p>
+            <textarea
+              value={resumeNote}
+              onChange={(e) => setResumeNote(e.target.value)}
+              placeholder="Instructions pour Claude (optionnel) : ex. propose un avoir, le client est pressé, fais le devis directement..."
+              style={{
+                width: '100%', minHeight: '70px', maxHeight: '150px', padding: '8px', fontSize: '12px',
+                border: '1px solid #ddd', borderRadius: '6px', resize: 'vertical', marginBottom: '12px',
+                fontFamily: 'inherit',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                className="btn-outline"
+                style={{ flex: 1 }}
+                onClick={() => setShowResumePopup(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="btn-primary"
+                style={{ flex: 1 }}
+                onClick={async () => {
+                  setShowResumePopup(false);
+                  setManualValidation(false);
+                  setDraftInvalidated(true);
+                  setQuoteDraftText(null);
+                  setShowQuoteConfirm(false);
+                  setPreAnalyzeNote(resumeNote);
+                  await handleAnalyze();
+                }}
+              >
+                Lancer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showQuoteConfirm && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -515,15 +568,7 @@ export default function PluginMain({ context }: PluginMainProps) {
             <button
               className="btn-outline"
               style={{ fontSize: '12px', opacity: 0.8, flex: 1 }}
-              onClick={async () => {
-                setManualValidation(false);
-                setDraftInvalidated(true);
-                setQuoteDraftText(null);
-                setShowQuoteConfirm(false);
-                // Relancer handleAnalyze — recharge les mails et envoie à Claude
-                // avec l'historique existant en BDD (invisible pour le gérant)
-                await handleAnalyze();
-              }}
+              onClick={() => { setResumeNote(''); setShowResumePopup(true); }}
             >
               Reprendre avec Claude
             </button>

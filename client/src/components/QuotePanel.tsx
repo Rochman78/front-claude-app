@@ -412,21 +412,39 @@ export default function QuotePanel({
       // Traduire labels si boutique non-FR
       const storeLang = STORE_LANG[storeCode] || 'fr';
       if (storeLang !== 'fr') {
-        const labelMap: Record<string, { surMesure: string; transport: string; remise: string; description: string }> = {
-          es: { surMesure: 'Red de camuflaje reforzada a medida', transport: 'Transporte a medida', remise: 'Descuento transporte a medida', description: 'Cantidad : {qty} | Total m² : {m2} | Plazo de producción + entrega : aprox. 14 días' },
-          de: { surMesure: 'Tarnnetz verstärkt nach Maß', transport: 'Versand nach Maß', remise: 'Versandrabatt nach Maß', description: 'Menge : {qty} | Gesamt m² : {m2} | Produktions- + Lieferzeit : ca. 14 Tage' },
-          nl: { surMesure: 'Camouflagenet versterkt op maat', transport: 'Verzending op maat', remise: 'Verzendkorting op maat', description: 'Aantal : {qty} | Totaal m² : {m2} | Productie + levertijd : ca. 14 dagen' },
-          it: { surMesure: 'Rete di camuffamento rinforzata su misura', transport: 'Trasporto su misura', remise: 'Sconto trasporto su misura', description: 'Quantità : {qty} | Totale m² : {m2} | Tempi di produzione + consegna : circa 14 giorni' },
-          en: { surMesure: 'Reinforced camouflage net custom made', transport: 'Custom shipping', remise: 'Custom shipping discount', description: 'Quantity : {qty} | Total m² : {m2} | Production + delivery time : approx. 14 days' },
+        const labelMap: Record<string, { product: string; transport: string; remise: string; description: string }> = {
+          es: { product: 'Red de camuflaje {shape} a medida', transport: 'Transporte a medida', remise: 'Descuento transporte a medida', description: 'Cantidad : {qty} | Total m² : {m2} | Plazo de producción + entrega : aprox. 14 días' },
+          de: { product: 'Tarnnetz {shape} nach Maß', transport: 'Versand nach Maß', remise: 'Versandrabatt nach Maß', description: 'Menge : {qty} | Gesamt m² : {m2} | Produktions- + Lieferzeit : ca. 14 Tage' },
+          nl: { product: 'Camouflagenet {shape} op maat', transport: 'Verzending op maat', remise: 'Verzendkorting op maat', description: 'Aantal : {qty} | Totaal m² : {m2} | Productie + levertijd : ca. 14 dagen' },
+          it: { product: 'Rete mimetica {shape} su misura', transport: 'Trasporto su misura', remise: 'Sconto trasporto su misura', description: 'Quantità : {qty} | Totale m² : {m2} | Tempi di produzione + consegna : circa 14 giorni' },
+          en: { product: 'Camouflage net {shape} custom made', transport: 'Custom shipping', remise: 'Custom shipping discount', description: 'Quantity : {qty} | Total m² : {m2} | Production + delivery time : approx. 14 days' },
+        };
+        const shapeMap: Record<string, Record<string, string>> = {
+          es: { rectangulaire: 'rectangular', triangulaire: 'triangular', 'trapézoïdal': 'trapezoidal', carré: 'cuadrada' },
+          de: { rectangulaire: 'rechteckig', triangulaire: 'dreieckig', 'trapézoïdal': 'trapezförmig', carré: 'quadratisch' },
+          nl: { rectangulaire: 'rechthoekig', triangulaire: 'driehoekig', 'trapézoïdal': 'trapeziumvormig', carré: 'vierkant' },
+          it: { rectangulaire: 'rettangolare', triangulaire: 'triangolare', 'trapézoïdal': 'trapezoidale', carré: 'quadrata' },
+          en: { rectangulaire: 'rectangular', triangulaire: 'triangular', 'trapézoïdal': 'trapezoidal', carré: 'square' },
         };
         const map = labelMap[storeLang];
+        const shapes = shapeMap[storeLang] || {};
         if (map) {
           for (const line of payload.lines) {
-            if (line.label && /filet de camouflage renforcé/i.test(line.label)) {
-              const dimPart = line.label.match(/(\d+[.,]?\d*x\d+[.,]?\d*\s*m)/i)?.[1] || '';
-              const couleurPart = line.label.match(/^([^-]+)\s*-/)?.[1]?.trim() || '';
-              const parts = [couleurPart, dimPart, map.surMesure].filter(Boolean);
-              line.label = parts.join(' — ');
+            // Traduire tout label contenant "filet de camouflage" (toute variante)
+            if (line.label && /filet de camouflage/i.test(line.label)) {
+              // Extraire couleur, dimensions, forme, finition depuis le label français
+              const couleur = line.label.match(/couleur\s+(\w+)/i)?.[1] || line.label.match(/,\s*(\w+)\s*,/)?.[1] || '';
+              const dims = line.label.match(/(\d+[.,]?\d*\s*x\s*\d+[.,]?\d*\s*m)/i)?.[1] || '';
+              const finition = line.label.match(/(?:finition|contour)\s+([\w\s]+?)(?:,|$)/i)?.[1]?.trim() || '';
+              // Détecter la forme
+              let shapeKey = 'rectangulaire';
+              for (const key of Object.keys(shapes)) {
+                if (line.label.toLowerCase().includes(key)) { shapeKey = key; break; }
+              }
+              const translatedShape = shapes[shapeKey] || shapeKey;
+              const productName = map.product.replace('{shape}', translatedShape);
+              const parts = [productName, couleur, dims, finition].filter(Boolean);
+              line.label = parts.join(', ');
             } else if (line.label && /^Transport sur mesure$/i.test(line.label)) {
               line.label = map.transport;
             } else if (line.label && /^Remise transport sur mesure$/i.test(line.label)) {
@@ -440,16 +458,20 @@ export default function QuotePanel({
           }
         }
         // Traduire le sujet
-        const subjectMap: Record<string, { devis: string; surMesure: string; standard: string }> = {
-          es: { devis: 'Presupuesto', surMesure: 'red a medida', standard: 'red estándar' },
-          de: { devis: 'Angebot', surMesure: 'Tarnnetz nach Maß', standard: 'Tarnnetz Standard' },
-          nl: { devis: 'Offerte', surMesure: 'net op maat', standard: 'net standaard' },
-          it: { devis: 'Preventivo', surMesure: 'rete su misura', standard: 'rete standard' },
-          en: { devis: 'Quote', surMesure: 'custom net', standard: 'standard net' },
+        const subjectMap: Record<string, { devis: string; filet: string }> = {
+          es: { devis: 'Presupuesto', filet: 'red de camuflaje' },
+          de: { devis: 'Angebot', filet: 'Tarnnetz' },
+          nl: { devis: 'Offerte', filet: 'camouflagenet' },
+          it: { devis: 'Preventivo', filet: 'rete mimetica' },
+          en: { devis: 'Quote', filet: 'camouflage net' },
         };
         const sMap = subjectMap[storeLang];
         if (sMap && payload.subject) {
-          payload.subject = payload.subject.replace(/^Devis/i, sMap.devis).replace(/filet sur mesure/i, sMap.surMesure).replace(/filet standard/i, sMap.standard);
+          // Remplacer "Devis" et toute variante de "filet de camouflage" dans le sujet
+          payload.subject = payload.subject
+            .replace(/^Devis/i, sMap.devis)
+            .replace(/Presupuesto/i, sMap.devis)
+            .replace(/filet[s]?\s+de\s+camouflage\s*(rectangulaires?|triangulaires?|trapézoïdaux?|carrés?|sur mesure|standard)?/gi, sMap.filet);
         }
       }
 

@@ -92,6 +92,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [resolvedName, setResolvedName] = useState<string>('');
   const [loadingHistory, setLoadingHistory] = useState(false);
   const prevConvId = useRef<string>('');
+  const justSwitchedRef = useRef<boolean>(false);
   const pushDraft = usePushDraft(context);
   const quoteClickRef = useRef<(() => void) | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -104,6 +105,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   useEffect(() => {
     if (!frontConvId || frontConvId === prevConvId.current) return;
     prevConvId.current = frontConvId;
+    justSwitchedRef.current = true;
 
     // Reset les states liés au devis
     setManualValidation(false);
@@ -163,7 +165,12 @@ export default function PluginMain({ context }: PluginMainProps) {
 
   // Sauvegarder dans le cache quand les messages changent
   // IMPORTANT : ne pas écraser le cache avec un tableau vide (arrive lors du changement de conv)
+  // IMPORTANT : ne pas sauver juste après un switch de conversation (les messages sont encore ceux de l'ancien mail)
   useEffect(() => {
+    if (justSwitchedRef.current) {
+      justSwitchedRef.current = false;
+      return;
+    }
     if (claude.messages.length > 0 && claude.conversationId && frontConvId && frontConvId === prevConvId.current) {
       conversationCache.setInCache(frontConvId, {
         conversationId: claude.conversationId,

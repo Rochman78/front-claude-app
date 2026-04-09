@@ -28,7 +28,7 @@ interface UseClaudeReturn {
 }
 
 export function useClaude(): UseClaudeReturn {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, _setMessages] = useState<Message[]>([]);
   const [streamingContent, setStreamingContent] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -38,6 +38,16 @@ export function useClaude(): UseClaudeReturn {
   const abortRef = useRef<AbortController | null>(null);
   const frontConvIdRef = useRef<string | null>(null);
   const onBackgroundCompleteRef = useRef<((frontConvId: string, convId: string, messages: Message[]) => void) | null>(null);
+  const messagesRef = useRef<Message[]>([]);
+
+  // Wrapper setMessages pour garder le ref synchronisé
+  function setMessages(update: Message[] | ((prev: Message[]) => Message[])) {
+    _setMessages((prev) => {
+      const next = typeof update === 'function' ? update(prev) : update;
+      messagesRef.current = next;
+      return next;
+    });
+  }
 
   function nextId(): string {
     return `msg-${++msgIdCounter.current}`;
@@ -205,13 +215,20 @@ export function useClaude(): UseClaudeReturn {
         }
       }, controller.signal);
 
-      if (controller.signal.aborted || frontConvIdRef.current !== myFrontConvId) return;
+      if (controller.signal.aborted) return;
 
-      // Ajouter la réponse assistant
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId(), role: 'assistant', content: fullText },
-      ]);
+      const assistantMsg: Message = { id: nextId(), role: 'assistant', content: fullText };
+
+      if (frontConvIdRef.current === myFrontConvId) {
+        // Toujours sur le même mail → mettre à jour l'UI
+        setMessages((prev) => [...prev, assistantMsg]);
+      } else if (myFrontConvId && currentConvId) {
+        // Stream terminé en arrière-plan → sauver dans le cache
+        // messagesRef contient déjà le userMsg (ajouté via setMessages plus haut)
+        console.log(`[useClaude] sendMessage background complete for ${myFrontConvId}, saving to cache`);
+        const fullMessages = [...messagesRef.current, assistantMsg];
+        onBackgroundCompleteRef.current?.(myFrontConvId, currentConvId, fullMessages);
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (frontConvIdRef.current === myFrontConvId) {

@@ -125,8 +125,12 @@ export function useClaude(): UseClaudeReturn {
       }
 
       // Récupérer le conversationId depuis le header
+      // Ne mettre à jour que si on est toujours sur la même conversation Front
       const convId = response.headers.get('X-Conversation-Id');
-      if (convId) { setConversationId(convId); conversationIdRef.current = convId; }
+      if (convId && frontConvIdRef.current === myFrontConvId) {
+        setConversationId(convId);
+        conversationIdRef.current = convId;
+      }
 
       const fullText = await readStream(response, (text) => {
         // Ne mettre à jour le streaming que si on est toujours sur la même conversation Front

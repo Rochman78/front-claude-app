@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool, { initDB } from '@/lib/db';
 import { createChatStream } from '@/lib/services/claudeService';
-import { selectDocumentNames, filterRelevantFiles, buildDocumentsText } from '@/lib/documentSelector';
+import { buildDocumentsText } from '@/lib/documentSelector';
 
 /**
  * POST /api/plugin/message
@@ -74,15 +74,8 @@ export async function POST(req: NextRequest) {
       ...sharedFiles.map((f) => ({ name: f.name, content: f.content, shared: true })),
     ];
 
-    // Récupérer le premier message user pour la sélection de docs
-    const { rows: firstMsg } = await pool.query(
-      "SELECT content FROM claude_messages WHERE conversation_id = $1 AND role = 'user' ORDER BY created_at LIMIT 1",
-      [conversationId]
-    );
-    const emailContent = firstMsg[0]?.content || '';
-    const relevantDocNames = selectDocumentNames(emailContent);
-    const filteredFiles = filterRelevantFiles(allFiles, relevantDocNames);
-    const documents = buildDocumentsText(filteredFiles);
+    // Charger TOUS les documents (même logique que analyze — l'agent a toujours accès à tout)
+    const documents = buildDocumentsText(allFiles);
 
     // 3. Charger l'historique (limité si trop long)
     const { rows: historyRaw } = await pool.query(

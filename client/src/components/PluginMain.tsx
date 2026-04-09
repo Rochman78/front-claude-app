@@ -79,6 +79,12 @@ export default function PluginMain({ context }: PluginMainProps) {
   const store = detectStore(context);
   const claude = useClaude();
   const conversationCache = useConversationCache();
+
+  // Quand un stream termine en arrière-plan, sauver le résultat dans le cache
+  claude.onBackgroundComplete.current = (frontConvId, convId, messages) => {
+    conversationCache.setInCache(frontConvId, { conversationId: convId, messages });
+    console.log(`[plugin] background result cached for ${frontConvId}: ${messages.length} msgs`);
+  };
   const [manualValidation, setManualValidation] = useState(false);
   const [draftInvalidated, setDraftInvalidated] = useState(false);
   const [quotePdfUrl, setQuotePdfUrl] = useState<string | null>(null);

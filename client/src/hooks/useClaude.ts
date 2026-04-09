@@ -24,6 +24,7 @@ interface UseClaudeReturn {
   abort: () => void;
   setError: (error: string) => void;
   clearError: () => void;
+  onBackgroundComplete: React.MutableRefObject<((frontConvId: string, convId: string, messages: Message[]) => void) | null>;
 }
 
 export function useClaude(): UseClaudeReturn {
@@ -36,6 +37,7 @@ export function useClaude(): UseClaudeReturn {
   const msgIdCounter = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const frontConvIdRef = useRef<string | null>(null);
+  const onBackgroundCompleteRef = useRef<((frontConvId: string, convId: string, messages: Message[]) => void) | null>(null);
 
   function nextId(): string {
     return `msg-${++msgIdCounter.current}`;
@@ -125,8 +127,8 @@ export function useClaude(): UseClaudeReturn {
       }
 
       // Récupérer le conversationId depuis le header
-      // Ne mettre à jour que si on est toujours sur la même conversation Front
       const convId = response.headers.get('X-Conversation-Id');
+      // Ne mettre à jour l'état que si on est toujours sur la même conversation Front
       if (convId && frontConvIdRef.current === myFrontConvId) {
         setConversationId(convId);
         conversationIdRef.current = convId;
@@ -139,12 +141,18 @@ export function useClaude(): UseClaudeReturn {
         }
       }, controller.signal);
 
-      // Vérifier qu'on est toujours sur la même conversation Front
-      if (controller.signal.aborted || frontConvIdRef.current !== myFrontConvId) return;
+      if (controller.signal.aborted) return;
 
-      setMessages([
-        { id: nextId(), role: 'assistant', content: fullText },
-      ]);
+      const resultMessages: Message[] = [{ id: nextId(), role: 'assistant', content: fullText }];
+
+      if (frontConvIdRef.current === myFrontConvId) {
+        // Toujours sur le même mail → mettre à jour l'UI
+        setMessages(resultMessages);
+      } else if (convId) {
+        // Stream terminé en arrière-plan → sauver dans le cache pour quand l'user reviendra
+        console.log(`[useClaude] background complete for ${myFrontConvId}, saving to cache`);
+        onBackgroundCompleteRef.current?.(myFrontConvId, convId, resultMessages);
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       if (frontConvIdRef.current === myFrontConvId) {
@@ -259,5 +267,6 @@ export function useClaude(): UseClaudeReturn {
     abort: abortCurrent,
     setError: exposedSetError,
     clearError,
+    onBackgroundComplete: onBackgroundCompleteRef,
   };
 }

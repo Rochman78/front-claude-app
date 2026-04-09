@@ -16,6 +16,7 @@ import { isDraftReady } from '../utils/cleanDraft';
 interface FrontMessage {
   id: string;
   date: number;
+  type?: string;
   content?: { body?: string; type?: string };
   author?: { name?: string; email?: string };
   replyTo?: { handle?: string; contact?: { name?: string } };
@@ -241,6 +242,9 @@ export default function PluginMain({ context }: PluginMainProps) {
         ? `[INSTRUCTIONS DU GÉRANT : ${preAnalyzeNote}]\n\n${mailContent}`
         : mailContent;
 
+      // Détecter le canal (chat vs email) depuis le type des messages
+      const isChat = frontMessages.some((m) => m.type === 'front_chat' || m.type === 'custom');
+
       const payload = {
         storeCode: store!.code,
         customerEmail,
@@ -248,6 +252,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         mailContent: finalMailContent,
         frontConversationId: context.conversation.id,
         subject,
+        channel: isChat ? 'chat' : 'email',
       };
       console.log('[plugin] payload preview:', {
         storeCode: payload.storeCode,

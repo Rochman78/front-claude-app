@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     await initDB();
-    const { storeCode, customerEmail, customerName, mailContent, frontConversationId, subject } = await req.json();
+    const { storeCode, customerEmail, customerName, mailContent, frontConversationId, subject, channel } = await req.json();
 
     if (!storeCode || !mailContent || !frontConversationId) {
       return NextResponse.json({ error: 'storeCode, mailContent et frontConversationId requis' }, { status: 400 });
@@ -141,7 +141,12 @@ export async function POST(req: NextRequest) {
     ];
 
     // 6. Appeler Claude en streaming
-    const systemPrompt = agent.instructions || `Tu es l'assistant service client de ${store.name}. Analyse le mail du client et propose un brouillon de réponse.`;
+    let systemPrompt = agent.instructions || `Tu es l'assistant service client de ${store.name}. Analyse le mail du client et propose un brouillon de réponse.`;
+
+    // Adapter le prompt pour le canal chat (réponses plus courtes et directes)
+    if (channel === 'chat') {
+      systemPrompt += `\n\n═══════════════════════════════════════\nMODE CHAT (CONVERSATION EN DIRECT)\n═══════════════════════════════════════\n\nCette conversation vient du CHAT EN DIRECT (pas d'un email). Adapte ton style :\n- Réponses COURTES et DIRECTES, comme un chat en temps réel\n- Pas de formules longues ni de paragraphes développés\n- Tutoiement ou vouvoiement selon ce que le client utilise\n- Commence par "Bonjour [Prénom]," puis va droit au but\n- Pas de "Nous vous remercions pour votre message" ni de formules d'introduction longues\n- Maximum 3-4 phrases par réponse sauf si un chiffrage détaillé est nécessaire\n- Ton conversationnel, chaleureux mais efficace`;
+    }
 
     console.log(`[plugin/analyze] === CLAUDE API CALL ===`);
     console.log(`[plugin/analyze] system prompt: ${systemPrompt.length} chars`);

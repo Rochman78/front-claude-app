@@ -195,7 +195,7 @@ export default function PluginMain({ context }: PluginMainProps) {
     );
   }
 
-  async function handleAnalyze() {
+  async function handleAnalyze(noteOverride?: string) {
     console.log('[plugin] handleAnalyze called');
     console.log('[plugin] store:', store);
     console.log('[plugin] context.conversation:', context.conversation);
@@ -253,8 +253,9 @@ export default function PluginMain({ context }: PluginMainProps) {
         .join('\n\n---\n\n');
 
       // Ajouter les instructions du gérant si fournies
-      const finalMailContent = preAnalyzeNote
-        ? `[INSTRUCTIONS DU GÉRANT : ${preAnalyzeNote}]\n\n${mailContent}`
+      const note = noteOverride !== undefined ? noteOverride : preAnalyzeNote;
+      const finalMailContent = note
+        ? `[INSTRUCTIONS DU GÉRANT : ${note}]\n\n${mailContent}`
         : mailContent;
 
       // Détecter le canal (chat vs email) depuis le type des messages
@@ -459,7 +460,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                   setQuoteDraftText(null);
                   setShowQuoteConfirm(false);
                   setPreAnalyzeNote(resumeNote);
-                  await handleAnalyze();
+                  await handleAnalyze(resumeNote);
                 }}
               >
                 Lancer

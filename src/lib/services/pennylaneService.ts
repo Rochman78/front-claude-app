@@ -190,7 +190,6 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
     invoice_lines: invoiceLines,
     quote_template_id: templateId,
   };
-  if (params.subject) payload.pdf_invoice_subject = params.subject;
   if (params.freeText) payload.pdf_invoice_free_text = params.freeText;
 
   const t0 = Date.now();

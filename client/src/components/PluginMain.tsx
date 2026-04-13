@@ -358,7 +358,7 @@ export default function PluginMain({ context }: PluginMainProps) {
               fontFamily: 'inherit',
             }}
           />
-          <button className="btn-primary" onClick={handleAnalyze}>
+          <button className="btn-primary" onClick={() => handleAnalyze()}>
             Analyser avec Claude
           </button>
         </div>

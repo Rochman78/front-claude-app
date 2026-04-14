@@ -13,11 +13,18 @@ import LoadingState from './LoadingState';
 import { isDraftReady } from '../utils/cleanDraft';
 
 /** Structure réelle d'un message Front SDK */
+interface FrontAttachment {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+}
+
 interface FrontMessage {
   id: string;
   date: number;
   type?: string;
-  content?: { body?: string; type?: string };
+  content?: { body?: string; type?: string; attachments?: FrontAttachment[] };
   author?: { name?: string; email?: string };
   replyTo?: { handle?: string; contact?: { name?: string } };
 }
@@ -59,6 +66,41 @@ function stripHtml(html: string): string {
   text = text.replace(/[ \t]+\n/g, '\n');         // espaces en fin de ligne
   text = text.replace(/\n{3,}/g, '\n\n');         // max 2 sauts de ligne consécutifs
   return text.trim();
+}
+
+/** Extrait les images (PJ + inline) des messages Front et les convertit en base64 */
+async function extractImages(
+  messages: FrontMessage[],
+  downloadFn: (messageId: string, attachmentId: string) => Promise<File | undefined>,
+): Promise<{ data: string; mediaType: string; name: string }[]> {
+  const images: { data: string; mediaType: string; name: string }[] = [];
+  const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const maxImages = 10; // Limiter pour éviter d'exploser les tokens
+  const maxSize = 5 * 1024 * 1024; // 5MB max par image
+
+  for (const msg of messages) {
+    if (images.length >= maxImages) break;
+    const attachments = msg.content?.attachments || [];
+    for (const att of attachments) {
+      if (images.length >= maxImages) break;
+      if (!imageTypes.includes(att.contentType)) continue;
+      if (att.size > maxSize) {
+        console.log(`[plugin] skipping large image ${att.name} (${att.size} bytes)`);
+        continue;
+      }
+      try {
+        const file = await downloadFn(msg.id, att.id);
+        if (!file) continue;
+        const buffer = await file.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        images.push({ data: base64, mediaType: att.contentType, name: att.name });
+        console.log(`[plugin] extracted image: ${att.name} (${att.contentType}, ${Math.round(att.size / 1024)}KB)`);
+      } catch (err) {
+        console.warn(`[plugin] failed to download attachment ${att.name}:`, err);
+      }
+    }
+  }
+  return images;
 }
 
 /** Extrait le vrai email client (pas l'adresse Shopify/intermédiaire). */
@@ -258,6 +300,20 @@ export default function PluginMain({ context }: PluginMainProps) {
         ? `[INSTRUCTIONS DU GÉRANT : ${note}]\n\n${mailContent}`
         : mailContent;
 
+      // Extraire les images des PJ
+      let images: { data: string; mediaType: string; name: string }[] = [];
+      try {
+        images = await extractImages(
+          frontMessages,
+          (msgId, attId) => context.downloadAttachment(msgId, attId),
+        );
+        if (images.length > 0) {
+          console.log(`[plugin] ${images.length} images extracted from attachments`);
+        }
+      } catch (err) {
+        console.warn('[plugin] image extraction failed, continuing without images:', err);
+      }
+
       // Détecter le canal (chat vs email) depuis le type des messages
       const isChat = frontMessages.some((m) => m.type === 'front_chat' || m.type === 'custom');
 
@@ -269,6 +325,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         frontConversationId: context.conversation.id,
         subject,
         channel: isChat ? 'chat' : 'email',
+        images: images.length > 0 ? images : undefined,
       };
       console.log('[plugin] payload preview:', {
         storeCode: payload.storeCode,

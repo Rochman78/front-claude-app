@@ -13,6 +13,7 @@ export interface FrontSingleConversationContext {
     inboxes?: { id: string; name: string; address?: string }[];
   };
   listMessages: () => Promise<{ results: { id: string; body?: string; text?: string; content?: string; author?: { name?: string; email?: string }; date: number }[] }>;
+  downloadAttachment: (messageId: string, attachmentId: string) => Promise<File | undefined>;
   createDraft: (options: {
     content: { body: string; type: 'html' | 'text' };
     replyOptions?: { type: 'reply' | 'replyAll'; originalMessageId: string };

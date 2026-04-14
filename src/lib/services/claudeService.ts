@@ -15,6 +15,12 @@ function getClient(): Anthropic {
 
 type MessageParam = Anthropic.Messages.MessageParam;
 
+export interface ImageAttachment {
+  data: string;
+  mediaType: string;
+  name: string;
+}
+
 export interface StreamChatOptions {
   systemPrompt: string;
   messages: { role: string; content: string }[];
@@ -22,12 +28,14 @@ export interface StreamChatOptions {
   documents?: string;
   maxTokens?: number;
   maxMessages?: number;
+  images?: ImageAttachment[];
 }
 
 /**
  * Construit les messages avec documents en prefix (cachés) + historique.
+ * Si des images sont fournies, elles sont ajoutées au dernier message user.
  */
-export function buildMessages(messages: { role: string; content: string }[], documents?: string, maxMessages = 10): MessageParam[] {
+export function buildMessages(messages: { role: string; content: string }[], documents?: string, maxMessages = 10, images?: ImageAttachment[]): MessageParam[] {
   const trimmed = messages.slice(-maxMessages);
 
   const docPrefix: MessageParam[] = documents
@@ -49,13 +57,33 @@ export function buildMessages(messages: { role: string; content: string }[], doc
       ]
     : [];
 
-  return [
-    ...docPrefix,
-    ...trimmed.map((m) => ({
+  const mapped = trimmed.map((m, idx) => {
+    const isLastUser = m.role === 'user' && idx === trimmed.length - 1;
+    // Ajouter les images au dernier message user
+    if (isLastUser && images && images.length > 0) {
+      const imageBlocks = images.map((img) => ({
+        type: 'image' as const,
+        source: {
+          type: 'base64' as const,
+          media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+          data: img.data,
+        },
+      }));
+      return {
+        role: m.role as 'user' | 'assistant',
+        content: [
+          ...imageBlocks,
+          { type: 'text' as const, text: m.content },
+        ],
+      };
+    }
+    return {
       role: m.role as 'user' | 'assistant',
       content: m.content,
-    })),
-  ];
+    };
+  });
+
+  return [...docPrefix, ...mapped];
 }
 
 /**
@@ -84,7 +112,7 @@ export function resolveModel(model?: string): string {
 export function createChatStream(options: StreamChatOptions): { stream: ReadableStream; promptSize: number } {
   const client = getClient();
   const model = resolveModel(options.model);
-  const allMessages = buildMessages(options.messages, options.documents, options.maxMessages);
+  const allMessages = buildMessages(options.messages, options.documents, options.maxMessages, options.images);
   const systemBlock = buildSystemBlock(options.systemPrompt);
 
   const promptSize = (options.systemPrompt || '').length +

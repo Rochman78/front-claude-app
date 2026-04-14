@@ -17,6 +17,7 @@ interface UseClaudeReturn {
     frontConversationId: string;
     subject?: string;
     channel?: string;
+    images?: { data: string; mediaType: string; name: string }[];
   }) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   restore: (msgs: Message[], convId: string, frontConvId: string) => void;
@@ -108,6 +109,7 @@ export function useClaude(): UseClaudeReturn {
     frontConversationId: string;
     subject?: string;
     channel?: string;
+    images?: { data: string; mediaType: string; name: string }[];
   }) => {
     // Annuler tout stream précédent
     abortCurrent();

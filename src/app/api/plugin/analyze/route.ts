@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     await initDB();
-    const { storeCode, customerEmail, customerName, mailContent, frontConversationId, subject, channel } = await req.json();
+    const { storeCode, customerEmail, customerName, mailContent, frontConversationId, subject, channel, images } = await req.json();
 
     if (!storeCode || !mailContent || !frontConversationId) {
       return NextResponse.json({ error: 'storeCode, mailContent et frontConversationId requis' }, { status: 400 });
@@ -148,18 +148,27 @@ export async function POST(req: NextRequest) {
       systemPrompt += `\n\n═══════════════════════════════════════\nMODE CHAT (CONVERSATION EN DIRECT)\n═══════════════════════════════════════\n\nCette conversation vient du CHAT EN DIRECT (pas d'un email). Adapte ton style :\n- Réponses COURTES et DIRECTES, comme un chat en temps réel\n- Pas de formules longues ni de paragraphes développés\n- Tutoiement ou vouvoiement selon ce que le client utilise\n- Commence par "Bonjour [Prénom]," puis va droit au but\n- Pas de "Nous vous remercions pour votre message" ni de formules d'introduction longues\n- Maximum 3-4 phrases par réponse sauf si un chiffrage détaillé est nécessaire\n- Ton conversationnel, chaleureux mais efficace`;
     }
 
+    // Préparer les images pour Claude (si présentes)
+    const imageBlocks = Array.isArray(images) ? images.map((img: { data: string; mediaType: string; name: string }) => ({
+      data: img.data,
+      mediaType: img.mediaType,
+      name: img.name,
+    })) : [];
+
     console.log(`[plugin/analyze] === CLAUDE API CALL ===`);
     console.log(`[plugin/analyze] system prompt: ${systemPrompt.length} chars`);
     console.log(`[plugin/analyze] documents: ${allFiles.length} files, ${documents.length} chars`);
     console.log(`[plugin/analyze] history: ${existingMessages.length} existing + 1 new = ${messages.length} messages`);
     console.log(`[plugin/analyze] mail content: ${mailContent.length} chars`);
-    console.log(`[plugin/analyze] total input estimate: ~${Math.round((systemPrompt.length + documents.length + messages.reduce((n, m) => n + m.content.length, 0)) / 4)} tokens`);
+    console.log(`[plugin/analyze] images: ${imageBlocks.length}`);
+    console.log(`[plugin/analyze] total input estimate: ~${Math.round((systemPrompt.length + documents.length + messages.reduce((n, m) => n + (typeof m.content === 'string' ? m.content.length : 0), 0)) / 4)} tokens + ${imageBlocks.length} images`);
 
     const { stream } = createChatStream({
       systemPrompt,
       messages,
       model: 'sonnet',
       documents,
+      images: imageBlocks.length > 0 ? imageBlocks : undefined,
     });
 
     // 7. Collecter la réponse pour la sauvegarder en BDD, tout en streamant au client

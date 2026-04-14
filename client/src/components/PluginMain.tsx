@@ -18,6 +18,7 @@ interface FrontAttachment {
   name: string;
   contentType: string;
   size: number;
+  inlineCid?: string;
 }
 
 interface FrontMessage {
@@ -68,15 +69,16 @@ function stripHtml(html: string): string {
   return text.trim();
 }
 
-/** Extrait les images (PJ + inline) des messages Front et les convertit en base64 */
+/** Extrait les vraies PJ images des messages Front (exclut logos/signatures inline) */
 async function extractImages(
   messages: FrontMessage[],
   downloadFn: (messageId: string, attachmentId: string) => Promise<File | undefined>,
 ): Promise<{ data: string; mediaType: string; name: string }[]> {
   const images: { data: string; mediaType: string; name: string }[] = [];
   const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-  const maxImages = 10; // Limiter pour éviter d'exploser les tokens
+  const maxImages = 10;
   const maxSize = 5 * 1024 * 1024; // 5MB max par image
+  const minSize = 10 * 1024; // 10KB min — exclut les logos/icônes
 
   for (const msg of messages) {
     if (images.length >= maxImages) break;
@@ -84,6 +86,16 @@ async function extractImages(
     for (const att of attachments) {
       if (images.length >= maxImages) break;
       if (!imageTypes.includes(att.contentType)) continue;
+      // Exclure les images inline (logos, signatures, icônes dans le HTML)
+      if (att.inlineCid) {
+        console.log(`[plugin] skipping inline image ${att.name} (cid:${att.inlineCid})`);
+        continue;
+      }
+      // Exclure les images trop petites (logos, icônes)
+      if (att.size < minSize) {
+        console.log(`[plugin] skipping small image ${att.name} (${att.size} bytes, likely logo/icon)`);
+        continue;
+      }
       if (att.size > maxSize) {
         console.log(`[plugin] skipping large image ${att.name} (${att.size} bytes)`);
         continue;

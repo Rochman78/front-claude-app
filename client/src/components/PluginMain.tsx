@@ -86,12 +86,9 @@ async function extractImages(
     for (const att of attachments) {
       if (images.length >= maxImages) break;
       if (!imageTypes.includes(att.contentType)) continue;
-      // Exclure les images inline (logos, signatures, icônes dans le HTML)
-      if (att.inlineCid) {
-        console.log(`[plugin] skipping inline image ${att.name} (cid:${att.inlineCid})`);
-        continue;
-      }
-      // Exclure les images trop petites (logos, icônes)
+      // Exclure les images trop petites (logos, icônes, pixels de tracking)
+      // Cela filtre aussi les petites images inline (logos de signature)
+      // mais garde les vraies photos collées dans le corps du mail (> 10KB)
       if (att.size < minSize) {
         console.log(`[plugin] skipping small image ${att.name} (${att.size} bytes, likely logo/icon)`);
         continue;

@@ -81,6 +81,71 @@ export async function getConversationMessages(conversationId: string): Promise<{
   };
 }
 
+/**
+ * Récupère les images (PJ) d'une conversation Front.
+ * Télécharge les attachments image > 10KB et les convertit en base64.
+ */
+export async function getConversationImages(conversationId: string): Promise<{ data: string; mediaType: string; name: string }[]> {
+  const images: { data: string; mediaType: string; name: string }[] = [];
+  const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const maxImages = 10;
+  const minSize = 10 * 1024; // 10KB min — exclut logos/icônes
+  const maxSize = 5 * 1024 * 1024; // 5MB max
+
+  try {
+    const res = await frontFetch(`/conversations/${conversationId}/messages`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const messages = data._results || [];
+
+    for (const msg of messages) {
+      if (images.length >= maxImages) break;
+      const attachments = msg.attachments || [];
+      for (const att of attachments) {
+        if (images.length >= maxImages) break;
+        const contentType = att.content_type || att.contentType || '';
+        if (!imageTypes.includes(contentType)) continue;
+        const size = att.size || 0;
+        if (size > 0 && size < minSize) {
+          console.log(`[frontapp] skipping small image ${att.filename} (${size} bytes)`);
+          continue;
+        }
+        if (size > maxSize) {
+          console.log(`[frontapp] skipping large image ${att.filename} (${size} bytes)`);
+          continue;
+        }
+
+        // Télécharger l'attachment via l'URL Front
+        try {
+          const attUrl = att.url || `${FRONT_API_URL}/download/${att.id}`;
+          const attRes = await fetch(attUrl, {
+            headers: { Authorization: `Bearer ${process.env.FRONT_API_TOKEN}` },
+          });
+          if (!attRes.ok) {
+            console.warn(`[frontapp] failed to download ${att.filename}: ${attRes.status}`);
+            continue;
+          }
+          const buffer = await attRes.arrayBuffer();
+          // Vérifier la taille réelle si pas connue
+          if (buffer.byteLength < minSize) {
+            console.log(`[frontapp] skipping small image ${att.filename} (${buffer.byteLength} bytes actual)`);
+            continue;
+          }
+          const base64 = Buffer.from(buffer).toString('base64');
+          images.push({ data: base64, mediaType: contentType, name: att.filename || 'image' });
+          console.log(`[frontapp] extracted image: ${att.filename} (${contentType}, ${Math.round(buffer.byteLength / 1024)}KB)`);
+        } catch (err) {
+          console.warn(`[frontapp] failed to download attachment ${att.filename}:`, err);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[frontapp] getConversationImages error:', err);
+  }
+
+  return images;
+}
+
 export async function resolveChannelId(conversationId: string): Promise<string> {
   const convRes = await frontFetch(`/conversations/${conversationId}`);
   if (!convRes.ok) throw new Error(`Impossible de récupérer la conversation: ${convRes.status}`);

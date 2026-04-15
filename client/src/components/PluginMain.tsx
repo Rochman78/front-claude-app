@@ -175,7 +175,7 @@ export default function PluginMain({ context }: PluginMainProps) {
     setQuoteDraftText(null);
     setShowQuoteConfirm(false);
 
-    // Restaurer les infos devis depuis le cache (point 1 : persistance)
+    // Restaurer les infos devis depuis le cache mémoire ou la BDD
     const cachedQuote = conversationCache.getQuoteFromCache(frontConvId);
     if (cachedQuote) {
       setQuotePdfUrl(cachedQuote.pdfUrl);
@@ -185,6 +185,22 @@ export default function PluginMain({ context }: PluginMainProps) {
       setQuotePdfUrl(null);
       setQuoteNumber(null);
       setQuotePennylaneUrl(null);
+      // Fallback : charger depuis la BDD
+      if (store) {
+        fetch(`${window.location.origin}/api/plugin/quote-history?front_conversation_id=${encodeURIComponent(frontConvId)}&store_code=${encodeURIComponent(store.code)}`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data && data.quote_number && frontConvId === prevConvId.current) {
+              setQuoteNumber(data.quote_number);
+              setQuotePennylaneUrl(data.pennylane_url || null);
+              setQuotePdfUrl(data.pdf_url || null);
+              conversationCache.setQuoteInCache(frontConvId, {
+                pdfUrl: data.pdf_url || '', quoteNumber: data.quote_number, pennylaneUrl: data.pennylane_url || '',
+              });
+            }
+          })
+          .catch(() => {});
+      }
     }
 
     // Résoudre l'email/nom client depuis le SDK (replyTo.handle) à chaque conversation
@@ -481,6 +497,12 @@ export default function PluginMain({ context }: PluginMainProps) {
               setDraftInvalidated(false);
               // Sauvegarder dans le cache pour persistance
               conversationCache.setQuoteInCache(frontConvId, { pdfUrl, quoteNumber: qNumber, pennylaneUrl });
+              // Persister en BDD pour retrouver le devis plus tard
+              fetch(`${window.location.origin}/api/plugin/quote-history`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ frontConversationId: frontConvId, storeCode: store?.code, quoteNumber: qNumber, pennylaneUrl, pdfUrl }),
+              }).catch(() => {});
               // Demander si on remplace le brouillon par le mail générique devis
               setShowQuoteConfirm(true);
             }}

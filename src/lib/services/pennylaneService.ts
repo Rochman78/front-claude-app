@@ -225,3 +225,43 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
   catch { errMsg = errBody; }
   throw new Error(`Erreur Pennylane (${res.status}): ${errMsg}`);
 }
+
+/**
+ * Upload une image comme appendice (pièce jointe) d'un devis Pennylane.
+ */
+export async function uploadQuoteAppendix(
+  quoteId: string,
+  imageBase64: string,
+  mediaType: string,
+  filename: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    const boundary = `----FormBoundary${Date.now()}`;
+
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mediaType}\r\n\r\n`),
+      imageBuffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+
+    const t0 = Date.now();
+    const res = await fetch(`${PENNYLANE_API_URL}/quotes/${quoteId}/appendices`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.PENNYLANE_API_TOKEN}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      },
+      body,
+    });
+
+    console.log(`[pennylane] uploadAppendix ${filename} → ${res.status} (${Date.now() - t0}ms)`);
+    if (res.ok) return { success: true };
+    const errText = await res.text();
+    return { success: false, error: `Pennylane ${res.status}: ${errText}` };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+    console.error(`[pennylane] uploadAppendix error:`, msg);
+    return { success: false, error: msg };
+  }
+}

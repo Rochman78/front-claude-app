@@ -1,21 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createQuote } from '@/lib/services/pennylaneService';
+import { createQuote, uploadQuoteAppendix } from '@/lib/services/pennylaneService';
 
 /**
  * POST /api/plugin/create-quote
  * Crée un devis Pennylane depuis le plugin Front App.
- * Proxy vers le service existant pennylaneService.createQuote().
- *
- * Body: même format que /api/pennylane/create-quote
- * {
- *   customer: { name, firstName, lastName, email, phone, type, address, vatNumber },
- *   customerId?: string,
- *   lines: [{ type, label, quantity, unitPrice, vatRate, description }],
- *   subject?: string,
- *   deadline?: string,
- *   freeText?: string,
- *   inboxName?: string
- * }
+ * Supporte les appendices (images jointes au devis PDF).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -33,6 +22,23 @@ export async function POST(req: NextRequest) {
       freeText: data.freeText,
       inboxName: data.inboxName,
     });
+
+    // Uploader les appendices (images) si fournis
+    const appendixImages = data.appendixImages as { data: string; mediaType: string; name: string }[] | undefined;
+    if (appendixImages && appendixImages.length > 0 && result.quoteId) {
+      console.log(`[plugin/create-quote] uploading ${appendixImages.length} appendices to quote ${result.quoteId}`);
+      for (const img of appendixImages) {
+        const uploadResult = await uploadQuoteAppendix(
+          String(result.quoteId),
+          img.data,
+          img.mediaType,
+          img.name,
+        );
+        if (!uploadResult.success) {
+          console.warn(`[plugin/create-quote] appendix upload failed: ${uploadResult.error}`);
+        }
+      }
+    }
 
     return NextResponse.json(result);
   } catch (err) {

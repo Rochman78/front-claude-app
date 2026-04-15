@@ -466,6 +466,7 @@ export default function PluginMain({ context }: PluginMainProps) {
             customerName={resolvedName || recipient?.name || ''}
             storeCode={store.code}
             inboxName={store.inboxName}
+            frontConversationId={frontConvId}
             onSendMessage={claude.sendMessage}
             onListMessages={() => context.listMessages()}
             onRegisterClick={(fn) => { quoteClickRef.current = fn; }}

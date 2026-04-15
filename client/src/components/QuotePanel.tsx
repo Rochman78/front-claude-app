@@ -11,6 +11,13 @@ const STORE_LANG: Record<string, string> = {
   TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
 };
 
+interface ImageSelection {
+  data: string;
+  mediaType: string;
+  name: string;
+  selected: boolean;
+}
+
 interface QuotePanelProps {
   claudeText: string;
   mailThread: string;
@@ -18,6 +25,7 @@ interface QuotePanelProps {
   customerName: string;
   storeCode: string;
   inboxName: string;
+  frontConversationId: string;
   onSendMessage: (message: string) => void;
   onQuoteCreated?: (pdfUrl: string, quoteNumber: string, pennylaneUrl: string) => void;
   onRegisterClick?: (fn: () => void) => void;
@@ -58,13 +66,14 @@ interface VerifyFormData {
 type PanelState = 'idle' | 'extracting' | 'verify' | 'creating' | 'done';
 
 export default function QuotePanel({
-  claudeText, mailThread, customerEmail, customerName, storeCode, inboxName, onSendMessage: _onSendMessage, onQuoteCreated, onRegisterClick, onListMessages,
+  claudeText, mailThread, customerEmail, customerName, storeCode, inboxName, frontConversationId, onSendMessage: _onSendMessage, onQuoteCreated, onRegisterClick, onListMessages,
 }: QuotePanelProps) {
   const [state, setState] = useState<PanelState>('idle');
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, setExtractedQuote] = useState<ExtractedQuote | null>(null);
   const [verifyForm, setVerifyForm] = useState<VerifyFormData | null>(null);
+  const [availableImages, setAvailableImages] = useState<ImageSelection[]>([]);
 
   // Exposer handleClick au parent
   useEffect(() => {
@@ -212,6 +221,40 @@ export default function QuotePanel({
           </label>
         </div>
 
+        {/* Annexes images */}
+        {availableImages.length > 0 && (
+          <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
+            <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '12px' }}>Annexes (joindre au devis PDF)</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {availableImages.map((img, idx) => (
+                <label key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                  <img
+                    src={`data:${img.mediaType};base64,${img.data}`}
+                    alt={img.name}
+                    style={{
+                      width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px',
+                      border: img.selected ? '2px solid #4a90d9' : '2px solid #ddd',
+                      opacity: img.selected ? 1 : 0.6,
+                    }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                    <input
+                      type="checkbox"
+                      checked={img.selected}
+                      onChange={() => {
+                        const updated = [...availableImages];
+                        updated[idx] = { ...updated[idx], selected: !updated[idx].selected };
+                        setAvailableImages(updated);
+                      }}
+                    />
+                    <span style={{ fontSize: '10px', maxWidth: '60px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.name}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Récap */}
         {(() => {
           const p = (v: string) => parseFloat((v || '0').replace(',', '.'));
@@ -319,6 +362,20 @@ export default function QuotePanel({
         freeShipping: hasTransport,
         subject: String(parsed?.subject || (isCatalogue ? 'Devis' : 'Devis')),
       });
+
+      // Récupérer les images de la conversation pour les proposer en annexes
+      try {
+        const imgRes = await fetch(`${API_BASE}/api/plugin/conversation-images?front_conversation_id=${encodeURIComponent(frontConversationId)}`);
+        if (imgRes.ok) {
+          const imgData = await imgRes.json();
+          if (imgData.images && imgData.images.length > 0) {
+            setAvailableImages(imgData.images.map((img: { data: string; mediaType: string; name: string }) => ({ ...img, selected: false })));
+            console.log(`[QuotePanel] ${imgData.images.length} images available for appendices`);
+          } else {
+            setAvailableImages([]);
+          }
+        }
+      } catch { /* non bloquant */ }
 
       setState('verify');
     } catch (err) {
@@ -475,12 +532,19 @@ export default function QuotePanel({
         }
       }
 
-      console.log('[QuotePanel] final payload:', JSON.stringify(payload, null, 2));
+      // Ajouter les images sélectionnées comme annexes
+      const selectedImages = availableImages.filter((img) => img.selected).map(({ data, mediaType, name }) => ({ data, mediaType, name }));
+      const finalPayload = {
+        ...payload,
+        ...(selectedImages.length > 0 ? { appendixImages: selectedImages } : {}),
+      };
+
+      console.log('[QuotePanel] final payload:', JSON.stringify({ ...finalPayload, appendixImages: selectedImages.length > 0 ? `[${selectedImages.length} images]` : undefined }, null, 2));
 
       const response = await fetch(`${API_BASE}/api/plugin/create-quote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(finalPayload),
       });
 
       if (!response.ok) {

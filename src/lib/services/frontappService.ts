@@ -105,6 +105,11 @@ export async function getConversationImages(conversationId: string): Promise<{ d
         if (images.length >= maxImages) break;
         const contentType = att.content_type || att.contentType || '';
         if (!imageTypes.includes(contentType)) continue;
+        // Exclure les images inline (logos de signature dans le HTML)
+        if (att.metadata?.is_inline) {
+          console.log(`[frontapp] skipping inline image ${att.filename} (cid:${att.metadata.cid})`);
+          continue;
+        }
         const filename = (att.filename || '').toLowerCase();
         // Exclure les logos, signatures, icônes par nom de fichier
         if (/^logo|signature|banner|bannière|icon/i.test(filename)) {

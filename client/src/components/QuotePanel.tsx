@@ -214,7 +214,6 @@ export default function QuotePanel({
         <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
           <div style={rowStyle}>
             <div style={{ flex: 1 }}><span style={labelStyle}>TVA (%)</span><input style={inputStyle} value={f.vatPercent} onChange={(e) => upd('vatPercent', e.target.value)} /></div>
-            <div style={{ flex: 1 }}><span style={labelStyle}>Sujet du devis</span><input style={inputStyle} value={f.subject} onChange={(e) => upd('subject', e.target.value)} /></div>
           </div>
           <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
             <input type="checkbox" checked={f.freeShipping} onChange={(e) => upd('freeShipping', e.target.checked)} /> Livraison offerte

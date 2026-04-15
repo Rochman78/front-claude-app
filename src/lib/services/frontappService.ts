@@ -105,6 +105,12 @@ export async function getConversationImages(conversationId: string): Promise<{ d
         if (images.length >= maxImages) break;
         const contentType = att.content_type || att.contentType || '';
         if (!imageTypes.includes(contentType)) continue;
+        const filename = (att.filename || '').toLowerCase();
+        // Exclure les logos, signatures, icônes par nom de fichier
+        if (/^logo|signature|banner|bannière|icon/i.test(filename)) {
+          console.log(`[frontapp] skipping logo/signature image: ${att.filename}`);
+          continue;
+        }
         const size = att.size || 0;
         if (size > 0 && size < minSize) {
           console.log(`[frontapp] skipping small image ${att.filename} (${size} bytes)`);

@@ -132,6 +132,46 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Si 403 "channel type does not match", réessayer sans channel_id
+    if (response.status === 403 && channelId) {
+      console.log('[draft-with-quote] 403 with channel_id, retrying without channel_id...');
+      let retryResponse: Response;
+      if (pdfBuffer) {
+        const boundary2 = `----FormBoundary${Date.now()}`;
+        const parts2: Buffer[] = [];
+        const addField2 = (name: string, value: string) => {
+          parts2.push(Buffer.from(`--${boundary2}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+        };
+        addField2('body', htmlBody);
+        addField2('mode', 'shared');
+        if (authorId) addField2('author_id', authorId);
+        parts2.push(Buffer.from(`--${boundary2}\r\nContent-Disposition: form-data; name="attachments[]"; filename="${pdfFilename}"\r\nContent-Type: application/pdf\r\n\r\n`));
+        parts2.push(pdfBuffer);
+        parts2.push(Buffer.from(`\r\n--${boundary2}--\r\n`));
+        retryResponse = await fetch(`${FRONT_API_URL}/conversations/${conversation_id}/drafts`, {
+          method: 'POST',
+          headers: { Authorization: authHeader, 'Content-Type': `multipart/form-data; boundary=${boundary2}` },
+          body: Buffer.concat(parts2),
+        });
+      } else {
+        const retryPayload: Record<string, string> = { body: htmlBody, mode: 'shared' };
+        if (authorId) retryPayload.author_id = authorId;
+        retryResponse = await fetch(`${FRONT_API_URL}/conversations/${conversation_id}/drafts`, {
+          method: 'POST',
+          headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify(retryPayload),
+        });
+      }
+      if (retryResponse.ok) {
+        const text2 = await retryResponse.text();
+        const result2 = text2 ? JSON.parse(text2) : {};
+        result2.frontUrl = `https://app.frontapp.com/open/${conversation_id}`;
+        return NextResponse.json(result2);
+      }
+      const err2 = await retryResponse.text();
+      return NextResponse.json({ error: `FrontApp error: ${retryResponse.status} - ${err2}` }, { status: retryResponse.status });
+    }
+
     if (!response.ok) {
       const err = await response.text();
       return NextResponse.json({ error: `FrontApp error: ${response.status} - ${err}` }, { status: response.status });

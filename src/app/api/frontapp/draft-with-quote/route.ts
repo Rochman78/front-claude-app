@@ -15,7 +15,11 @@ async function getChannelAndAuthor(conversationId: string): Promise<{ channelId:
   if (!convRes.ok) return { channelId, authorId };
   const conv = await convRes.json();
 
-  // Find SMTP channel via inbox
+  // Détecter le type de conversation (email vs chat)
+  const lastMsgType = conv.last_message?.type || '';
+  const isChat = lastMsgType === 'front_chat' || lastMsgType === 'custom';
+
+  // Trouver le bon canal selon le type de conversation
   const inboxesUrl = conv._links?.related?.inboxes;
   if (inboxesUrl) {
     const inboxesRes = await fetch(inboxesUrl, { headers });
@@ -25,8 +29,17 @@ async function getChannelAndAuthor(conversationId: string): Promise<{ channelId:
         const chRes = await fetch(`${FRONT_API_URL}/inboxes/${inbox.id}/channels`, { headers });
         if (chRes.ok) {
           const channels = (await chRes.json())._results || [];
-          const smtp = channels.find((c: Record<string, unknown>) => c.type === 'smtp');
-          if (smtp) { channelId = smtp.id as string; break; }
+          let match;
+          if (isChat) {
+            // Chat : chercher front_chat > custom > n'importe quel non-smtp
+            match = channels.find((c: Record<string, unknown>) => c.type === 'front_chat')
+              || channels.find((c: Record<string, unknown>) => c.type === 'custom')
+              || channels.find((c: Record<string, unknown>) => c.type !== 'smtp');
+          } else {
+            // Email : chercher smtp
+            match = channels.find((c: Record<string, unknown>) => c.type === 'smtp');
+          }
+          if (match) { channelId = match.id as string; break; }
         }
       }
     }

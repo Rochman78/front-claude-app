@@ -410,24 +410,34 @@ export default function QuotePanel({
       const f = verifyForm;
 
       // Construire les lignes produit + accessoires
-      const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => ({
-        type: l.type || 'product',
-        label: l.label,
-        description: l.unit === 'm2' ? `Quantité : 1 | Total m² : ${l.quantity} | Délai de production + livraison : environ 14 jours` : undefined,
-        quantity: parseFloat(l.quantity.replace(',', '.')) || 1,
-        unitPrice: parseFloat(l.unitPrice.replace(',', '.')) || 0,
-        unit: l.unit,
-        vatRate: '',
-      }));
-
-      // Ajouter livraison si offerte
-      if (f.freeShipping) {
-        allLines.push({ type: 'transport', label: 'Transport sur mesure', quantity: 1, unitPrice: 19.99, unit: 'piece', vatRate: '' });
-        allLines.push({ type: 'transport_discount', label: 'Remise transport sur mesure', quantity: 1, unitPrice: -19.99, unit: 'piece', vatRate: '' });
-      }
-
-      // Déterminer le code TVA
       const vatPercent = parseFloat(f.vatPercent) || 0;
+      const vatDivisor = 1 + vatPercent / 100;
+
+      const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => {
+        const rawPrice = parseFloat(l.unitPrice.replace(',', '.')) || 0;
+        const isAccessory = l.type === 'accessory' || (l.unit === 'piece' && l.type !== 'product');
+        // Les accessoires ont un prix TTC dans le catalogue → convertir en HT
+        const unitPrice = isAccessory && vatPercent > 0
+          ? Math.round((rawPrice / vatDivisor) * 100) / 100
+          : rawPrice;
+
+        return {
+          type: l.type || 'product',
+          label: l.label,
+          description: l.unit === 'm2' ? `Quantité : 1 | Total m² : ${l.quantity} | Délai de production + livraison : environ 14 jours` : undefined,
+          quantity: parseFloat(l.quantity.replace(',', '.')) || 1,
+          unitPrice,
+          unit: l.unit,
+          vatRate: '',
+        };
+      });
+
+      // Ajouter livraison si offerte (19,99 € TTC → convertir en HT)
+      if (f.freeShipping) {
+        const transportHT = Math.round((19.99 / vatDivisor) * 100) / 100;
+        allLines.push({ type: 'transport', label: 'Transport sur mesure', quantity: 1, unitPrice: transportHT, unit: 'piece', vatRate: '' });
+        allLines.push({ type: 'transport_discount', label: 'Remise transport sur mesure', quantity: 1, unitPrice: -transportHT, unit: 'piece', vatRate: '' });
+      }
       const country = f.vatNumber?.match(/^([A-Z]{2})/)?.[1] || f.country || 'FR';
       const vatCode = vatPercent === 0 ? 'exempt' : `${country}_${Math.round(vatPercent * 10)}`;
 

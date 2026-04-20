@@ -6,8 +6,27 @@
 export function cleanDraft(text: string): string {
   let cleaned = text;
 
-  // Supprimer tout avant "Bonjour" (titres BROUILLON, etc.)
-  const bonjourIndex = cleaned.indexOf('Bonjour');
+  // Chercher le marqueur de brouillon (BROUILLON, MAIL FINAL, etc.) et prendre le "Bonjour" après
+  const draftMarkers = [/\bBROUILLON\b/i, /\bMAIL FINAL\b/i, /\bDRAFT\b/i, /\bENTWURF\b/i, /\bBORRADOR\b/i, /\bBOZZA\b/i];
+  let markerEnd = -1;
+  for (const marker of draftMarkers) {
+    const match = cleaned.match(marker);
+    if (match && match.index !== undefined) {
+      markerEnd = match.index + match[0].length;
+      break;
+    }
+  }
+
+  // Trouver "Bonjour" (ou équivalents) après le marqueur
+  const greetings = ['Bonjour', 'Hallo', 'Hola', 'Buongiorno', 'Goedendag', 'Beste', 'Dear', 'Hello', 'Hi '];
+  const searchFrom = markerEnd > 0 ? markerEnd : 0;
+  let bonjourIndex = -1;
+  for (const greeting of greetings) {
+    const idx = cleaned.indexOf(greeting, searchFrom);
+    if (idx >= 0 && (bonjourIndex < 0 || idx < bonjourIndex)) {
+      bonjourIndex = idx;
+    }
+  }
   if (bonjourIndex > 0) {
     cleaned = cleaned.substring(bonjourIndex);
   }

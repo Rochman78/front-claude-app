@@ -149,10 +149,10 @@ export async function getConversationImages(conversationId: string): Promise<{ d
           if (imgBuffer.byteLength > maxBase64Size) {
             console.log(`[frontapp] compressing ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB → target < 3.7MB)`);
             try {
-              imgBuffer = await sharp(imgBuffer)
+              imgBuffer = Buffer.from(await sharp(imgBuffer)
                 .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
                 .jpeg({ quality: 80 })
-                .toBuffer();
+                .toBuffer()) as Buffer;
               finalMediaType = 'image/jpeg';
               console.log(`[frontapp] compressed to ${Math.round(imgBuffer.byteLength / 1024)}KB`);
             } catch (compressErr) {

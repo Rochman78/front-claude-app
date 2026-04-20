@@ -3,6 +3,7 @@
  */
 
 import { EXCLUDED_INBOX_NAMES } from '@/lib/stores';
+import sharp from 'sharp';
 
 const FRONT_API_URL = 'https://api2.frontapp.com';
 
@@ -136,15 +137,32 @@ export async function getConversationImages(conversationId: string): Promise<{ d
             console.warn(`[frontapp] failed to download ${att.filename}: ${attRes.status}`);
             continue;
           }
-          const buffer = await attRes.arrayBuffer();
+          let imgBuffer = Buffer.from(await attRes.arrayBuffer());
           // Vérifier la taille réelle si pas connue
-          if (buffer.byteLength < minSize) {
-            console.log(`[frontapp] skipping small image ${att.filename} (${buffer.byteLength} bytes actual)`);
+          if (imgBuffer.byteLength < minSize) {
+            console.log(`[frontapp] skipping small image ${att.filename} (${imgBuffer.byteLength} bytes actual)`);
             continue;
           }
-          const base64 = Buffer.from(buffer).toString('base64');
-          images.push({ data: base64, mediaType: contentType, name: att.filename || 'image' });
-          console.log(`[frontapp] extracted image: ${att.filename} (${contentType}, ${Math.round(buffer.byteLength / 1024)}KB)`);
+          // Compresser si trop gros (base64 ajoute ~33%, donc max ~3.7MB en raw pour rester sous 5MB en base64)
+          let finalMediaType = contentType;
+          const maxBase64Size = 3700000;
+          if (imgBuffer.byteLength > maxBase64Size) {
+            console.log(`[frontapp] compressing ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB → target < 3.7MB)`);
+            try {
+              imgBuffer = await sharp(imgBuffer)
+                .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 80 })
+                .toBuffer();
+              finalMediaType = 'image/jpeg';
+              console.log(`[frontapp] compressed to ${Math.round(imgBuffer.byteLength / 1024)}KB`);
+            } catch (compressErr) {
+              console.warn(`[frontapp] compression failed for ${att.filename}:`, compressErr);
+              if (imgBuffer.byteLength > maxSize) continue;
+            }
+          }
+          const base64 = imgBuffer.toString('base64');
+          images.push({ data: base64, mediaType: finalMediaType, name: att.filename || 'image' });
+          console.log(`[frontapp] extracted image: ${att.filename} (${finalMediaType}, ${Math.round(imgBuffer.byteLength / 1024)}KB)`);
         } catch (err) {
           console.warn(`[frontapp] failed to download attachment ${att.filename}:`, err);
         }

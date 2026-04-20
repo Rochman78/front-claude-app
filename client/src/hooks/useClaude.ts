@@ -111,8 +111,8 @@ export function useClaude(): UseClaudeReturn {
     channel?: string;
     images?: { data: string; mediaType: string; name: string }[];
   }) => {
-    // Annuler tout stream précédent
-    abortCurrent();
+    // NE PAS abort le stream précédent — il continue en arrière-plan et sauve en cache via onBackgroundComplete
+    // On crée juste un nouveau controller pour ce stream
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -186,8 +186,7 @@ export function useClaude(): UseClaudeReturn {
       return;
     }
 
-    // Annuler tout stream précédent
-    abortCurrent();
+    // NE PAS abort le stream précédent (multitask)
     const controller = new AbortController();
     abortRef.current = controller;
 

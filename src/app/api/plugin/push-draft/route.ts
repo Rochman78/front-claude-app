@@ -247,14 +247,26 @@ async function resolveChannelAndAuthor(conversationId: string): Promise<{ channe
                 const smtp = channels.find((c: Record<string, unknown>) => c.type === 'smtp');
                 if (smtp) { channelId = smtp.id as string; break; }
               } else {
-                // Chat/custom/unknown : prioriser front_chat, puis custom, puis premier non-SMTP
-                const frontChat = channels.find((c: Record<string, unknown>) => c.type === 'front_chat');
-                const custom = channels.find((c: Record<string, unknown>) => c.type === 'custom');
-                const nonSmtp = channels.find((c: Record<string, unknown>) => c.type !== 'smtp');
-                const match = frontChat || custom || nonSmtp || channels[0];
+                // Chat/custom/unknown : essayer de matcher le canal exact
+                // Si le sujet contient "Instagram", chercher le canal Instagram
+                // Si le sujet contient "Facebook", chercher le canal Facebook
+                // Sinon front_chat > premier custom > premier non-SMTP
+                const subject = (conv.subject || '').toLowerCase();
+                let match;
+                if (subject.includes('instagram')) {
+                  match = channels.find((c: Record<string, unknown>) => ((c.name || c.address || '') as string).toLowerCase().includes('instagram'));
+                } else if (subject.includes('facebook')) {
+                  match = channels.find((c: Record<string, unknown>) => ((c.name || c.address || '') as string).toLowerCase().includes('facebook'));
+                }
+                if (!match) {
+                  const frontChat = channels.find((c: Record<string, unknown>) => c.type === 'front_chat');
+                  const custom = channels.find((c: Record<string, unknown>) => c.type === 'custom');
+                  const nonSmtp = channels.find((c: Record<string, unknown>) => c.type !== 'smtp');
+                  match = frontChat || custom || nonSmtp || channels[0];
+                }
                 if (match) {
                   channelId = match.id as string;
-                  console.log(`[push-draft/resolve] selected channel: ${channelId} (type=${match.type})`);
+                  console.log(`[push-draft/resolve] selected channel: ${channelId} (type=${match.type}, name=${(match as Record<string, unknown>).name})`);
                   break;
                 }
               }

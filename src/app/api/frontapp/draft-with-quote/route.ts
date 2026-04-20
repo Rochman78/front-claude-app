@@ -31,10 +31,18 @@ async function getChannelAndAuthor(conversationId: string): Promise<{ channelId:
           const channels = (await chRes.json())._results || [];
           let match;
           if (isChat) {
-            // Chat : chercher front_chat > custom > n'importe quel non-smtp
-            match = channels.find((c: Record<string, unknown>) => c.type === 'front_chat')
-              || channels.find((c: Record<string, unknown>) => c.type === 'custom')
-              || channels.find((c: Record<string, unknown>) => c.type !== 'smtp');
+            // Chat/custom : essayer de matcher le canal exact par nom
+            const subject = (conv.subject || '').toLowerCase();
+            if (subject.includes('instagram')) {
+              match = channels.find((c: Record<string, unknown>) => ((c.name || c.address || '') as string).toLowerCase().includes('instagram'));
+            } else if (subject.includes('facebook')) {
+              match = channels.find((c: Record<string, unknown>) => ((c.name || c.address || '') as string).toLowerCase().includes('facebook'));
+            }
+            if (!match) {
+              match = channels.find((c: Record<string, unknown>) => c.type === 'front_chat')
+                || channels.find((c: Record<string, unknown>) => c.type === 'custom')
+                || channels.find((c: Record<string, unknown>) => c.type !== 'smtp');
+            }
           } else {
             // Email : chercher smtp
             match = channels.find((c: Record<string, unknown>) => c.type === 'smtp');

@@ -137,7 +137,8 @@ export async function getConversationImages(conversationId: string): Promise<{ d
             console.warn(`[frontapp] failed to download ${att.filename}: ${attRes.status}`);
             continue;
           }
-          let imgBuffer = Buffer.from(await attRes.arrayBuffer());
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let imgBuffer: any = Buffer.from(await attRes.arrayBuffer());
           // Vérifier la taille réelle si pas connue
           if (imgBuffer.byteLength < minSize) {
             console.log(`[frontapp] skipping small image ${att.filename} (${imgBuffer.byteLength} bytes actual)`);
@@ -149,10 +150,10 @@ export async function getConversationImages(conversationId: string): Promise<{ d
           if (imgBuffer.byteLength > maxBase64Size) {
             console.log(`[frontapp] compressing ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB → target < 3.7MB)`);
             try {
-              imgBuffer = Buffer.from(await sharp(imgBuffer)
+              imgBuffer = await sharp(imgBuffer)
                 .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
                 .jpeg({ quality: 80 })
-                .toBuffer()) as Buffer;
+                .toBuffer();
               finalMediaType = 'image/jpeg';
               console.log(`[frontapp] compressed to ${Math.round(imgBuffer.byteLength / 1024)}KB`);
             } catch (compressErr) {

@@ -22,11 +22,11 @@ export async function POST(req: NextRequest) {
 
 RÈGLES STRICTES :
 - Extrais UNIQUEMENT les données présentes dans le texte. N'invente RIEN.
-- Les prix doivent correspondre EXACTEMENT à ceux du texte (pas de recalcul).
+- Les prix doivent correspondre EXACTEMENT à ceux du texte. NE FAIS AUCUNE CONVERSION HT/TTC. Copie le prix tel quel.
 - Chaque produit/accessoire = une ligne séparée dans "lines".
 - Le type de ligne est "product" pour les filets/produits principaux, "accessory" pour les accessoires (kits, câbles, etc.).
 - IMPORTANT — LIGNES SÉPARÉES PAR FILET : si le devis contient plusieurs filets avec des DIMENSIONS DIFFÉRENTES, créer UNE LIGNE PAR FILET (pas une ligne fusionnée). Exemple : Filet n°1 (3,80x7,50m = 28,50 m²) + Filet n°2 (7,50x7,10m = 53,25 m²) → 2 lignes, pas 1. Si les filets sont IDENTIQUES (mêmes dimensions), une seule ligne suffit avec quantity = surface totale.
-- Pour chaque ligne filet (unit="m2") : "quantity" = surface de CE filet (ou surface totale si filets identiques). "unitPrice" = prix HT par m².
+- Pour chaque ligne filet (unit="m2") : "quantity" = surface de CE filet (ou surface totale si filets identiques). "unitPrice" = prix par m² tel qu'indiqué dans le texte (ne pas convertir).
   Exemples de quantity :
   - 3 filets IDENTIQUES de 2.90×3.80m → 1 ligne, quantity = 3×2.90×3.80 = 33.06
   - 1 filet 3.80×7.50m + 1 filet 7.50×7.10m → 2 lignes, quantity = 28.50 et 53.25
@@ -70,7 +70,7 @@ ${claudeText}
       "type": "product|accessory|transport|transport_discount",
       "label": "description du produit",
       "quantity": nombre (IMPORTANT pour les filets/produits en m² : quantity = surface TOTALE en m², PAS le nombre de pièces. Ex : 3 filets de 2.90×3.80m → quantity = 3 × 2.90 × 3.80 = 33.06),
-      "unitPrice": "prix unitaire HT par m² en string",
+      "unitPrice": "prix unitaire tel quel du texte (ne pas convertir HT/TTC)",
       "unit": "m2 ou piece"
     }
   ]

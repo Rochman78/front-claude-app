@@ -86,12 +86,14 @@ export async function getConversationMessages(conversationId: string): Promise<{
  * Récupère les images (PJ) d'une conversation Front.
  * Télécharge les attachments image > 10KB et les convertit en base64.
  */
-export async function getConversationImages(conversationId: string): Promise<{ data: string; mediaType: string; name: string }[]> {
-  const images: { data: string; mediaType: string; name: string }[] = [];
+export async function getConversationImages(conversationId: string): Promise<{ data: string; mediaType: string; name: string; type: 'image' | 'pdf' }[]> {
+  const images: { data: string; mediaType: string; name: string; type: 'image' | 'pdf' }[] = [];
   const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const pdfType = 'application/pdf';
   const maxImages = 10;
   const minSize = 10 * 1024; // 10KB min — exclut logos/icônes
   const maxSize = 5 * 1024 * 1024; // 5MB max
+  const maxPdfSize = 30 * 1024 * 1024; // 30MB max pour les PDF
 
   try {
     const res = await frontFetch(`/conversations/${conversationId}/messages`);
@@ -105,7 +107,8 @@ export async function getConversationImages(conversationId: string): Promise<{ d
       for (const att of attachments) {
         if (images.length >= maxImages) break;
         const contentType = att.content_type || att.contentType || '';
-        if (!imageTypes.includes(contentType)) continue;
+        const isPdf = contentType === pdfType || (att.filename || '').toLowerCase().endsWith('.pdf');
+        if (!imageTypes.includes(contentType) && !isPdf) continue;
         // Exclure les images inline (logos de signature dans le HTML)
         if (att.metadata?.is_inline) {
           console.log(`[frontapp] skipping inline image ${att.filename} (cid:${att.metadata.cid})`);
@@ -118,12 +121,16 @@ export async function getConversationImages(conversationId: string): Promise<{ d
           continue;
         }
         const size = att.size || 0;
-        if (size > 0 && size < minSize) {
+        if (!isPdf && size > 0 && size < minSize) {
           console.log(`[frontapp] skipping small image ${att.filename} (${size} bytes)`);
           continue;
         }
-        if (size > maxSize) {
+        if (!isPdf && size > maxSize) {
           console.log(`[frontapp] skipping large image ${att.filename} (${size} bytes)`);
+          continue;
+        }
+        if (isPdf && size > maxPdfSize) {
+          console.log(`[frontapp] skipping large PDF ${att.filename} (${size} bytes)`);
           continue;
         }
 
@@ -139,31 +146,38 @@ export async function getConversationImages(conversationId: string): Promise<{ d
           }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           let imgBuffer: any = Buffer.from(await attRes.arrayBuffer());
-          // Vérifier la taille réelle si pas connue
-          if (imgBuffer.byteLength < minSize) {
-            console.log(`[frontapp] skipping small image ${att.filename} (${imgBuffer.byteLength} bytes actual)`);
-            continue;
-          }
-          // Compresser si trop gros (base64 ajoute ~33%, donc max ~3.7MB en raw pour rester sous 5MB en base64)
-          let finalMediaType = contentType;
-          const maxBase64Size = 3700000;
-          if (imgBuffer.byteLength > maxBase64Size) {
-            console.log(`[frontapp] compressing ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB → target < 3.7MB)`);
-            try {
-              imgBuffer = await sharp(imgBuffer)
-                .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
-                .jpeg({ quality: 80 })
-                .toBuffer();
-              finalMediaType = 'image/jpeg';
-              console.log(`[frontapp] compressed to ${Math.round(imgBuffer.byteLength / 1024)}KB`);
-            } catch (compressErr) {
-              console.warn(`[frontapp] compression failed for ${att.filename}:`, compressErr);
-              if (imgBuffer.byteLength > maxSize) continue;
+
+          if (isPdf) {
+            // PDF : envoyer tel quel en base64
+            const base64 = imgBuffer.toString('base64');
+            images.push({ data: base64, mediaType: 'application/pdf', name: att.filename || 'document.pdf', type: 'pdf' });
+            console.log(`[frontapp] extracted PDF: ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB)`);
+          } else {
+            // Image : vérifier taille et compresser si nécessaire
+            if (imgBuffer.byteLength < minSize) {
+              console.log(`[frontapp] skipping small image ${att.filename} (${imgBuffer.byteLength} bytes actual)`);
+              continue;
             }
+            let finalMediaType = contentType;
+            const maxBase64Size = 3700000;
+            if (imgBuffer.byteLength > maxBase64Size) {
+              console.log(`[frontapp] compressing ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB → target < 3.7MB)`);
+              try {
+                imgBuffer = await sharp(imgBuffer)
+                  .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
+                  .jpeg({ quality: 80 })
+                  .toBuffer();
+                finalMediaType = 'image/jpeg';
+                console.log(`[frontapp] compressed to ${Math.round(imgBuffer.byteLength / 1024)}KB`);
+              } catch (compressErr) {
+                console.warn(`[frontapp] compression failed for ${att.filename}:`, compressErr);
+                if (imgBuffer.byteLength > maxSize) continue;
+              }
+            }
+            const base64 = imgBuffer.toString('base64');
+            images.push({ data: base64, mediaType: finalMediaType, name: att.filename || 'image', type: 'image' });
+            console.log(`[frontapp] extracted image: ${att.filename} (${finalMediaType}, ${Math.round(imgBuffer.byteLength / 1024)}KB)`);
           }
-          const base64 = imgBuffer.toString('base64');
-          images.push({ data: base64, mediaType: finalMediaType, name: att.filename || 'image' });
-          console.log(`[frontapp] extracted image: ${att.filename} (${finalMediaType}, ${Math.round(imgBuffer.byteLength / 1024)}KB)`);
         } catch (err) {
           console.warn(`[frontapp] failed to download attachment ${att.filename}:`, err);
         }

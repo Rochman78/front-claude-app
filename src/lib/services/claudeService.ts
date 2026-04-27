@@ -19,6 +19,7 @@ export interface ImageAttachment {
   data: string;
   mediaType: string;
   name: string;
+  type?: 'image' | 'pdf';
 }
 
 export interface StreamChatOptions {
@@ -59,20 +60,32 @@ export function buildMessages(messages: { role: string; content: string }[], doc
 
   const mapped = trimmed.map((m, idx) => {
     const isLastUser = m.role === 'user' && idx === trimmed.length - 1;
-    // Ajouter les images au dernier message user
+    // Ajouter les images et PDFs au dernier message user
     if (isLastUser && images && images.length > 0) {
-      const imageBlocks = images.map((img) => ({
-        type: 'image' as const,
-        source: {
-          type: 'base64' as const,
-          media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-          data: img.data,
-        },
-      }));
+      const attachmentBlocks = images.map((img) => {
+        if (img.type === 'pdf') {
+          return {
+            type: 'document' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: 'application/pdf' as const,
+              data: img.data,
+            },
+          };
+        }
+        return {
+          type: 'image' as const,
+          source: {
+            type: 'base64' as const,
+            media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+            data: img.data,
+          },
+        };
+      });
       return {
         role: m.role as 'user' | 'assistant',
         content: [
-          ...imageBlocks,
+          ...attachmentBlocks,
           { type: 'text' as const, text: m.content },
         ],
       };

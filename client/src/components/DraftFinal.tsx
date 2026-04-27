@@ -19,7 +19,7 @@ export function usePushDraft(context: FrontSingleConversationContext) {
   const [pushSuccess, setPushSuccess] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
 
-  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string, mailThread?: string, storeCode?: string) {
+  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string, mailThread?: string, _storeCode?: string) {
     setPushing(true);
     setPushError(null);
     setPushSuccess(false);
@@ -40,26 +40,12 @@ export function usePushDraft(context: FrontSingleConversationContext) {
         } catch { /* fallback: pas de traduction */ }
       }
 
-      // Pour les stores non-FR, forcer la langue cible (pas de détection auto)
-      const STORE_TARGET_LANG: Record<string, string> = {
-        TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
-      };
-      const forcedLangCode = storeCode ? STORE_TARGET_LANG[storeCode] : undefined;
-      if (forcedLangCode) {
-        console.log('[push] forcing target language from store:', storeCode, '→', forcedLangCode);
-      }
-
+      // Traduire dans la langue du client (détectée depuis les mails)
       let finalText = cleaned;
-      if (mailContent || forcedLangCode) {
+      if (mailContent) {
         try {
           console.log('[push] translating draft if needed...');
-          const translateBody: Record<string, string> = { text: cleaned };
-          if (forcedLangCode) {
-            translateBody.targetLanguage = forcedLangCode;
-          }
-          if (mailContent) {
-            translateBody.mailContent = mailContent;
-          }
+          const translateBody: Record<string, string> = { text: cleaned, mailContent };
           const translateRes = await fetch(`${API_BASE}/api/plugin/translate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

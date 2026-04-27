@@ -7,7 +7,7 @@ import { getStoreByInboxName } from '@/lib/stores';
 const PENNYLANE_API_URL = 'https://app.pennylane.com/api/external/v2';
 
 const PRODUCT_ID_FILET   = 14369303;
-const PRODUCT_ID_GENERIC = 16822267;
+// PRODUCT_ID_GENERIC retiré — les lignes accessoires/transport n'utilisent plus de product_id
 
 function pennylaneHeaders(): Record<string, string> {
   return {
@@ -174,7 +174,7 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
       raw_currency_unit_price: String(line.unitPrice || 0),
       vat_rate: vatRate,
       unit: line.unit || (isProduct ? 'm2' : 'piece'),
-      product_id: isProduct ? PRODUCT_ID_FILET : PRODUCT_ID_GENERIC,
+      ...(isProduct ? { product_id: PRODUCT_ID_FILET } : {}),
       ...(line.description ? { description: line.description } : {}),
     };
   });

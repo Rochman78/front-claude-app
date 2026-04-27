@@ -109,9 +109,11 @@ export async function getConversationImages(conversationId: string): Promise<{ d
         const contentType = att.content_type || att.contentType || '';
         const isPdf = contentType === pdfType || (att.filename || '').toLowerCase().endsWith('.pdf');
         if (!imageTypes.includes(contentType) && !isPdf) continue;
-        // Exclure les images inline (logos de signature dans le HTML)
-        if (att.metadata?.is_inline) {
-          console.log(`[frontapp] skipping inline image ${att.filename} (cid:${att.metadata.cid})`);
+        // Exclure les petites images inline (logos de signature dans le HTML)
+        // Les grosses images inline (> 100KB) sont probablement des photos/plans collés dans le mail
+        const attSize = att.size || 0;
+        if (att.metadata?.is_inline && attSize > 0 && attSize < 100 * 1024) {
+          console.log(`[frontapp] skipping small inline image ${att.filename} (${attSize} bytes, cid:${att.metadata.cid})`);
           continue;
         }
         const filename = (att.filename || '').toLowerCase();

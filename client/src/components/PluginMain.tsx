@@ -135,9 +135,10 @@ export default function PluginMain({ context }: PluginMainProps) {
   const conversationCache = useConversationCache();
 
   // Quand un stream termine en arrière-plan, sauver le résultat dans le cache
-  claude.onBackgroundComplete.current = (frontConvId, convId, messages) => {
-    conversationCache.setInCache(frontConvId, { conversationId: convId, messages });
-    console.log(`[plugin] background result cached for ${frontConvId}: ${messages.length} msgs`);
+  claude.onBackgroundComplete.current = (bgFrontConvId, convId, messages) => {
+    conversationCache.setInCache(bgFrontConvId, { conversationId: convId, messages });
+    conversationCache.clearPending(bgFrontConvId);
+    console.log(`[plugin] background result cached for ${bgFrontConvId}: ${messages.length} msgs`);
   };
   const [manualValidation, setManualValidation] = useState(false);
   const [draftInvalidated, setDraftInvalidated] = useState(false);
@@ -254,6 +255,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         conversationId: claude.conversationId,
         messages: claude.messages,
       });
+      conversationCache.clearPending(frontConvId);
     }
   }, [claude.messages, claude.conversationId, frontConvId, conversationCache]);
 
@@ -267,6 +269,7 @@ export default function PluginMain({ context }: PluginMainProps) {
 
   async function handleAnalyze(noteOverride?: string) {
     console.log('[plugin] handleAnalyze called');
+    conversationCache.setPending(frontConvId);
     console.log('[plugin] store:', store);
     console.log('[plugin] context.conversation:', context.conversation);
 
@@ -431,7 +434,11 @@ export default function PluginMain({ context }: PluginMainProps) {
         <LoadingState message="Chargement de l'historique..." />
       )}
 
-      {!hasMessages && !claude.isStreaming && !loadingHistory && (
+      {!hasMessages && !claude.isStreaming && !loadingHistory && conversationCache.isPending(frontConvId) && (
+        <LoadingState message="Analyse en cours sur ce mail..." />
+      )}
+
+      {!hasMessages && !claude.isStreaming && !loadingHistory && !conversationCache.isPending(frontConvId) && (
         <div className="plugin-actions">
           <textarea
             value={preAnalyzeNote}

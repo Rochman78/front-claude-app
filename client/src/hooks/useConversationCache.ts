@@ -20,6 +20,7 @@ export interface CachedQuote {
  */
 const CACHE = new Map<string, CachedConversation>();
 const QUOTE_CACHE = new Map<string, CachedQuote>();
+const PENDING = new Set<string>();
 
 export function useConversationCache() {
   const getFromCache = useCallback((frontConvId: string): CachedConversation | null => {
@@ -94,5 +95,9 @@ export function useConversationCache() {
     }
   }, [clearCache]);
 
-  return { getFromCache, setInCache, getQuoteFromCache, setQuoteInCache, clearCache, loadFromDB, deleteFromDB };
+  const setPending = useCallback((frontConvId: string) => { PENDING.add(frontConvId); }, []);
+  const clearPending = useCallback((frontConvId: string) => { PENDING.delete(frontConvId); }, []);
+  const isPending = useCallback((frontConvId: string) => PENDING.has(frontConvId), []);
+
+  return { getFromCache, setInCache, getQuoteFromCache, setQuoteInCache, clearCache, loadFromDB, deleteFromDB, setPending, clearPending, isPending };
 }

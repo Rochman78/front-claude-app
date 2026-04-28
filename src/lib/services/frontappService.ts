@@ -160,7 +160,21 @@ export async function getConversationImages(conversationId: string): Promise<{ d
               console.log(`[frontapp] skipping small image ${att.filename} (${imgBuffer.byteLength} bytes actual)`);
               continue;
             }
+            // Détecter le vrai format (Front peut mentir sur le content_type)
             let finalMediaType = contentType;
+            const header = imgBuffer.slice(0, 4);
+            if (header[0] === 0xFF && header[1] === 0xD8) {
+              finalMediaType = 'image/jpeg';
+            } else if (header[0] === 0x89 && header[1] === 0x50) {
+              finalMediaType = 'image/png';
+            } else if (header[0] === 0x47 && header[1] === 0x49) {
+              finalMediaType = 'image/gif';
+            } else if (header[0] === 0x52 && header[1] === 0x49) {
+              finalMediaType = 'image/webp';
+            }
+            if (finalMediaType !== contentType) {
+              console.log(`[frontapp] corrected media type for ${att.filename}: ${contentType} → ${finalMediaType}`);
+            }
             const maxBase64Size = 3700000;
             if (imgBuffer.byteLength > maxBase64Size) {
               console.log(`[frontapp] compressing ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB → target < 3.7MB)`);

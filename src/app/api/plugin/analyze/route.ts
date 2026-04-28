@@ -4,6 +4,7 @@ import { createChatStream } from '@/lib/services/claudeService';
 import { buildDocumentsText } from '@/lib/documentSelector';
 import { getStoreByCode } from '@/lib/stores';
 import { getConversationImages } from '@/lib/services/frontappService';
+import { extractSkusFromText, getStockBySkuList } from '@/lib/services/octopiaService';
 
 /**
  * POST /api/plugin/analyze
@@ -115,11 +116,29 @@ export async function POST(req: NextRequest) {
       [conversation.id]
     );
 
-    // 5. Construire le message utilisateur avec le contexte mail
+    // 5. Vérifier le stock Octopia pour les SKUs mentionnés dans le mail (non bloquant)
+    let stockInfo = '';
+    try {
+      // Extraire les SKUs du mail client
+      const skus = extractSkusFromText(mailContent);
+      if (skus.length > 0 && skus.length <= 20) {
+        console.log(`[plugin/analyze] checking stock for ${skus.length} SKUs: ${skus.join(', ')}`);
+        const stockData = await getStockBySkuList(skus);
+        if (Object.keys(stockData).length > 0) {
+          const stockLines = Object.entries(stockData).map(([sku, qty]) => `  SKU ${sku}: ${qty} en stock`);
+          stockInfo = `\n\n[STOCK OCTOPIA — données temps réel]\n${stockLines.join('\n')}\nUtilise ces informations pour confirmer la disponibilité au client. Si le stock est insuffisant par rapport à la quantité demandée, le signaler.`;
+          console.log(`[plugin/analyze] stock info: ${Object.keys(stockData).length} SKUs found`);
+        }
+      }
+    } catch (err) {
+      console.warn('[plugin/analyze] stock check failed (non-blocking):', err);
+    }
+
+    // 6. Construire le message utilisateur avec le contexte mail + stock
     const isResume = existingMessages.length > 0;
     const userMessage = isResume
-      ? `[Suite de la conversation] Le client a répondu. Voici le fil de mails COMPLET et MIS À JOUR (les messages les plus récents sont les plus importants). Tiens compte de tout ce que tu as échangé avec le gérant précédemment et propose un nouveau brouillon cohérent avec le déroulé de la conversation. Donne plus de poids aux messages les plus récents du client.\n\nClient : ${customerName || ''} (${customerEmail || ''})\n\n${mailContent}`
-      : `[Analyse demandée] Voici le fil de mails du client ${customerName || ''} (${customerEmail || ''}) :\n\n${mailContent}`;
+      ? `[Suite de la conversation] Le client a répondu. Voici le fil de mails COMPLET et MIS À JOUR (les messages les plus récents sont les plus importants). Tiens compte de tout ce que tu as échangé avec le gérant précédemment et propose un nouveau brouillon cohérent avec le déroulé de la conversation. Donne plus de poids aux messages les plus récents du client.\n\nClient : ${customerName || ''} (${customerEmail || ''})\n\n${mailContent}${stockInfo}`
+      : `[Analyse demandée] Voici le fil de mails du client ${customerName || ''} (${customerEmail || ''}) :\n\n${mailContent}${stockInfo}`;
 
     // Sauvegarder le message user en BDD
     const userMsgId = crypto.randomUUID();

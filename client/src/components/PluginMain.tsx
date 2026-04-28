@@ -170,11 +170,13 @@ export default function PluginMain({ context }: PluginMainProps) {
     prevConvId.current = frontConvId;
     justSwitchedRef.current = true;
 
-    // Reset les states liés au devis
+    // Reset les states liés au devis et aux instructions
     setManualValidation(false);
     setDraftInvalidated(false);
     setQuoteDraftText(null);
     setShowQuoteConfirm(false);
+    setPreAnalyzeNote('');
+    setShowResumePopup(false);
 
     // Restaurer les infos devis depuis le cache mémoire ou la BDD
     const cachedQuote = conversationCache.getQuoteFromCache(frontConvId);

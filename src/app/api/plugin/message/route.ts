@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool, { initDB } from '@/lib/db';
 import { createChatStream } from '@/lib/services/claudeService';
 import { buildDocumentsText } from '@/lib/documentSelector';
+import { getConversationImages } from '@/lib/services/frontappService';
 
 /**
  * POST /api/plugin/message
@@ -102,7 +103,20 @@ export async function POST(req: NextRequest) {
       { role: 'user', content: message },
     ];
 
-    // 5. Appeler Claude en streaming
+    // 5. Charger les images de la conversation Front (si disponible)
+    let imageBlocks: { data: string; mediaType: string; name: string; type: 'image' | 'pdf' }[] = [];
+    if (conversation.front_conversation_id) {
+      try {
+        imageBlocks = await getConversationImages(conversation.front_conversation_id);
+        if (imageBlocks.length > 0) {
+          console.log(`[plugin/message] ${imageBlocks.length} images loaded for conversation`);
+        }
+      } catch (err) {
+        console.warn('[plugin/message] image loading failed:', err);
+      }
+    }
+
+    // 6. Appeler Claude en streaming
     const systemPrompt = agent.instructions || 'Tu es un assistant service client.';
 
     const { stream } = createChatStream({
@@ -110,6 +124,7 @@ export async function POST(req: NextRequest) {
       messages,
       model: 'sonnet',
       documents,
+      images: imageBlocks.length > 0 ? imageBlocks : undefined,
     });
 
     // 6. Passthrough : streamer au client + sauvegarder en BDD

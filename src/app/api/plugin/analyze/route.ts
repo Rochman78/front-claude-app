@@ -172,7 +172,7 @@ Exemple de réponse :
                 stockLines.push(`  SKU ${sku} | ${info.name} | demandé: ${info.qtyDemanded} | stock: non trouvé sur Octopia`);
               }
             }
-            stockInfo = `\n\n[STOCK OCTOPIA — données temps réel]\n${stockLines.join('\n')}\n\nIMPORTANT : dans ton brouillon, mentionne pour chaque produit catalogue : le SKU, le nom du produit, et le stock disponible. Si le stock est insuffisant, le signaler au gérant entre crochets [⚠️ ...].`;
+            stockInfo = `\n\n[STOCK OCTOPIA — données temps réel — USAGE INTERNE UNIQUEMENT]\n${stockLines.join('\n')}\n\nATTENTION : ces infos stock sont pour le GÉRANT uniquement. NE PAS les inclure dans le brouillon du mail client. Les mentionner UNIQUEMENT dans la section QUESTIONS à la fin.`;
             console.log(`[plugin/analyze] stock info ready: ${skus.length} products`);
           }
         } else {

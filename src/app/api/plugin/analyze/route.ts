@@ -4,7 +4,8 @@ import { createChatStream } from '@/lib/services/claudeService';
 import { buildDocumentsText } from '@/lib/documentSelector';
 import { getStoreByCode } from '@/lib/stores';
 import { getConversationImages } from '@/lib/services/frontappService';
-import { extractSkusFromText, getStockBySkuList } from '@/lib/services/octopiaService';
+import { getStockBySkuList } from '@/lib/services/octopiaService';
+import { callClaude } from '@/lib/services/claudeService';
 
 /**
  * POST /api/plugin/analyze
@@ -116,18 +117,66 @@ export async function POST(req: NextRequest) {
       [conversation.id]
     );
 
-    // 5. Vérifier le stock Octopia pour les SKUs mentionnés dans le mail (non bloquant)
+    // 5. Identifier les SKUs pertinents via Haiku + vérifier stock Octopia (non bloquant)
     let stockInfo = '';
     try {
-      // Extraire les SKUs du mail client
-      const skus = extractSkusFromText(mailContent);
-      if (skus.length > 0 && skus.length <= 20) {
-        console.log(`[plugin/analyze] checking stock for ${skus.length} SKUs: ${skus.join(', ')}`);
-        const stockData = await getStockBySkuList(skus);
-        if (Object.keys(stockData).length > 0) {
-          const stockLines = Object.entries(stockData).map(([sku, qty]) => `  SKU ${sku}: ${qty} en stock`);
-          stockInfo = `\n\n[STOCK OCTOPIA — données temps réel]\n${stockLines.join('\n')}\nUtilise ces informations pour confirmer la disponibilité au client. Si le stock est insuffisant par rapport à la quantité demandée, le signaler.`;
-          console.log(`[plugin/analyze] stock info: ${Object.keys(stockData).length} SKUs found`);
+      // Extraire les SKUs des produits catalogue correspondant à la demande client
+      const catalogueDoc = allFiles.find((f) => f.name.toLowerCase().includes('catalogue'));
+      if (catalogueDoc && process.env.OCTOPIA_SELLER_ID) {
+        const skuExtractPrompt = `Tu es un assistant qui identifie les produits demandés par le client dans un mail, et qui retrouve les SKU correspondants dans le catalogue.
+
+MAIL DU CLIENT :
+${mailContent.substring(0, 2000)}
+
+CATALOGUE (extrait) :
+${catalogueDoc.content.substring(0, 8000)}
+
+RÈGLES :
+- Identifie les produits CATALOGUE STANDARD que le client demande (couleur, taille, finition)
+- Retrouve le SKU (code EAN 13 chiffres commençant par 37) dans le catalogue
+- Si le client demande du sur mesure (dimensions non standard), ne retourne AUCUN SKU
+- Retourne UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
+- Si aucun produit catalogue identifié, retourne : AUCUN
+
+Exemple de réponse :
+3760388670833|Filet camouflage noir 2x2|5
+3760388670796|Filet camouflage noir 2x3|3`;
+
+        console.log('[plugin/analyze] calling Haiku to extract SKUs from mail...');
+        const skuResult = await callClaude(
+          [{ role: 'user', content: skuExtractPrompt }],
+          { model: 'claude-haiku-4-5-20251001', maxTokens: 500 }
+        );
+
+        if (skuResult && !skuResult.includes('AUCUN')) {
+          const skuLines = skuResult.trim().split('\n').filter((l) => l.includes('|'));
+          const skuMap: Record<string, { name: string; qtyDemanded: string }> = {};
+          for (const line of skuLines) {
+            const [sku, name, qty] = line.split('|');
+            if (sku && /^37\d{11}$/.test(sku.trim())) {
+              skuMap[sku.trim()] = { name: (name || '').trim(), qtyDemanded: (qty || '?').trim() };
+            }
+          }
+
+          const skus = Object.keys(skuMap);
+          if (skus.length > 0 && skus.length <= 20) {
+            console.log(`[plugin/analyze] Haiku found ${skus.length} SKUs, checking Octopia stock...`);
+            const stockData = await getStockBySkuList(skus);
+            const stockLines: string[] = [];
+            for (const sku of skus) {
+              const available = stockData[sku];
+              const info = skuMap[sku];
+              if (available !== undefined) {
+                stockLines.push(`  SKU ${sku} | ${info.name} | demandé: ${info.qtyDemanded} | en stock: ${available}`);
+              } else {
+                stockLines.push(`  SKU ${sku} | ${info.name} | demandé: ${info.qtyDemanded} | stock: non trouvé sur Octopia`);
+              }
+            }
+            stockInfo = `\n\n[STOCK OCTOPIA — données temps réel]\n${stockLines.join('\n')}\n\nIMPORTANT : dans ton brouillon, mentionne pour chaque produit catalogue : le SKU, le nom du produit, et le stock disponible. Si le stock est insuffisant, le signaler au gérant entre crochets [⚠️ ...].`;
+            console.log(`[plugin/analyze] stock info ready: ${skus.length} products`);
+          }
+        } else {
+          console.log('[plugin/analyze] Haiku: no catalogue SKUs identified (custom/quote request)');
         }
       }
     } catch (err) {

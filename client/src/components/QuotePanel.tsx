@@ -272,9 +272,15 @@ export default function QuotePanel({
 
         {error && <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>}
 
+        {!f.phone.trim() && (
+          <p style={{ color: '#e53e3e', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>
+            Numéro de téléphone manquant — obligatoire pour générer le devis.
+          </p>
+        )}
+
         <div className="quote-panel-actions">
           <button className="btn-secondary" onClick={() => { setState('idle'); setError(null); }}>Annuler</button>
-          <button className="btn-primary" onClick={() => handleCreateFromForm()} style={{ width: 'auto' }}>Générer le devis</button>
+          <button className="btn-primary" onClick={() => handleCreateFromForm()} disabled={!f.phone.trim()} style={{ width: 'auto', opacity: f.phone.trim() ? 1 : 0.5 }}>Générer le devis</button>
         </div>
       </div>
     );

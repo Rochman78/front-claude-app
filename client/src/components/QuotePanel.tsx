@@ -192,7 +192,7 @@ export default function QuotePanel({
             <div key={idx} style={{ ...rowStyle, alignItems: 'flex-end' }}>
               <div style={{ flex: 3 }}><span style={labelStyle}>Produit</span><input style={inputStyle} value={line.label} onChange={(e) => updLine(idx, 'label', e.target.value)} /></div>
               <div style={{ flex: 1 }}><span style={labelStyle}>Qté</span><input style={inputStyle} value={line.quantity} onChange={(e) => updLine(idx, 'quantity', e.target.value)} /></div>
-              <div style={{ flex: 1 }}><span style={labelStyle}>Prix HT</span><input style={inputStyle} value={line.unitPrice} onChange={(e) => updLine(idx, 'unitPrice', e.target.value)} /></div>
+              <div style={{ flex: 1 }}><span style={labelStyle}>{line.unit === 'm2' ? 'Prix HT' : 'Prix TTC'}</span><input style={inputStyle} value={line.unitPrice} onChange={(e) => updLine(idx, 'unitPrice', e.target.value)} /></div>
               <div style={{ flex: 1 }}>
                 <span style={labelStyle}>Unité</span>
                 <select style={{ ...inputStyle, padding: '3px 4px' }} value={line.unit} onChange={(e) => updLine(idx, 'unit', e.target.value)}>
@@ -342,10 +342,6 @@ export default function QuotePanel({
 
       setExtractedQuote(parsed as unknown as ExtractedQuote | null);
 
-      // Convertir les prix accessoires TTC → HT pour le formulaire
-      const extractedVat = parsed?.vatPercent !== undefined && parsed?.vatPercent !== null ? parseFloat(String(parsed.vatPercent)) : 20;
-      const extractedDivisor = 1 + extractedVat / 100;
-
       setVerifyForm({
         clientType: (customer?.type === 'company' ? 'company' : 'individual'),
         firstName: String(customer?.firstName || ''),
@@ -359,21 +355,13 @@ export default function QuotePanel({
         city: String((customer?.address as Record<string, unknown>)?.city || ''),
         country: String((customer?.address as Record<string, unknown>)?.country || ''),
         lines: displayLines.length > 0
-          ? displayLines.map(l => {
-              const rawPrice = parseFloat(String(l.unitPrice || '0').replace(',', '.')) || 0;
-              const isAccessory = l.type === 'accessory' || (l.unit === 'piece' && l.type !== 'product');
-              // Accessoires : convertir TTC → HT pour afficher tout en HT dans le formulaire
-              const htPrice = isAccessory && extractedVat > 0
-                ? Math.round((rawPrice / extractedDivisor) * 100) / 100
-                : rawPrice;
-              return {
-                label: String(l.label || ''),
-                quantity: String(l.quantity || '1'),
-                unitPrice: String(htPrice),
-                unit: String(l.unit || 'm2'),
-                type: String(l.type || 'product'),
-              };
-            })
+          ? displayLines.map(l => ({
+              label: String(l.label || ''),
+              quantity: String(l.quantity || '1'),
+              unitPrice: String(l.unitPrice || '0'),
+              unit: String(l.unit || 'm2'),
+              type: String(l.type || 'product'),
+            }))
           : [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }],
         vatPercent: parsed?.vatPercent !== undefined && parsed?.vatPercent !== null ? String(parsed.vatPercent) : '20',
         freeShipping: hasTransport,
@@ -428,20 +416,29 @@ export default function QuotePanel({
       const f = verifyForm;
 
       // Construire les lignes produit + accessoires
-      // Tous les prix dans le formulaire sont déjà en HT
-      // (filets = HT grille sur mesure, accessoires = convertis TTC→HT lors du remplissage du formulaire)
+      // Les prix dans le formulaire sont tels que retournés par Haiku :
+      // - Filets sur mesure (m2) : prix HT (grille de prix sur mesure)
+      // - Accessoires (piece) : prix TTC (catalogue) → à convertir en HT ici
       const vatPercent = parseFloat(f.vatPercent) || 0;
       const vatDivisor = 1 + vatPercent / 100;
 
-      const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => ({
-        type: l.type || 'product',
-        label: l.label,
-        description: l.unit === 'm2' ? `Quantité : 1 | Total m² : ${l.quantity} | Délai de production + livraison : environ 14 jours` : undefined,
-        quantity: parseFloat(l.quantity.replace(',', '.')) || 1,
-        unitPrice: parseFloat(l.unitPrice.replace(',', '.')) || 0,
-        unit: l.unit,
-        vatRate: '',
-      }));
+      const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => {
+        const rawPrice = parseFloat(l.unitPrice.replace(',', '.')) || 0;
+        const isAccessory = l.type === 'accessory' || (l.unit === 'piece' && l.type !== 'product');
+        // Accessoires : prix TTC catalogue → convertir en HT avec le taux du formulaire
+        const unitPrice = isAccessory && vatPercent > 0
+          ? Math.round((rawPrice / vatDivisor) * 100) / 100
+          : rawPrice;
+        return {
+          type: l.type || 'product',
+          label: l.label,
+          description: l.unit === 'm2' ? `Quantité : 1 | Total m² : ${l.quantity} | Délai de production + livraison : environ 14 jours` : undefined,
+          quantity: parseFloat(l.quantity.replace(',', '.')) || 1,
+          unitPrice,
+          unit: l.unit,
+          vatRate: '',
+        };
+      });
 
       // Ajouter livraison si offerte (19,99 € TTC → convertir en HT)
       if (f.freeShipping) {

@@ -159,7 +159,18 @@ export default function QuotePanel({
           {f.clientType === 'company' && (
             <div style={rowStyle}>
               <div style={{ flex: 1 }}><span style={labelStyle}>Raison sociale</span><input style={inputStyle} value={f.companyName} onChange={(e) => upd('companyName', e.target.value)} /></div>
-              <div style={{ flex: 1 }}><span style={labelStyle}>N° TVA intra</span><input style={inputStyle} value={f.vatNumber} onChange={(e) => upd('vatNumber', e.target.value)} /></div>
+              <div style={{ flex: 1 }}><span style={labelStyle}>N° TVA intra</span><input style={inputStyle} value={f.vatNumber} onChange={(e) => {
+                const val = e.target.value;
+                upd('vatNumber', val);
+                // Si n° TVA intra renseigné et pays UE hors France → TVA 0% (LIC)
+                const euCountries = ['AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','GR','HR','HU','IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK'];
+                const countryFromVat = val.replace(/[^A-Z]/g, '').substring(0, 2);
+                const countryFromForm = f.country?.toUpperCase() || '';
+                const country = countryFromVat || countryFromForm;
+                if (val.trim().length >= 4 && euCountries.includes(country)) {
+                  upd('vatPercent', '0');
+                }
+              }} /></div>
             </div>
           )}
           <div style={rowStyle}>

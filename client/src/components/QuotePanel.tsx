@@ -72,6 +72,7 @@ export default function QuotePanel({
   const [result, setResult] = useState<QuoteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, setExtractedQuote] = useState<ExtractedQuote | null>(null);
+  const [expectedTTC, setExpectedTTC] = useState<number | null>(null);
   const [verifyForm, setVerifyForm] = useState<VerifyFormData | null>(null);
   const [availableImages, setAvailableImages] = useState<ImageSelection[]>([]);
 
@@ -265,19 +266,34 @@ export default function QuotePanel({
           </div>
         )}
 
-        {/* Récap */}
+        {/* Récap + vérification TTC */}
         {(() => {
           const p = (v: string) => parseFloat((v || '0').replace(',', '.'));
           const r2 = (n: number) => Math.round(n * 100) / 100;
           const totalHT = f.lines.reduce((s, l) => s + r2(p(l.quantity) * p(l.unitPrice)), 0);
           const vat = parseFloat(f.vatPercent || '0');
-          const totalTTC = totalHT * (1 + vat / 100);
+          const totalTTC = r2(totalHT * (1 + vat / 100));
+          const ttcMismatch = expectedTTC !== null && Math.abs(totalTTC - expectedTTC) > 1;
           return (
-            <div style={{ marginBottom: '10px', padding: '8px', background: '#eef7ee', borderRadius: '6px', fontSize: '12px' }}>
-              <div>Total HT : <strong>{totalHT.toFixed(2)} €</strong></div>
-              <div>TVA ({vat}%) : <strong>{(totalHT * vat / 100).toFixed(2)} €</strong></div>
-              <div>Total TTC : <strong>{totalTTC.toFixed(2)} €</strong></div>
-            </div>
+            <>
+              <div style={{ marginBottom: '10px', padding: '8px', background: ttcMismatch ? '#fef2f2' : '#eef7ee', borderRadius: '6px', fontSize: '12px' }}>
+                <div>Total HT : <strong>{totalHT.toFixed(2)} €</strong></div>
+                <div>TVA ({vat}%) : <strong>{(totalHT * vat / 100).toFixed(2)} €</strong></div>
+                <div>Total TTC : <strong>{totalTTC.toFixed(2)} €</strong></div>
+                {expectedTTC !== null && (
+                  <div style={{ marginTop: '4px', color: ttcMismatch ? '#e53e3e' : '#38a169', fontWeight: 600 }}>
+                    {ttcMismatch
+                      ? `⚠ TTC attendu (mail) : ${expectedTTC.toFixed(2)} € — écart de ${Math.abs(totalTTC - expectedTTC).toFixed(2)} €`
+                      : `✓ TTC cohérent avec le mail (${expectedTTC.toFixed(2)} €)`}
+                  </div>
+                )}
+              </div>
+              {ttcMismatch && (
+                <p style={{ color: '#e53e3e', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>
+                  Le montant TTC du devis ne correspond pas au chiffrage accepté par le client. Vérifiez les prix et quantités avant de générer.
+                </p>
+              )}
+            </>
           );
         })()}
 
@@ -291,7 +307,17 @@ export default function QuotePanel({
 
         <div className="quote-panel-actions">
           <button className="btn-secondary" onClick={() => { setState('idle'); setError(null); }}>Annuler</button>
-          <button className="btn-primary" onClick={() => handleCreateFromForm()} disabled={!f.phone.trim()} style={{ width: 'auto', opacity: f.phone.trim() ? 1 : 0.5 }}>Générer le devis</button>
+          {(() => {
+            const p2 = (v: string) => parseFloat((v || '0').replace(',', '.'));
+            const r2b = (n: number) => Math.round(n * 100) / 100;
+            const ht2 = f.lines.reduce((s, l) => s + r2b(p2(l.quantity) * p2(l.unitPrice)), 0);
+            const ttc2 = r2b(ht2 * (1 + (parseFloat(f.vatPercent || '0') / 100)));
+            const mismatch = expectedTTC !== null && Math.abs(ttc2 - expectedTTC) > 1;
+            const canGenerate = f.phone.trim() && !mismatch;
+            return (
+              <button className="btn-primary" onClick={() => handleCreateFromForm()} disabled={!canGenerate} style={{ width: 'auto', opacity: canGenerate ? 1 : 0.5 }}>Générer le devis</button>
+            );
+          })()}
         </div>
       </div>
     );
@@ -342,6 +368,13 @@ export default function QuotePanel({
       } else {
         const err = await response.json().catch(() => ({ error: 'Erreur extraction' }));
         console.warn('[QuotePanel] extract-quote failed:', err);
+      }
+
+      // Sauver le TTC attendu (extrait du mail)
+      if (parsed?.totalTTC !== undefined && parsed?.totalTTC !== null) {
+        setExpectedTTC(parseFloat(String(parsed.totalTTC)) || null);
+      } else {
+        setExpectedTTC(null);
       }
 
       // Construire le formulaire pré-rempli (données Claude si dispo, sinon vide)

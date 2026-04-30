@@ -65,6 +65,7 @@ ${claudeText}
   },
   "subject": "sujet court du devis",
   "vatPercent": nombre (ex: 21),
+  "totalTTC": nombre (le montant TTC total mentionné dans le chiffrage du service client, ex: 512.43),
   "lines": [
     {
       "type": "product|accessory|transport|transport_discount",

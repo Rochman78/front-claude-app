@@ -23,9 +23,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ANTHROPIC_API_KEY non configurée' }, { status: 500 });
     }
 
-    const { text, mailContent, targetLanguage } = await req.json();
+    const { text, mailContent, targetLanguage, detectOnly } = await req.json();
 
-    if (!text || (!mailContent && !targetLanguage)) {
+    if (!detectOnly && (!text || (!mailContent && !targetLanguage))) {
       return NextResponse.json({ error: 'text et (mailContent ou targetLanguage) requis' }, { status: 400 });
     }
 
@@ -51,6 +51,11 @@ export async function POST(req: NextRequest) {
       });
       detectedLanguage = (detectResponse.content[0].type === 'text' ? detectResponse.content[0].text : 'fr').trim().toLowerCase().substring(0, 2);
       console.log(`[plugin/translate] langue détectée: ${detectedLanguage}`);
+    }
+
+    // Mode détection uniquement
+    if (detectOnly) {
+      return NextResponse.json({ detectedLanguage, wasTranslated: false });
     }
 
     // Si français, pas de traduction

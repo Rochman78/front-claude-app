@@ -398,6 +398,25 @@ export default function PluginMain({ context }: PluginMainProps) {
   // QuotePanel visible dès qu'il y a au moins un message Claude
   const showQuotePanel = hasMessages && !claude.isStreaming;
 
+  // Détecter la langue du client quand le mailThread est disponible
+  useEffect(() => {
+    if (!mailThread || pushLang !== 'auto') return;
+    fetch(`${window.location.origin}/api/plugin/translate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ detectOnly: true, mailContent: mailThread }),
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.detectedLanguage && data.detectedLanguage !== 'auto') {
+          setPushLang(data.detectedLanguage);
+          console.log(`[plugin] detected client language: ${data.detectedLanguage}`);
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mailThread]);
+
   // Auto-scroll vers le bas quand du contenu change
   useEffect(() => {
     if (scrollRef.current) {

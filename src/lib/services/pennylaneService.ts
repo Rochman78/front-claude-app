@@ -120,6 +120,7 @@ export interface CreateQuoteParams {
   subject?: string;
   deadline?: string;
   freeText?: string;
+  discountPercent?: number;
   inboxName?: string;
 }
 
@@ -190,6 +191,9 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
     invoice_lines: invoiceLines,
     quote_template_id: templateId,
   };
+  if (params.discountPercent && params.discountPercent > 0) {
+    payload.discount = { type: 'relative', value: String(params.discountPercent) };
+  }
   if (params.freeText) payload.pdf_invoice_free_text = params.freeText;
 
   const t0 = Date.now();

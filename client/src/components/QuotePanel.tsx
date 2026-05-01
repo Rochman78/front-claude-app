@@ -57,6 +57,8 @@ interface VerifyFormData {
   lines: { label: string; quantity: string; unitPrice: string; unit: string; type?: string }[];
   // TVA
   vatPercent: string;
+  // Remise globale
+  discountPercent: string;
   // Livraison offerte
   freeShipping: boolean;
   // Sujet
@@ -226,6 +228,7 @@ export default function QuotePanel({
         <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
           <div style={rowStyle}>
             <div style={{ flex: 1 }}><span style={labelStyle}>TVA (%)</span><input style={inputStyle} value={f.vatPercent} onChange={(e) => upd('vatPercent', e.target.value)} /></div>
+            <div style={{ flex: 1 }}><span style={labelStyle}>Remise (%)</span><input style={inputStyle} value={f.discountPercent} onChange={(e) => upd('discountPercent', e.target.value)} /></div>
           </div>
           <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
             <input type="checkbox" checked={f.freeShipping} onChange={(e) => upd('freeShipping', e.target.checked)} /> Livraison offerte
@@ -270,15 +273,21 @@ export default function QuotePanel({
         {(() => {
           const p = (v: string) => parseFloat((v || '0').replace(',', '.'));
           const r2 = (n: number) => Math.round(n * 100) / 100;
-          const totalHT = f.lines.reduce((s, l) => s + r2(p(l.quantity) * p(l.unitPrice)), 0);
+          const totalHTBrut = f.lines.reduce((s, l) => s + r2(p(l.quantity) * p(l.unitPrice)), 0);
+          const discount = parseFloat(f.discountPercent || '0');
+          const discountAmount = r2(totalHTBrut * discount / 100);
+          const totalHT = r2(totalHTBrut - discountAmount);
           const vat = parseFloat(f.vatPercent || '0');
           const totalTTC = r2(totalHT * (1 + vat / 100));
           const ttcMismatch = expectedTTC !== null && Math.abs(totalTTC - expectedTTC) > 1;
           return (
             <>
               <div style={{ marginBottom: '10px', padding: '8px', background: ttcMismatch ? '#fef2f2' : '#eef7ee', borderRadius: '6px', fontSize: '12px' }}>
-                <div>Total HT : <strong>{totalHT.toFixed(2)} €</strong></div>
-                <div>TVA ({vat}%) : <strong>{(totalHT * vat / 100).toFixed(2)} €</strong></div>
+                <div>Total HT brut : <strong>{totalHTBrut.toFixed(2)} €</strong></div>
+                {discount > 0 && <div>Remise ({discount}%) : <strong>-{discountAmount.toFixed(2)} €</strong></div>}
+                {discount > 0 && <div>Total HT après remise : <strong>{totalHT.toFixed(2)} €</strong></div>}
+                {discount === 0 && <div>Total HT : <strong>{totalHT.toFixed(2)} €</strong></div>}
+                <div>TVA ({vat}%) : <strong>{r2(totalHT * vat / 100).toFixed(2)} €</strong></div>
                 <div>Total TTC : <strong>{totalTTC.toFixed(2)} €</strong></div>
                 {expectedTTC !== null && (
                   <div style={{ marginTop: '4px', color: ttcMismatch ? '#e53e3e' : '#38a169', fontWeight: 600 }}>
@@ -310,7 +319,9 @@ export default function QuotePanel({
           {(() => {
             const p2 = (v: string) => parseFloat((v || '0').replace(',', '.'));
             const r2b = (n: number) => Math.round(n * 100) / 100;
-            const ht2 = f.lines.reduce((s, l) => s + r2b(p2(l.quantity) * p2(l.unitPrice)), 0);
+            const htBrut2 = f.lines.reduce((s, l) => s + r2b(p2(l.quantity) * p2(l.unitPrice)), 0);
+            const disc2 = parseFloat(f.discountPercent || '0');
+            const ht2 = r2b(htBrut2 - r2b(htBrut2 * disc2 / 100));
             const ttc2 = r2b(ht2 * (1 + (parseFloat(f.vatPercent || '0') / 100)));
             const mismatch = expectedTTC !== null && Math.abs(ttc2 - expectedTTC) > 1;
             const canGenerate = f.phone.trim() && !mismatch;
@@ -408,6 +419,7 @@ export default function QuotePanel({
             }))
           : [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }],
         vatPercent: parsed?.vatPercent !== undefined && parsed?.vatPercent !== null ? String(parsed.vatPercent) : '20',
+        discountPercent: parsed?.discountPercent !== undefined && parsed?.discountPercent !== null ? String(parsed.discountPercent) : '0',
         freeShipping: hasTransport,
         subject: String(parsed?.subject || (isCatalogue ? 'Devis' : 'Devis')),
       });
@@ -444,6 +456,7 @@ export default function QuotePanel({
         country: '',
         lines: [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }],
         vatPercent: '20',
+        discountPercent: '0',
         freeShipping: false,
         subject: 'Devis',
       });
@@ -518,6 +531,7 @@ export default function QuotePanel({
         lines: allLines,
         subject: f.subject,
         freeText: undefined as string | undefined,
+        discountPercent: parseFloat(f.discountPercent || '0') || undefined,
         inboxName,
       };
 

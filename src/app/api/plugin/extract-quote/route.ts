@@ -65,7 +65,8 @@ ${claudeText}
   },
   "subject": "sujet court du devis",
   "vatPercent": nombre (ex: 21),
-  "totalTTC": nombre (le montant TTC total mentionné dans le chiffrage du service client, ex: 512.43),
+  "discountPercent": nombre ou 0 (remise globale en % si mentionnée, ex: 10 pour -10%),
+  "totalTTC": nombre (le montant TTC FINAL après remise mentionné dans le chiffrage, ex: 530.46),
   "lines": [
     {
       "type": "product|accessory|transport|transport_discount",

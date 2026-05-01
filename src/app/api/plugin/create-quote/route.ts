@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
       subject: data.subject,
       deadline: data.deadline,
       freeText: data.freeText,
+      discountPercent: data.discountPercent,
       inboxName: data.inboxName,
     });
 

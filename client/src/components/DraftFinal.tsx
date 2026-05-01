@@ -19,7 +19,7 @@ export function usePushDraft(context: FrontSingleConversationContext) {
   const [pushSuccess, setPushSuccess] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
 
-  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string, mailThread?: string, _storeCode?: string) {
+  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string, mailThread?: string, _storeCode?: string, forcedLang?: string) {
     setPushing(true);
     setPushError(null);
     setPushSuccess(false);
@@ -40,12 +40,19 @@ export function usePushDraft(context: FrontSingleConversationContext) {
         } catch { /* fallback: pas de traduction */ }
       }
 
-      // Traduire dans la langue du client (détectée depuis les mails)
+      // Traduire dans la langue choisie (ou détectée depuis les mails)
       let finalText = cleaned;
-      if (mailContent) {
+      const skipTranslation = forcedLang === 'fr';
+      if (!skipTranslation && (mailContent || forcedLang)) {
         try {
-          console.log('[push] translating draft if needed...');
-          const translateBody: Record<string, string> = { text: cleaned, mailContent };
+          console.log('[push] translating draft if needed...', forcedLang ? `forced: ${forcedLang}` : 'auto-detect');
+          const translateBody: Record<string, string> = { text: cleaned };
+          if (forcedLang && forcedLang !== 'auto') {
+            translateBody.targetLanguage = forcedLang;
+          }
+          if (mailContent) {
+            translateBody.mailContent = mailContent;
+          }
           const translateRes = await fetch(`${API_BASE}/api/plugin/translate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

@@ -153,6 +153,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [resumeNote, setResumeNote] = useState<string>('');
   const [resolvedEmail, setResolvedEmail] = useState<string>('');
   const [resolvedName, setResolvedName] = useState<string>('');
+  const [pushLang, setPushLang] = useState<string>('auto');
   const [loadingHistory, setLoadingHistory] = useState(false);
   const prevConvId = useRef<string>('');
   const justSwitchedRef = useRef<boolean>(false);
@@ -177,6 +178,7 @@ export default function PluginMain({ context }: PluginMainProps) {
     setShowQuoteConfirm(false);
     setPreAnalyzeNote('');
     setShowResumePopup(false);
+    setPushLang('auto');
 
     // Restaurer les infos devis depuis le cache mémoire ou la BDD
     const cachedQuote = conversationCache.getQuoteFromCache(frontConvId);
@@ -622,17 +624,34 @@ export default function PluginMain({ context }: PluginMainProps) {
               <button className="btn-outline" onClick={() => { setManualValidation(false); setDraftInvalidated(true); setQuoteDraftText(null); }}>
                 Modifier le brouillon
               </button>
-              <button
-                className={quotePdfUrl ? 'btn-push-pdf' : 'btn-push'}
-                onClick={() => {
-                  const content = quoteDraftText || lastAssistantMsg?.content || '';
-                  const cleaned = quoteDraftText ? content : cleanDraft(content);
-                  pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined, mailThread, store?.code);
-                }}
-                disabled={pushDraft.pushing}
-              >
-                {pushDraft.pushing ? 'Envoi...' : quotePdfUrl ? 'Pousser avec PDF' : 'Pousser dans Front App'}
-              </button>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
+                <select
+                  value={pushLang}
+                  onChange={(e) => setPushLang(e.target.value)}
+                  style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white' }}
+                >
+                  <option value="auto">Langue auto</option>
+                  <option value="fr">Français</option>
+                  <option value="en">English</option>
+                  <option value="de">Deutsch</option>
+                  <option value="nl">Nederlands</option>
+                  <option value="es">Español</option>
+                  <option value="it">Italiano</option>
+                  <option value="pt">Português</option>
+                </select>
+                <button
+                  className={quotePdfUrl ? 'btn-push-pdf' : 'btn-push'}
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    const content = quoteDraftText || lastAssistantMsg?.content || '';
+                    const cleaned = quoteDraftText ? content : cleanDraft(content);
+                    pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined, mailThread, store?.code, pushLang === 'auto' ? undefined : pushLang);
+                  }}
+                  disabled={pushDraft.pushing}
+                >
+                  {pushDraft.pushing ? 'Envoi...' : quotePdfUrl ? 'Pousser avec PDF' : 'Pousser dans Front App'}
+                </button>
+              </div>
             </>
           )}
 

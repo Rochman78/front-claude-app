@@ -323,8 +323,7 @@ export default function QuotePanel({
             const disc2 = parseFloat(f.discountPercent || '0');
             const ht2 = r2b(htBrut2 - r2b(htBrut2 * disc2 / 100));
             const ttc2 = r2b(ht2 * (1 + (parseFloat(f.vatPercent || '0') / 100)));
-            const mismatch = expectedTTC !== null && Math.abs(ttc2 - expectedTTC) > 1;
-            const canGenerate = f.phone.trim() && !mismatch;
+            const canGenerate = !!f.phone.trim();
             return (
               <button className="btn-primary" onClick={() => handleCreateFromForm()} disabled={!canGenerate} style={{ width: 'auto', opacity: canGenerate ? 1 : 0.5 }}>Générer le devis</button>
             );

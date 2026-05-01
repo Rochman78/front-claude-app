@@ -391,7 +391,10 @@ export default function QuotePanel({
       // Construire le formulaire pré-rempli (données Claude si dispo, sinon vide)
       const customer = parsed?.customer as Record<string, unknown> | undefined;
       const lines = (parsed?.lines as Record<string, unknown>[]) || [];
-      const displayLines = lines.filter(l => l.type !== 'transport' && l.type !== 'transport_discount');
+      const displayLines = lines.filter(l =>
+        l.type !== 'transport' && l.type !== 'transport_discount' &&
+        !(String(l.label || '').toLowerCase().match(/remise|discount|korting|rabatt|sconto|descuento/) && parseFloat(String(l.unitPrice || '0')) < 0)
+      );
       const hasTransport = lines.some(l => l.type === 'transport');
       const isCatalogue = displayLines.some(l => l.unit === 'piece');
 

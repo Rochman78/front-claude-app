@@ -484,8 +484,8 @@ export default function PluginMain({ context }: PluginMainProps) {
         />
       )}
 
-      {/* QuotePanel caché (gère les states missing/form/creating/done + enregistre handleClick) */}
-      {showQuotePanel && lastAssistantMsg && !(quoteNumber && quotePennylaneUrl) && (
+      {/* QuotePanel (toujours disponible pour régénérer un devis) */}
+      {showQuotePanel && lastAssistantMsg && (
         <ErrorBoundary>
           <QuotePanel
             claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}
@@ -643,22 +643,8 @@ export default function PluginMain({ context }: PluginMainProps) {
             </button>
           )}
 
-          {/* Devis PDF : modifier (si déjà créé) */}
-          {showQuotePanel && lastAssistantMsg && quoteNumber && quotePennylaneUrl && (
-            <a
-              href={quotePennylaneUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-quote"
-              style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}
-            >
-              📄
-              Modifier le devis PDF
-            </a>
-          )}
-
-          {/* Devis PDF : générer (si pas encore créé) */}
-          {showQuotePanel && lastAssistantMsg && !(quoteNumber && quotePennylaneUrl) && (
+          {/* Devis PDF : toujours permettre de (re)générer */}
+          {showQuotePanel && lastAssistantMsg && (
             <button className="btn-quote" onClick={() => quoteClickRef.current?.()}>
               📄
               Générer devis PDF

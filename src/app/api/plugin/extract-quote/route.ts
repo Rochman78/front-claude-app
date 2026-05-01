@@ -74,7 +74,8 @@ ${claudeText}
       "label": "description du produit",
       "quantity": nombre (IMPORTANT pour les filets/produits en m² : quantity = surface TOTALE en m², PAS le nombre de pièces. Ex : 3 filets de 2.90×3.80m → quantity = 3 × 2.90 × 3.80 = 33.06),
       "unitPrice": "prix unitaire tel quel du texte (ne pas convertir HT/TTC)",
-      "unit": "m2 ou piece"
+      "unit": "m2 ou piece",
+      "description": "UNIQUEMENT pour les filets SUR MESURE : 'Quantité : X | Total m² : Y | Délai de production + livraison : environ 14 jours'. Pour les tailles STANDARD du catalogue, laisser vide ou ne pas inclure ce champ."
     }
   ]
 }`;

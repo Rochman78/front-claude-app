@@ -54,7 +54,7 @@ interface VerifyFormData {
   city: string;
   country: string;
   // Lignes produit (tableau)
-  lines: { label: string; quantity: string; unitPrice: string; unit: string; type?: string }[];
+  lines: { label: string; quantity: string; unitPrice: string; unit: string; type?: string; description?: string }[];
   // TVA
   vatPercent: string;
   // Remise globale
@@ -407,6 +407,7 @@ export default function QuotePanel({
               unitPrice: String(l.unitPrice || '0'),
               unit: String(l.unit || 'm2'),
               type: String(l.type || 'product'),
+              description: l.description ? String(l.description) : undefined,
             }))
           : [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }],
         vatPercent: parsed?.vatPercent !== undefined && parsed?.vatPercent !== null ? String(parsed.vatPercent) : '20',
@@ -480,7 +481,7 @@ export default function QuotePanel({
         return {
           type: l.type || 'product',
           label: l.label,
-          description: l.unit === 'm2' ? `Quantité : 1 | Total m² : ${l.quantity} | Délai de production + livraison : environ 14 jours` : undefined,
+          description: l.description || undefined,
           quantity: parseFloat(l.quantity.replace(',', '.')) || 1,
           unitPrice,
           unit: l.unit,

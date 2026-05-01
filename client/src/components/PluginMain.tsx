@@ -144,6 +144,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [draftInvalidated, setDraftInvalidated] = useState(false);
   const [quotePdfUrl, setQuotePdfUrl] = useState<string | null>(null);
   const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [quotePennylaneUrl, setQuotePennylaneUrl] = useState<string | null>(null);
   const [quoteDraftText, setQuoteDraftText] = useState<string | null>(null);
   const [mailThread, setMailThread] = useState<string>('');

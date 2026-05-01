@@ -316,18 +316,7 @@ export default function QuotePanel({
 
         <div className="quote-panel-actions">
           <button className="btn-secondary" onClick={() => { setState('idle'); setError(null); }}>Annuler</button>
-          {(() => {
-            const p2 = (v: string) => parseFloat((v || '0').replace(',', '.'));
-            const r2b = (n: number) => Math.round(n * 100) / 100;
-            const htBrut2 = f.lines.reduce((s, l) => s + r2b(p2(l.quantity) * p2(l.unitPrice)), 0);
-            const disc2 = parseFloat(f.discountPercent || '0');
-            const ht2 = r2b(htBrut2 - r2b(htBrut2 * disc2 / 100));
-            const ttc2 = r2b(ht2 * (1 + (parseFloat(f.vatPercent || '0') / 100)));
-            const canGenerate = !!f.phone.trim();
-            return (
-              <button className="btn-primary" onClick={() => handleCreateFromForm()} disabled={!canGenerate} style={{ width: 'auto', opacity: canGenerate ? 1 : 0.5 }}>Générer le devis</button>
-            );
-          })()}
+          <button className="btn-primary" onClick={() => handleCreateFromForm()} disabled={!f.phone.trim()} style={{ width: 'auto', opacity: f.phone.trim() ? 1 : 0.5 }}>Générer le devis</button>
         </div>
       </div>
     );

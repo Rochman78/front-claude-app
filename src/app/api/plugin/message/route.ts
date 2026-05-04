@@ -3,6 +3,8 @@ import pool, { initDB } from '@/lib/db';
 import { createChatStream } from '@/lib/services/claudeService';
 import { buildDocumentsText } from '@/lib/documentSelector';
 import { getConversationImages } from '@/lib/services/frontappService';
+import { getStockBySkuList } from '@/lib/services/octopiaService';
+import { callClaude } from '@/lib/services/claudeService';
 
 /**
  * POST /api/plugin/message
@@ -98,12 +100,67 @@ export async function POST(req: NextRequest) {
       [userMsgId, conversationId, 'user', message, now]
     );
 
+    // 5. Vérifier le stock si le message mentionne un produit (non bloquant)
+    let stockInfo = '';
+    try {
+      const catalogueFile = allFiles.find((f) => f.name.toLowerCase().includes('catalogue'));
+      if (catalogueFile && process.env.OCTOPIA_SELLER_ID) {
+        // Construire le contexte : dernier message + historique récent
+        const recentContext = history.slice(-4).map((m) => m.content).join('\n') + '\n' + message;
+        const skuExtractPrompt = `Tu es un assistant qui identifie les produits catalogue mentionnés dans une conversation et retrouve les SKU correspondants.
+
+CONVERSATION RÉCENTE :
+${recentContext.substring(0, 2000)}
+
+CATALOGUE (extrait) :
+${catalogueFile.content.substring(0, 8000)}
+
+RÈGLES :
+- Identifie les produits CATALOGUE STANDARD mentionnés (couleur, taille, finition)
+- Retrouve le SKU (code EAN 13 chiffres commençant par 37) dans le catalogue
+- Retourne UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
+- Si aucun produit catalogue identifié, retourne : AUCUN`;
+
+        const skuResult = await callClaude(
+          [{ role: 'user', content: skuExtractPrompt }],
+          { model: 'claude-haiku-4-5-20251001', maxTokens: 500 }
+        );
+
+        if (skuResult && !skuResult.includes('AUCUN')) {
+          const skuLines = skuResult.trim().split('\n').filter((l) => l.includes('|'));
+          const skuMap: Record<string, { name: string; qtyDemanded: string }> = {};
+          for (const line of skuLines) {
+            const [sku, name, qty] = line.split('|');
+            if (sku && /^37\d{11}$/.test(sku.trim())) {
+              skuMap[sku.trim()] = { name: (name || '').trim(), qtyDemanded: (qty || '?').trim() };
+            }
+          }
+          const skus = Object.keys(skuMap);
+          if (skus.length > 0 && skus.length <= 20) {
+            console.log(`[plugin/message] checking stock for ${skus.length} SKUs`);
+            const stockData = await getStockBySkuList(skus);
+            const stockLines: string[] = [];
+            for (const sku of skus) {
+              const available = stockData[sku];
+              const info = skuMap[sku];
+              stockLines.push(available !== undefined
+                ? `  SKU ${sku} | ${info.name} | demandé: ${info.qtyDemanded} | en stock: ${available}`
+                : `  SKU ${sku} | ${info.name} | demandé: ${info.qtyDemanded} | stock: non trouvé`);
+            }
+            stockInfo = `\n\n[STOCK OCTOPIA — données temps réel — USAGE INTERNE UNIQUEMENT]\n${stockLines.join('\n')}\nMentionne ces infos dans la section QUESTIONS, pas dans le brouillon client.`;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[plugin/message] stock check failed (non-blocking):', err);
+    }
+
     const messages = [
       ...history.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: message },
+      { role: 'user', content: message + stockInfo },
     ];
 
-    // 5. Charger les images de la conversation Front (si disponible)
+    // 6. Charger les images de la conversation Front (si disponible)
     let imageBlocks: { data: string; mediaType: string; name: string; type: 'image' | 'pdf' }[] = [];
     if (conversation.front_conversation_id) {
       try {

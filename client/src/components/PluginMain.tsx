@@ -649,7 +649,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                   onChange={(e) => setPushLang(e.target.value)}
                   style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white' }}
                 >
-                  <option value="auto">Langue auto</option>
+                  <option value="auto">Détection...</option>
                   <option value="fr">Français</option>
                   <option value="en">English</option>
                   <option value="de">Deutsch</option>

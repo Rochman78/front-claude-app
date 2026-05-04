@@ -672,12 +672,12 @@ export default function PluginMain({ context }: PluginMainProps) {
                 >
                   <option value="auto">Détection...</option>
                   <option value="fr">Français</option>
-                  <option value="en">English</option>
-                  <option value="de">Deutsch</option>
-                  <option value="nl">Nederlands</option>
-                  <option value="es">Español</option>
-                  <option value="it">Italiano</option>
-                  <option value="pt">Português</option>
+                  <option value="en">Anglais</option>
+                  <option value="de">Allemand</option>
+                  <option value="nl">Néerlandais</option>
+                  <option value="es">Espagnol</option>
+                  <option value="it">Italien</option>
+                  <option value="pt">Portugais</option>
                 </select>
                 <button
                   className={quotePdfUrl ? 'btn-push-pdf' : 'btn-push'}

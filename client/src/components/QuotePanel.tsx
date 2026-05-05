@@ -480,9 +480,14 @@ export default function QuotePanel({
         vatRate: '',
       }));
 
-      // Ajouter livraison si offerte (19,99 € TTC → convertir en HT)
+      // Ajouter livraison si offerte — prix HT depuis table de lookup
       if (f.freeShipping) {
-        const transportHT = Math.round((19.99 / vatDivisor) * 100) / 100;
+        const transportHtTable: Record<string, number> = {
+          '0': 19.99, '17': 17.09, '18': 16.94, '19': 16.80, '20': 16.66,
+          '21': 16.52, '22': 16.39, '23': 16.25, '24': 16.12, '25': 15.99,
+          '25.5': 15.93, '27': 15.74,
+        };
+        const transportHT = transportHtTable[String(vatPercent)] || Math.round((19.99 / vatDivisor) * 100) / 100;
         allLines.push({ type: 'transport', label: 'Transport sur mesure', quantity: 1, unitPrice: transportHT, unit: 'piece', vatRate: '' });
         allLines.push({ type: 'transport_discount', label: 'Remise transport sur mesure', quantity: 1, unitPrice: -transportHT, unit: 'piece', vatRate: '' });
       }

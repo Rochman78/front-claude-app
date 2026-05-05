@@ -206,7 +206,7 @@ export default function QuotePanel({
             <div key={idx} style={{ ...rowStyle, alignItems: 'flex-end' }}>
               <div style={{ flex: 3 }}><span style={labelStyle}>Produit</span><input style={inputStyle} value={line.label} onChange={(e) => updLine(idx, 'label', e.target.value)} /></div>
               <div style={{ flex: 1 }}><span style={labelStyle}>Qté</span><input style={inputStyle} value={line.quantity} onChange={(e) => updLine(idx, 'quantity', e.target.value)} /></div>
-              <div style={{ flex: 1 }}><span style={labelStyle}>{line.unit === 'm2' ? 'Prix HT' : 'Prix TTC'}</span><input style={inputStyle} value={line.unitPrice} onChange={(e) => updLine(idx, 'unitPrice', e.target.value)} /></div>
+              <div style={{ flex: 1 }}><span style={labelStyle}>Prix HT</span><input style={inputStyle} value={line.unitPrice} onChange={(e) => updLine(idx, 'unitPrice', e.target.value)} /></div>
               <div style={{ flex: 1 }}>
                 <span style={labelStyle}>Unité</span>
                 <select style={{ ...inputStyle, padding: '3px 4px' }} value={line.unit} onChange={(e) => updLine(idx, 'unit', e.target.value)}>
@@ -465,29 +465,20 @@ export default function QuotePanel({
       const f = verifyForm;
 
       // Construire les lignes produit + accessoires
-      // Les prix dans le formulaire sont tels que retournés par Haiku :
-      // - Filets sur mesure (m2) : prix HT (grille de prix sur mesure)
-      // - Accessoires (piece) : prix TTC (catalogue) → à convertir en HT ici
+      // Tous les prix dans le formulaire sont en HT (Haiku les retourne en HT)
+      // PAS de conversion ici — le prix est envoyé tel quel à Pennylane
       const vatPercent = parseFloat(f.vatPercent) || 0;
       const vatDivisor = 1 + vatPercent / 100;
 
-      const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => {
-        const rawPrice = parseFloat(l.unitPrice.replace(',', '.')) || 0;
-        const isAccessory = l.type === 'accessory' || (l.unit === 'piece' && l.type !== 'product');
-        // Accessoires : prix TTC catalogue → convertir en HT avec le taux du formulaire
-        const unitPrice = isAccessory && vatPercent > 0
-          ? Math.round((rawPrice / vatDivisor) * 100) / 100
-          : rawPrice;
-        return {
-          type: l.type || 'product',
-          label: l.label,
-          description: l.description || undefined,
-          quantity: parseFloat(l.quantity.replace(',', '.')) || 1,
-          unitPrice,
-          unit: l.unit,
-          vatRate: '',
-        };
-      });
+      const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => ({
+        type: l.type || 'product',
+        label: l.label,
+        description: l.description || undefined,
+        quantity: parseFloat(l.quantity.replace(',', '.')) || 1,
+        unitPrice: parseFloat(l.unitPrice.replace(',', '.')) || 0,
+        unit: l.unit,
+        vatRate: '',
+      }));
 
       // Ajouter livraison si offerte (19,99 € TTC → convertir en HT)
       if (f.freeShipping) {

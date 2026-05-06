@@ -28,10 +28,11 @@ RÈGLES STRICTES :
 - Chaque produit/accessoire = une ligne séparée dans "lines".
 - Le type de ligne est "product" pour les filets/produits principaux, "accessory" pour les accessoires (kits, câbles, etc.).
 - IMPORTANT — LIGNES SÉPARÉES PAR FILET : si le devis contient plusieurs filets avec des DIMENSIONS DIFFÉRENTES, créer UNE LIGNE PAR FILET (pas une ligne fusionnée). Exemple : Filet n°1 (3,80x7,50m = 28,50 m²) + Filet n°2 (7,50x7,10m = 53,25 m²) → 2 lignes, pas 1. Si les filets sont IDENTIQUES (mêmes dimensions), une seule ligne suffit avec quantity = surface totale.
-- Pour chaque ligne filet (unit="m2") : "quantity" = surface de CE filet (ou surface totale si filets identiques). "unitPrice" = prix par m² tel qu'indiqué dans le texte (ne pas convertir).
-  Exemples de quantity :
-  - 3 filets IDENTIQUES de 2.90×3.80m → 1 ligne, quantity = 3×2.90×3.80 = 33.06
-  - 1 filet 3.80×7.50m + 1 filet 7.50×7.10m → 2 lignes, quantity = 28.50 et 53.25
+- LABEL : quand il y a PLUSIEURS filets identiques, le label DOIT commencer par la quantité. Exemple : "10 x Filet de camouflage rectangulaire vert militaire, finition polyester, 3,41 x 1,76 m". Pour un seul filet, pas de préfixe.
+- Pour chaque ligne filet (unit="m2") : "quantity" = surface TOTALE en m² (nombre × largeur × hauteur). "unitPrice" = prix par m² tel qu'indiqué dans le texte.
+  Exemples :
+  - 10 filets IDENTIQUES de 3,41×1,76m → label="10 x Filet...", quantity = 10×3,41×1,76 = 60,02
+  - 1 filet 3,80×7,50m + 1 filet 7,50×7,10m → 2 lignes séparées, sans préfixe quantité
 - Si la livraison est offerte/gratuite, ajoute une ligne type "transport" et une ligne "transport_discount" avec le même montant en négatif.
 - REMISES : si une remise globale est mentionnée (ex: -10%, remise B2B, remise commerciale), NE PAS créer de ligne "remise" dans lines. Mettre le pourcentage dans le champ "discountPercent" du JSON. Les lignes ne doivent contenir QUE les vrais produits/accessoires/transport.
 - Les labels des produits (champ "label") et le sujet (champ "subject") doivent être rédigés dans la LANGUE DU CLIENT (la langue utilisée dans la réponse service client). Ne traduis PAS en français si le texte est en néerlandais, allemand, espagnol, italien, etc.

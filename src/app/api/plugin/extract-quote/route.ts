@@ -35,7 +35,30 @@ RÈGLES STRICTES :
   - 1 filet 3,80×7,50m + 1 filet 7,50×7,10m → 2 lignes séparées, sans préfixe quantité
 - Si la livraison est offerte/gratuite, ajoute une ligne type "transport" et une ligne "transport_discount" avec le même montant en négatif.
 - REMISES : si une remise globale est mentionnée (ex: -10%, remise B2B, remise commerciale), NE PAS créer de ligne "remise" dans lines. Mettre le pourcentage dans le champ "discountPercent" du JSON. Les lignes ne doivent contenir QUE les vrais produits/accessoires/transport.
-- LABELS MULTILINGUES : pour les produits sur mesure, consulter la TABLE DE CORRESPONDANCE DES NOMS SUR MESURE dans les documents. Assembler le label en combinant type + forme + dimensions + couleur + finition dans la langue de la boutique. NE PAS inventer de traduction, copier les mots EXACTEMENT depuis la table. Pour les accessoires catalogue, utiliser le nom tel qu'il apparaît dans le catalogue de la boutique.
+- LABELS MULTILINGUES : pour nommer les produits sur mesure, utiliser UNIQUEMENT cette table. Assembler : type + forme + dimensions + couleur + finition. NE PAS inventer de traduction.
+
+TABLE DE CORRESPONDANCE (copier les mots EXACTEMENT) :
+Types : FR=Filet de camouflage | DE=Tarnnetz | NL=Camouflagenet | ES=Red de camuflaje | IT=Rete mimetica | PT=Rede de camuflagem | EN=Camouflage net
+Formes : FR=rectangulaire | DE=rechteckig | NL=rechthoekig | ES=rectangular | IT=rettangolare | PT=retangular | EN=rectangular
+         FR=triangulaire | DE=dreieckig | NL=driehoekig | ES=triangular | IT=triangolare | PT=triangular | EN=triangular
+         FR=trapézoïdal | DE=trapezförmig | NL=trapeziumvormig | ES=trapezoidal | IT=trapezoidale | PT=trapezoidal | EN=trapezoidal
+         FR=carré | DE=quadratisch | NL=vierkant | ES=cuadrado | IT=quadrato | PT=quadrado | EN=square
+Finitions : FR=polyester | DE=Polyester | NL=polyester | ES=poliéster | IT=poliestere | PT=poliéster | EN=polyester
+            FR=câble acier | DE=Stahlseil | NL=staalkabel | ES=cable de acero | IT=cavo d'acciaio | PT=cabo de aço | EN=steel cable
+            FR=ignifugé | DE=schwer entflammbar | NL=brandvertragend | ES=ignífugo | IT=ignifugo | PT=ignífugo | EN=fire retardant
+Couleurs : FR=sable | DE=Beige | NL=Zand | ES=Arena | IT=Sabbia | PT=Areia | EN=Sand
+           FR=blanc | DE=Weiß | NL=Wit | ES=Blanco | IT=Bianco | PT=Branco | EN=White
+           FR=vert | DE=Grün | NL=Groen | ES=Verde | IT=Verde | PT=Verde | EN=Green
+           FR=noir | DE=Schwarz | NL=Zwart | ES=Negro | IT=Nero | PT=Preto | EN=Black
+           FR=gris | DE=Grau | NL=Grijs | ES=Gris | IT=Grigio | PT=Cinzento | EN=Grey
+           FR=bleu | DE=Blau | NL=Blauw | ES=Azul | IT=Blu | PT=Azul | EN=Blue
+           FR=militaire | DE=Bundeswehr | NL=Militair | ES=Militar | IT=Militare | PT=Militar | EN=Military
+
+Format label : [Type] [forme] [dimensions], [couleur], [finition]
+Exemple NL : Camouflagenet rechthoekig 2,40 x 5,00 m, Wit, polyester
+Exemple DE : Tarnnetz rechteckig 3,50 x 2,00 m, Beige, Stahlseil
+
+- Pour les accessoires catalogue, utiliser le nom tel qu'il apparaît dans le catalogue de la boutique.
 - Réponds UNIQUEMENT avec le JSON, sans texte avant ou après, sans backticks.`;
 
     const userMessage = `Extrait les données du devis depuis ce texte.

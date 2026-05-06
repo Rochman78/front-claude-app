@@ -35,7 +35,7 @@ RÈGLES STRICTES :
   - 1 filet 3,80×7,50m + 1 filet 7,50×7,10m → 2 lignes séparées, sans préfixe quantité
 - Si la livraison est offerte/gratuite, ajoute une ligne type "transport" et une ligne "transport_discount" avec le même montant en négatif.
 - REMISES : si une remise globale est mentionnée (ex: -10%, remise B2B, remise commerciale), NE PAS créer de ligne "remise" dans lines. Mettre le pourcentage dans le champ "discountPercent" du JSON. Les lignes ne doivent contenir QUE les vrais produits/accessoires/transport.
-- Les labels des produits (champ "label") et le sujet (champ "subject") doivent être rédigés dans la LANGUE DU CLIENT (la langue utilisée dans la réponse service client). Ne traduis PAS en français si le texte est en néerlandais, allemand, espagnol, italien, etc.
+- LABELS MULTILINGUES : pour les produits sur mesure, consulter la TABLE DE CORRESPONDANCE DES NOMS SUR MESURE dans les documents. Assembler le label en combinant type + forme + dimensions + couleur + finition dans la langue de la boutique. NE PAS inventer de traduction, copier les mots EXACTEMENT depuis la table. Pour les accessoires catalogue, utiliser le nom tel qu'il apparaît dans le catalogue de la boutique.
 - Réponds UNIQUEMENT avec le JSON, sans texte avant ou après, sans backticks.`;
 
     const userMessage = `Extrait les données du devis depuis ce texte.

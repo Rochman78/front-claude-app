@@ -18,91 +18,70 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'claudeText requis' }, { status: 400 });
     }
 
-    const systemPrompt = `Tu es un extracteur de données de devis. Tu analyses le texte d'une conversation (mail client + réponse du service client) et tu extrais les informations du devis au format JSON.
+    const systemPrompt = `Tu extrais les données d'un devis depuis un mail de service client. Retourne un JSON structuré.
 
-RÈGLES STRICTES :
-- Extrais UNIQUEMENT les données présentes dans le texte. N'invente RIEN.
-- PRIX ACCESSOIRES : pour les accessoires (type "accessory", unit "piece"), le unitPrice doit être le prix HT. Consulter le TABLEAU DES PRIX HT ACCESSOIRES dans les documents de référence : chercher la ligne de l'accessoire + la colonne du taux de TVA du client. Copier le prix HT DIRECTEMENT du tableau, ne faire AUCUN calcul.
-- PRIX FILETS SUR MESURE : le unitPrice est déjà en HT (grille de prix sur mesure), le copier tel quel.
-- TRANSPORT : utiliser le prix HT du transport depuis le tableau "TRANSPORT SUR MESURE" selon le taux de TVA.
-- Chaque produit/accessoire = une ligne séparée dans "lines".
-- Le type de ligne est "product" pour les filets/produits principaux, "accessory" pour les accessoires (kits, câbles, etc.).
-- IMPORTANT — LIGNES SÉPARÉES PAR FILET : si le devis contient plusieurs filets avec des DIMENSIONS DIFFÉRENTES, créer UNE LIGNE PAR FILET (pas une ligne fusionnée). Exemple : Filet n°1 (3,80x7,50m = 28,50 m²) + Filet n°2 (7,50x7,10m = 53,25 m²) → 2 lignes, pas 1. Si les filets sont IDENTIQUES (mêmes dimensions), une seule ligne suffit avec quantity = surface totale.
-- LABEL : quand il y a PLUSIEURS filets identiques, le label DOIT commencer par la quantité. Exemple : "10 x Filet de camouflage rectangulaire vert militaire, finition polyester, 3,41 x 1,76 m". Pour un seul filet, pas de préfixe.
-- Pour chaque ligne filet (unit="m2") : "quantity" = surface TOTALE en m² (nombre × largeur × hauteur). "unitPrice" = prix par m² tel qu'indiqué dans le texte.
-  Exemples :
-  - 10 filets IDENTIQUES de 3,41×1,76m → label="10 x Filet...", quantity = 10×3,41×1,76 = 60,02
-  - 1 filet 3,80×7,50m + 1 filet 7,50×7,10m → 2 lignes séparées, sans préfixe quantité
-- Si la livraison est offerte/gratuite, ajoute une ligne type "transport" et une ligne "transport_discount" avec le même montant en négatif.
-- REMISES : si une remise globale est mentionnée (ex: -10%, remise B2B, remise commerciale), NE PAS créer de ligne "remise" dans lines. Mettre le pourcentage dans le champ "discountPercent" du JSON. Les lignes ne doivent contenir QUE les vrais produits/accessoires/transport.
-- LABELS MULTILINGUES : pour nommer les produits sur mesure, utiliser UNIQUEMENT cette table. Assembler : type + forme + dimensions + couleur + finition. NE PAS inventer de traduction.
+=== RÈGLE N°1 : STANDARD vs SUR MESURE ===
+- STANDARD = taille existante au catalogue (ex: 2x3, 4x4, 3x6...). Unit = "piece", quantity = nombre d'unités commandées.
+- SUR MESURE = dimensions personnalisées (ex: 3,41 x 1,76 m). Unit = "m2", quantity = surface totale en m².
+  Si plusieurs filets SUR MESURE identiques : quantity = nombre × largeur × hauteur.
+  Exemple : 10 filets de 3,41×1,76m → quantity = 10 × 3,41 × 1,76 = 60,02
 
-TABLE DE CORRESPONDANCE (copier les mots EXACTEMENT) :
-Types : FR=Filet de camouflage | DE=Tarnnetz | NL=Camouflagenet | ES=Red de camuflaje | IT=Rete mimetica | PT=Rede de camuflagem | EN=Camouflage net
-Formes : FR=rectangulaire | DE=rechteckig | NL=rechthoekig | ES=rectangular | IT=rettangolare | PT=retangular | EN=rectangular
-         FR=triangulaire | DE=dreieckig | NL=driehoekig | ES=triangular | IT=triangolare | PT=triangular | EN=triangular
-         FR=trapézoïdal | DE=trapezförmig | NL=trapeziumvormig | ES=trapezoidal | IT=trapezoidale | PT=trapezoidal | EN=trapezoidal
-         FR=carré | DE=quadratisch | NL=vierkant | ES=cuadrado | IT=quadrato | PT=quadrado | EN=square
-Finitions : FR=polyester | DE=Polyester | NL=polyester | ES=poliéster | IT=poliestere | PT=poliéster | EN=polyester
-            FR=câble acier | DE=Stahlseil | NL=staalkabel | ES=cable de acero | IT=cavo d'acciaio | PT=cabo de aço | EN=steel cable
-            FR=ignifugé | DE=schwer entflammbar | NL=brandvertragend | ES=ignífugo | IT=ignifugo | PT=ignífugo | EN=fire retardant
-Couleurs : FR=sable | DE=Beige | NL=Zand | ES=Arena | IT=Sabbia | PT=Areia | EN=Sand
-           FR=blanc | DE=Weiß | NL=Wit | ES=Blanco | IT=Bianco | PT=Branco | EN=White
-           FR=vert | DE=Grün | NL=Groen | ES=Verde | IT=Verde | PT=Verde | EN=Green
-           FR=noir | DE=Schwarz | NL=Zwart | ES=Negro | IT=Nero | PT=Preto | EN=Black
-           FR=gris | DE=Grau | NL=Grijs | ES=Gris | IT=Grigio | PT=Cinzento | EN=Grey
-           FR=bleu | DE=Blau | NL=Blauw | ES=Azul | IT=Blu | PT=Azul | EN=Blue
-           FR=militaire | DE=Bundeswehr | NL=Militair | ES=Militar | IT=Militare | PT=Militar | EN=Military
+=== RÈGLE N°2 : PRIX ===
+- Tous les unitPrice doivent être en HT.
+- Les prix de la grille sur mesure sont déjà en HT → copier tel quel.
+- Les prix du catalogue standard sont en TTC → NE PAS les copier comme HT.
+  Pour les produits standard, copier le prix TTC et mettre unit="piece".
 
-Format label : [Type] [forme] [dimensions], [couleur], [finition]
-Exemple NL : Camouflagenet rechthoekig 2,40 x 5,00 m, Wit, polyester
-Exemple DE : Tarnnetz rechteckig 3,50 x 2,00 m, Beige, Stahlseil
+=== RÈGLE N°3 : LABEL ===
+- Si plusieurs filets identiques, préfixer : "10 x Filet de camouflage..."
+- Pour un seul filet, pas de préfixe.
+- STANDARD : copier le nom du produit tel qu'il apparaît dans le texte.
+- SUR MESURE en langue étrangère, assembler depuis cette table EXACTE :
+  Types : FR=Filet de camouflage | DE=Tarnnetz | NL=Camouflagenet | ES=Red de camuflaje | IT=Rete mimetica | PT=Rede de camuflagem | EN=Camouflage net
+  Formes : FR=rectangulaire | DE=rechteckig | NL=rechthoekig | ES=rectangular | IT=rettangolare | PT=retangular | EN=rectangular
+  FR=triangulaire | DE=dreieckig | NL=driehoekig | ES=triangular | IT=triangolare | PT=triangular | EN=triangular
+  FR=trapézoïdal | DE=trapezförmig | NL=trapeziumvormig | ES=trapezoidal | IT=trapezoidale | PT=trapezoidal | EN=trapezoidal
+  Finitions : FR=polyester | DE=Polyester | NL=polyester | ES=poliéster | IT=poliestere | PT=poliéster | EN=polyester
+  FR=câble acier | DE=Stahlseil | NL=staalkabel | ES=cable de acero | IT=cavo d'acciaio | PT=cabo de aço | EN=steel cable
+  FR=ignifugé | DE=schwer entflammbar | NL=brandvertragend | ES=ignífugo | IT=ignifugo | PT=ignífugo | EN=fire retardant
+  Couleurs : FR=sable/DE=Beige/NL=Zand/ES=Arena/IT=Sabbia/PT=Areia | FR=blanc/DE=Weiß/NL=Wit/ES=Blanco/IT=Bianco/PT=Branco | FR=vert/DE=Grün/NL=Groen/ES=Verde/IT=Verde/PT=Verde | FR=noir/DE=Schwarz/NL=Zwart/ES=Negro/IT=Nero/PT=Preto | FR=gris/DE=Grau/NL=Grijs/ES=Gris/IT=Grigio/PT=Cinzento | FR=bleu/DE=Blau/NL=Blauw/ES=Azul/IT=Blu/PT=Azul | FR=militaire/DE=Bundeswehr/NL=Militair/ES=Militar/IT=Militare/PT=Militar
+  Format : [Type] [forme] [dimensions], [couleur], [finition]
 
-- Pour les accessoires catalogue, utiliser le nom tel qu'il apparaît dans le catalogue de la boutique.
-- Réponds UNIQUEMENT avec le JSON, sans texte avant ou après, sans backticks.`;
+=== RÈGLE N°4 : TRANSPORT + REMISE ===
+- Livraison offerte → 1 ligne "transport" + 1 ligne "transport_discount" (même montant en négatif).
+- Remise globale (ex: -10%) → champ "discountPercent", PAS une ligne dans "lines".
 
-    const userMessage = `Extrait les données du devis depuis ce texte.
+=== RÈGLE N°5 : DESCRIPTION ===
+- SUR MESURE uniquement : description = "Quantité : X | Total m² : Y | Délai de production + livraison : environ 14 jours"
+- STANDARD : pas de description.
 
-Client connu : ${customerName || '(inconnu)'} — ${customerEmail || '(inconnu)'}
-Boutique : ${storeCode || '(inconnue)'}
+Réponds UNIQUEMENT avec le JSON, sans texte ni backticks.`;
 
---- FIL DE MAILS ---
+    const userMessage = `Extrait les données du devis.
+
+Client : ${customerName || '?'} — ${customerEmail || '?'}
+Boutique : ${storeCode || '?'}
+
+--- MAILS ---
 ${mailThread || '(aucun)'}
 
---- RÉPONSE SERVICE CLIENT (contient le chiffrage) ---
+--- CHIFFRAGE SERVICE CLIENT ---
 ${claudeText}
 
---- FORMAT JSON ATTENDU ---
+--- JSON ATTENDU ---
 {
-  "store": "CODE_BOUTIQUE",
+  "store": "${storeCode || ''}",
   "customer": {
-    "type": "individual" ou "company",
-    "firstName": "",
-    "lastName": "",
-    "companyName": "",
-    "email": "",
-    "phone": "",
-    "vatNumber": "",
-    "address": {
-      "address": "rue",
-      "postalCode": "",
-      "city": "",
-      "country": "CODE ISO 2 lettres"
-    }
+    "type": "individual|company",
+    "firstName": "", "lastName": "", "companyName": "",
+    "email": "", "phone": "", "vatNumber": "",
+    "address": { "address": "", "postalCode": "", "city": "", "country": "XX" }
   },
-  "subject": "sujet court du devis",
-  "vatPercent": nombre (ex: 21),
-  "discountPercent": nombre ou 0 (remise globale en % si mentionnée, ex: 10 pour -10%),
-  "totalTTC": nombre (le montant TTC FINAL après remise mentionné dans le chiffrage, ex: 530.46),
+  "vatPercent": 0,
+  "discountPercent": 0,
+  "totalTTC": 0,
   "lines": [
-    {
-      "type": "product|accessory|transport|transport_discount",
-      "label": "description du produit",
-      "quantity": nombre (IMPORTANT pour les filets/produits en m² : quantity = surface TOTALE en m², PAS le nombre de pièces. Ex : 3 filets de 2.90×3.80m → quantity = 3 × 2.90 × 3.80 = 33.06),
-      "unitPrice": "prix unitaire HT (pour les accessoires : chercher dans le TABLEAU DES PRIX HT ACCESSOIRES)",
-      "unit": "m2 ou piece",
-      "description": "UNIQUEMENT pour les filets SUR MESURE : 'Quantité : X | Total m² : Y | Délai de production + livraison : environ 14 jours'. Pour les tailles STANDARD du catalogue, laisser vide ou ne pas inclure ce champ."
-    }
+    { "type": "product|accessory|transport|transport_discount", "label": "", "quantity": 0, "unitPrice": 0, "unit": "m2|piece", "description": "" }
   ]
 }`;
 
@@ -111,7 +90,7 @@ ${claudeText}
 
     const result = await callClaude(
       [{ role: 'user', content: userMessage }],
-      { model: 'claude-haiku-4-5-20251001', maxTokens: 2000, system: systemPrompt }
+      { model: 'claude-sonnet-4-6', maxTokens: 2000, system: systemPrompt }
     );
 
     console.log(`[extract-quote] done in ${Date.now() - t0}ms, result length=${result.length}`);

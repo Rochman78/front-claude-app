@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
         messages: [
           {
             role: 'user',
-            content: `Analyse le dernier message du CLIENT (pas les réponses de la boutique) dans ce fil de mails et détecte la langue utilisée par le client. Réponds UNIQUEMENT avec le code langue ISO 639-1 (fr, en, de, nl, es, it, pt, etc.). Rien d'autre.\n\n${mailContent.substring(0, 3000)}`,
+            content: `Détecte la langue dans laquelle le CLIENT écrit (pas la boutique/service client). Ignore les messages envoyés par la boutique, les signatures, les mentions légales. Cherche le message le plus récent écrit PAR LE CLIENT et identifie sa langue. Réponds UNIQUEMENT avec le code ISO 639-1 (fr, en, de, nl, es, it, pt, etc.).\n\n${mailContent.substring(0, 3000)}`,
           },
         ],
       });

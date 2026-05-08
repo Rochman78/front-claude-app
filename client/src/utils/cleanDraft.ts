@@ -31,11 +31,22 @@ export function cleanDraft(text: string): string {
     cleaned = cleaned.substring(bonjourIndex);
   }
 
-  // Couper avant la section QUESTIONS (si elle existe)
+  // Couper avant la section QUESTIONS (toutes langues)
   const questionsPatterns = [
     /\nQUESTIONS?\s*\n/i,
+    /\nPREGUNTAS?\s*\n/i,
+    /\nFRAGEN\s*\n/i,
+    /\nVRAGEN\s*\n/i,
+    /\nDOMANDE\s*\n/i,
+    /\nPERGUNTAS?\s*\n/i,
     /\nPas de question/i,
     /\nTu peux valider/i,
+    /\nSin preguntas/i,
+    /\nKeine Fragen/i,
+    /\nGeen vragen/i,
+    /\nNessuna domanda/i,
+    /\n\d+\.\s*\[⚠️/,
+    /\nStock vérifié/i,
   ];
   for (const pattern of questionsPatterns) {
     const match = cleaned.match(pattern);

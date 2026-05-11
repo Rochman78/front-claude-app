@@ -59,19 +59,35 @@ export function cleanDraft(text: string): string {
   // Supprimer les séparateurs résiduels en fin de texte
   cleaned = cleaned.replace(/\n[-—=]{2,}\s*$/, '');
 
-  // Supprimer les commentaires internes de Claude entre crochets [⚠️ ...]
+  // Supprimer TOUS les commentaires internes entre crochets [...]
   cleaned = cleaned.replace(/\n?\[⚠️[^\]]*\]/g, '');
   cleaned = cleaned.replace(/\n?\[⚠[^\]]*\]/g, '');
   cleaned = cleaned.replace(/\n?\[ATTENTION[^\]]*\]/g, '');
   cleaned = cleaned.replace(/\n?\[INFO MANQUANTE[^\]]*\]/g, '');
-  cleaned = cleaned.replace(/\n?\[PJ À JOINDRE[^\]]*\]/g, '');
+  cleaned = cleaned.replace(/\n?\[PJ[^\]]*\]/g, '');
+  cleaned = cleaned.replace(/\n?\[TARIF[^\]]*\]/g, '');
+  cleaned = cleaned.replace(/\n?\[STOCK[^\]]*\]/g, '');
+  // Catch-all : tout ce qui ressemble à un commentaire interne entre crochets avec emoji warning
+  cleaned = cleaned.replace(/\n?\[[⚠️🔔📌]*[^\]]{5,}\]/g, '');
 
-  // Supprimer les signatures et formules de politesse en fin de mail
+  // Supprimer les signatures et formules de politesse en fin de mail (toutes langues)
   const banned = [
     'Cordialement', 'Bien à vous', 'Bien cordialement',
     "L'équipe", 'Le service client', 'À votre disposition',
     'Belle journée', 'Bonne journée', 'Excellente journée',
     'Nous vous souhaitons', 'À bientôt',
+    // ES
+    'Saludos cordiales', 'Atentamente', 'Un cordial saludo',
+    // DE
+    'Mit freundlichen Grüßen', 'Freundliche Grüße', 'Beste Grüße',
+    // NL
+    'Met vriendelijke groet', 'Hartelijke groet',
+    // IT
+    'Cordiali saluti', 'Distinti saluti',
+    // PT
+    'Atenciosamente', 'Cumprimentos',
+    // EN
+    'Best regards', 'Kind regards', 'Sincerely',
   ];
 
   const lines = cleaned.split('\n');

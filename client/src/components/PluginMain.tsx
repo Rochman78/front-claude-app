@@ -399,44 +399,18 @@ export default function PluginMain({ context }: PluginMainProps) {
   const showQuotePanel = hasMessages && !claude.isStreaming;
 
   // Détecter la langue du client quand le mailThread est disponible
-  // Détecter la langue du client quand le brouillon est prêt
+  // Déterminer la langue par défaut depuis le store code
   useEffect(() => {
-    if (pushLang !== 'auto' || !showDraft) return;
-
-    // Récupérer le contenu mail (depuis mailThread ou le SDK si vide)
-    (async () => {
-      let content = mailThread;
-      if (!content) {
-        try {
-          const msgsRes = await context.listMessages();
-          const msgs = msgsRes.results as unknown as { content?: { body?: string } }[];
-          content = msgs.map((m) => {
-            const body = m.content?.body || '';
-            return body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-          }).filter(Boolean).join('\n\n');
-        } catch { /* fallback */ }
-      }
-      if (!content) { setPushLang('fr'); return; }
-
-      try {
-        const res = await fetch(`${window.location.origin}/api/plugin/translate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ detectOnly: true, mailContent: content }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.detectedLanguage) {
-            setPushLang(data.detectedLanguage);
-            console.log(`[plugin] detected client language: ${data.detectedLanguage}`);
-          }
-        }
-      } catch {
-        setPushLang('fr');
-      }
-    })();
+    if (pushLang !== 'auto' || !store) return;
+    const storeLangMap: Record<string, string> = {
+      LFC: 'fr', LVO: 'fr', COCO: 'fr', MON: 'fr', UNI: 'fr',
+      TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
+    };
+    const lang = storeLangMap[store.code] || 'fr';
+    setPushLang(lang);
+    console.log(`[plugin] language from store ${store.code}: ${lang}`);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDraft]);
+  }, [store?.code]);
 
   // Auto-scroll vers le bas quand du contenu change
   useEffect(() => {

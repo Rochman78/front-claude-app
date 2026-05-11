@@ -31,14 +31,14 @@ export function cleanDraft(text: string): string {
     cleaned = cleaned.substring(bonjourIndex);
   }
 
-  // Couper avant la section QUESTIONS (toutes langues)
+  // Couper avant la section QUESTIONS (toutes langues, avec ou sans formatage markdown)
   const questionsPatterns = [
-    /\nQUESTIONS?\s*\n/i,
-    /\nPREGUNTAS?\s*\n/i,
-    /\nFRAGEN\s*\n/i,
-    /\nVRAGEN\s*\n/i,
-    /\nDOMANDE\s*\n/i,
-    /\nPERGUNTAS?\s*\n/i,
+    /\n\**\s*QUESTIONS?\s*\**\s*\n/i,
+    /\n\**\s*PREGUNTAS?\s*\**\s*\n/i,
+    /\n\**\s*FRAGEN\s*\**\s*\n/i,
+    /\n\**\s*VRAGEN\s*\**\s*\n/i,
+    /\n\**\s*DOMANDE\s*\**\s*\n/i,
+    /\n\**\s*PERGUNTAS?\s*\**\s*\n/i,
     /\nPas de question/i,
     /\nTu peux valider/i,
     /\nSin preguntas/i,
@@ -55,6 +55,9 @@ export function cleanDraft(text: string): string {
       break;
     }
   }
+
+  // Supprimer les séparateurs résiduels en fin de texte
+  cleaned = cleaned.replace(/\n[-—=]{2,}\s*$/, '');
 
   // Supprimer les commentaires internes de Claude entre crochets [⚠️ ...]
   cleaned = cleaned.replace(/\n?\[⚠️[^\]]*\]/g, '');

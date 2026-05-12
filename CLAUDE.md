@@ -1,0 +1,139 @@
+# CLAUDE.md — Conventions et pièges connus
+
+## Architecture
+
+```
+front-claude-app/
+├── client/                          # Plugin Front App (Vite + React)
+│   └── src/
+│       ├── components/
+│       │   ├── PluginMain.tsx        # Composant principal — state, multitask, conversation switch
+│       │   ├── QuotePanel.tsx        # Formulaire devis PDF — extraction, vérification, envoi Pennylane
+│       │   ├── DraftFinal.tsx        # Push brouillon dans Front — traduction, cleanDraft
+│       │   └── ClaudeChat.tsx        # Affichage messages chat
+│       ├── hooks/
+│       │   ├── useClaude.ts          # Hook streaming — analyze, sendMessage, multitask
+│       │   └── useConversationCache.ts  # Cache mémoire + BDD conversations
+│       ├── utils/
+│       │   └── cleanDraft.ts         # Nettoyage brouillon avant push (questions, signatures, commentaires)
+│       └── providers/
+│           └── FrontContext.tsx       # Context Front SDK
+├── src/
+│   ├── app/api/
+│   │   ├── plugin/
+│   │   │   ├── analyze/route.ts      # Analyse mail — Claude Sonnet + stock Octopia + images
+│   │   │   ├── message/route.ts      # Messages de suivi — même logique que analyze
+│   │   │   ├── extract-quote/route.ts # Extraction données devis — Claude Sonnet
+│   │   │   ├── create-quote/route.ts  # Création devis Pennylane + appendices
+│   │   │   ├── push-draft/route.ts    # Push brouillon dans Front (avec ou sans PDF)
+│   │   │   ├── translate/route.ts     # Détection langue + traduction — Claude Sonnet
+│   │   │   ├── stock/route.ts         # Endpoint stock Octopia
+│   │   │   ├── conversation-images/   # Images d'une conversation Front
+│   │   │   └── quote-history/route.ts # Historique devis par conversation
+│   │   └── frontapp/
+│   │       └── draft-with-quote/      # Push brouillon + PDF (legacy, utilisé par app Next.js)
+│   └── lib/services/
+│       ├── claudeService.ts          # Appels Claude API — streaming, buildMessages, images/PDF
+│       ├── pennylaneService.ts       # Création devis + upload appendices Pennylane
+│       ├── frontappService.ts        # API Front — messages, images, canaux
+│       └── octopiaService.ts         # API Octopia — auth OAuth2, stock par SKU
+```
+
+## Données en BDD (PostgreSQL)
+
+- **agents** : instructions système par boutique (store_code)
+- **agent_files** : documents de référence (catalogue, devis-sur-mesure, CGV, etc.)
+- **claude_conversations / claude_messages** : historique conversations plugin
+- **conversation_quotes** : historique devis créés par conversation
+- **shared_files** : fichiers partagés entre agents
+
+## Pièges connus — NE PAS reproduire
+
+### Prix accessoires
+- Les prix catalogue sont en **TTC**. Les prix grille sur mesure sont en **HT**.
+- NE JAMAIS convertir TTC→HT dans le code. La conversion se fait via le **tableau de lookup** dans le document `devis-sur-mesure` (pré-calculé par taux de TVA).
+- Le code QuotePanel envoie les prix **tels quels** du formulaire à Pennylane.
+- PIÈGE : Haiku/Sonnet peut convertir de son côté → double conversion. Le prompt dit "copier depuis le tableau, pas calculer".
+
+### PRODUCT_ID_FILET (Pennylane)
+- Le produit `14369303` dans Pennylane a une **description template** ("Quantité : ** | Total m² | Délai...").
+- Utiliser ce product_id **uniquement** pour les filets sur mesure (unit=m2, quantité décimale).
+- Pour les produits standard catalogue : **pas de product_id** → ligne libre sans description template.
+
+### cleanDraft (nettoyage avant push)
+- Doit supprimer : QUESTIONS/PREGUNTAS/FRAGEN/etc., commentaires [⚠️...], signatures (toutes langues)
+- Les sections QUESTIONS peuvent être formatées en **bold markdown** (`**PREGUNTAS**`) → le regex doit gérer `\**`
+- Chercher le "Bonjour" **après** le marqueur BROUILLON/MAIL FINAL (pas le Bonjour du mail client)
+
+### Multitask
+- NE PAS abort les streams précédents lors d'un nouveau `analyze` (les streams continuent en background)
+- `frontConvIdRef` est la clé pour empêcher les streams de mettre à jour l'UI du mauvais mail
+- `onBackgroundComplete` sauve les résultats en cache mémoire quand un stream finit en arrière-plan
+- `justSwitchedRef` empêche le cache de se polluer lors d'un changement de conversation
+
+### Langue
+- Claude rédige TOUJOURS en **français** (langue de travail du gérant)
+- La traduction se fait au moment du **push** dans Front App
+- Le sélecteur de langue est pré-rempli par le **store code** (TAR→de, RED→es, etc.), pas par détection IA
+- La traduction utilise Claude Sonnet
+
+### Canal Front (email vs chat vs Instagram)
+- Le type de canal est détecté depuis `conv.last_message.type` et le sujet de la conversation
+- Instagram/Facebook → matcher par nom dans les canaux custom
+- Si erreur 403 "channel type mismatch" → retry sans channel_id
+- Si erreur 400 "channel_id missing" → Front exige un channel_id (conversations custom)
+
+### Images / PJ
+- Images récupérées côté **backend** via Front REST API (pas le SDK client)
+- Filtrage : `metadata.is_inline` < 100KB → exclu (logos), > 100KB → gardé (photos)
+- Noms commençant par "logo/signature/banner" → exclus
+- PDFs envoyés comme `DocumentBlockParam` (pas convertis en image)
+- Magic bytes pour détecter le vrai format (Front ment parfois sur le content_type)
+- Images > 3.7MB compressées via `sharp` (max 2000x2000, JPEG 80%)
+
+### Devis PDF
+- Standard (catalogue) : unit=piece, pas de description, pas de product_id
+- Sur mesure : unit=m2, quantité décimale, product_id=PRODUCT_ID_FILET, description délai
+- Transport : prix HT depuis table de lookup (pas de calcul)
+- TVA intra (LIC) : si n° TVA intra renseigné + pays UE hors FR → TVA auto à 0% + mention légale Article 138
+- Remise globale → champ `discountPercent` (pas une ligne produit)
+- Téléphone obligatoire pour générer
+
+### Stock Octopia
+- Auth OAuth2 avec `sellerId` en **header** (pas query param)
+- Credentials : `SAS ZEPHYR O.S.C` / seller 223879
+- SKU = `sellerProductReference` = code EAN catalogue
+- Info stock dans la section QUESTIONS uniquement (jamais dans le brouillon client)
+
+## Boutiques et langues
+
+| Code | Nom | Langue | Pennylane Template |
+|------|-----|--------|-------------------|
+| LFC | Le Filet de Camouflage | FR | 253634 |
+| LVO | Le Voile d'Ombrage | FR | 877143 |
+| COCO | Ma Toile Coco | FR | 257180 |
+| MON | Mon Ombrage | FR | 883869 |
+| UNI | L'Univers du Camouflage | FR | 883875 |
+| TAR | Tarnnetz | DE | 257174 |
+| HET | Het Camouflagenet | NL | 257162 |
+| RED | Red de Camuflaje | ES | 257168 |
+| RETE | Rete Mimetica | IT | 861190 |
+
+## Commandes utiles
+
+```bash
+# Accéder à la BDD
+export DATABASE_URL=$(grep DATABASE_URL .env | cut -d'=' -f2-)
+psql "$DATABASE_URL"
+
+# Voir les instructions d'un agent
+psql "$DATABASE_URL" -c "SELECT instructions FROM agents WHERE store_code = 'LFC';"
+
+# Voir un document agent
+psql "$DATABASE_URL" -c "SELECT content FROM agent_files WHERE name LIKE '%devis%' AND agent_id = (SELECT id FROM agents WHERE store_code = 'LFC');"
+
+# Build
+npm run build
+
+# Les .env ne sont PAS dans git — modifier sur Render directement
+```

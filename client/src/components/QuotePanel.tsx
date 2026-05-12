@@ -477,7 +477,15 @@ export default function QuotePanel({
       const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => ({
         type: l.type || 'product',
         label: l.label,
-        description: undefined,
+        description: (() => {
+          if (!l.description) return undefined;
+          // Pas de description si unit=piece (standard catalogue)
+          if (l.unit === 'piece') return undefined;
+          // Pas de description si la quantité est un entier (standard en m2 par erreur Sonnet)
+          const qty = parseFloat(l.quantity.replace(',', '.')) || 0;
+          if (qty > 0 && qty === Math.floor(qty) && qty <= 20) return undefined;
+          return l.description;
+        })(),
         quantity: parseFloat(l.quantity.replace(',', '.')) || 1,
         unitPrice: parseFloat(l.unitPrice.replace(',', '.')) || 0,
         unit: l.unit,

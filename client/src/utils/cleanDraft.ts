@@ -67,8 +67,10 @@ export function cleanDraft(text: string): string {
   cleaned = cleaned.replace(/\n?\[PJ[^\]]*\]/g, '');
   cleaned = cleaned.replace(/\n?\[TARIF[^\]]*\]/g, '');
   cleaned = cleaned.replace(/\n?\[STOCK[^\]]*\]/g, '');
-  // Catch-all : tout ce qui ressemble à un commentaire interne entre crochets avec emoji warning
+  // Catch-all : tout entre crochets avec 5+ caractères
   cleaned = cleaned.replace(/\n?\[[⚠️🔔📌]*[^\]]{5,}\]/g, '');
+  // Catch-all : toute ligne commençant par ⚠ (avec ou sans crochets)
+  cleaned = cleaned.replace(/\n⚠️?[^\n]*/g, '');
 
   // Supprimer les signatures et formules de politesse en fin de mail (toutes langues)
   const banned = [

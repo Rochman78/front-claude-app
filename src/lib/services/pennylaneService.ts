@@ -175,7 +175,7 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
       raw_currency_unit_price: String(line.unitPrice || 0),
       vat_rate: vatRate,
       unit: line.unit || (isProduct ? 'm2' : 'piece'),
-      ...(isProduct ? { product_id: PRODUCT_ID_FILET } : {}),
+      ...(isProduct && line.unit === 'm2' && (line.quantity || 0) % 1 !== 0 ? { product_id: PRODUCT_ID_FILET } : {}),
       ...(line.description ? { description: line.description } : {}),
     };
   });

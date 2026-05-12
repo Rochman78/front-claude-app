@@ -308,16 +308,42 @@ export default function QuotePanel({
 
         {error && <p style={{ color: 'var(--error)', fontSize: '12px', marginBottom: '8px' }}>{error}</p>}
 
-        {!f.phone.trim() && (
-          <p style={{ color: '#e53e3e', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>
-            Numéro de téléphone manquant — obligatoire pour générer le devis.
-          </p>
-        )}
+        {/* Vérification champs manquants */}
+        {(() => {
+          const missing: string[] = [];
+          if (!f.firstName.trim()) missing.push('Prénom');
+          if (!f.lastName.trim() && f.clientType === 'individual') missing.push('Nom');
+          if (f.clientType === 'company' && !f.companyName.trim()) missing.push('Raison sociale');
+          if (!f.email.trim()) missing.push('Email');
+          if (!f.phone.trim()) missing.push('Téléphone');
+          if (!f.street.trim()) missing.push('Rue');
+          if (!f.postalCode.trim()) missing.push('Code postal');
+          if (!f.city.trim()) missing.push('Ville');
+          if (!f.country.trim()) missing.push('Pays');
+          if (f.lines.length === 0 || !f.lines[0].label.trim()) missing.push('Produit');
 
-        <div className="quote-panel-actions">
-          <button className="btn-secondary" onClick={() => { setState('idle'); setError(null); }}>Annuler</button>
-          <button className="btn-primary" onClick={() => handleCreateFromForm()} disabled={!f.phone.trim()} style={{ width: 'auto', opacity: f.phone.trim() ? 1 : 0.5 }}>Générer le devis</button>
-        </div>
+          const hasPhone = !!f.phone.trim();
+          const hasMissing = missing.length > 0;
+
+          return (
+            <>
+              {!hasPhone && (
+                <p style={{ color: '#e53e3e', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>
+                  Numéro de téléphone manquant — obligatoire pour générer le devis.
+                </p>
+              )}
+              {hasMissing && hasPhone && (
+                <p style={{ color: '#dd6b20', fontSize: '12px', marginBottom: '8px' }}>
+                  Champs manquants : {missing.join(', ')}
+                </p>
+              )}
+              <div className="quote-panel-actions">
+                <button className="btn-secondary" onClick={() => { setState('idle'); setError(null); }}>Annuler</button>
+                <button className="btn-primary" onClick={() => handleCreateFromForm()} disabled={!hasPhone} style={{ width: 'auto', opacity: hasPhone ? 1 : 0.5 }}>Générer le devis</button>
+              </div>
+            </>
+          );
+        })()}
       </div>
     );
   }

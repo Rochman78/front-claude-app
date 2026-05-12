@@ -47,7 +47,11 @@ export async function POST(req: NextRequest) {
   Couleurs : FR=sable/DE=Beige/NL=Zand/ES=Arena/IT=Sabbia/PT=Areia | FR=blanc/DE=Weiß/NL=Wit/ES=Blanco/IT=Bianco/PT=Branco | FR=vert/DE=Grün/NL=Groen/ES=Verde/IT=Verde/PT=Verde | FR=noir/DE=Schwarz/NL=Zwart/ES=Negro/IT=Nero/PT=Preto | FR=gris/DE=Grau/NL=Grijs/ES=Gris/IT=Grigio/PT=Cinzento | FR=bleu/DE=Blau/NL=Blauw/ES=Azul/IT=Blu/PT=Azul | FR=militaire/DE=Bundeswehr/NL=Militair/ES=Militar/IT=Militare/PT=Militar
   Format : [Type] [forme] [dimensions], [couleur], [finition]
 
-=== RÈGLE N°4 : TRANSPORT + REMISE ===
+=== RÈGLE N°4 : PLUSIEURS OPTIONS ===
+- Si le chiffrage contient PLUSIEURS OPTIONS (ex: option polyester + option câble acier), regarder le fil de mails pour trouver LAQUELLE le client a choisie. Extraire UNIQUEMENT l'option choisie.
+- Si le client n'a pas encore choisi, extraire l'option la plus chère (câble acier > polyester).
+
+=== RÈGLE N°5 : TRANSPORT + REMISE ===
 - Livraison offerte → 1 ligne "transport" + 1 ligne "transport_discount" (même montant en négatif).
 - Remise globale (ex: -10%) → champ "discountPercent", PAS une ligne dans "lines".
 

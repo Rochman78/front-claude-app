@@ -333,17 +333,21 @@ export default function QuotePanel({
     setState('extracting');
 
     try {
-      // Récupérer le fil de mails si pas déjà disponible
+      // Toujours récupérer le fil de mails depuis le SDK Front (plus fiable que le cache)
       let resolvedMailThread = mailThread;
-      if (!resolvedMailThread && onListMessages) {
+      if (onListMessages) {
         try {
           const msgsRes = await onListMessages();
-          const msgs = msgsRes.results as unknown as { content?: { body?: string } }[];
-          resolvedMailThread = msgs.map((m) => {
+          const msgs = msgsRes.results as unknown as { content?: { body?: string }; author?: { name?: string }; is_inbound?: boolean }[];
+          const freshThread = msgs.map((m) => {
             const body = m.content?.body || '';
-            return body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-          }).filter(Boolean).join('\n\n');
-        } catch { /* fallback */ }
+            const text = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            const who = m.is_inbound ? 'CLIENT' : 'BOUTIQUE';
+            const author = m.author?.name || '';
+            return text ? `[${who}${author ? ' — ' + author : ''}] ${text}` : '';
+          }).filter(Boolean).join('\n\n---\n\n');
+          if (freshThread) resolvedMailThread = freshThread;
+        } catch { /* fallback au mailThread prop */ }
       }
 
       // Appeler Claude pour extraire les données structurées du devis

@@ -477,7 +477,7 @@ export default function QuotePanel({
       const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => ({
         type: l.type || 'product',
         label: l.label,
-        description: (l.unit === 'piece' || !l.description) ? undefined : l.description,
+        description: undefined,
         quantity: parseFloat(l.quantity.replace(',', '.')) || 1,
         unitPrice: parseFloat(l.unitPrice.replace(',', '.')) || 0,
         unit: l.unit,

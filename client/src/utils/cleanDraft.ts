@@ -59,18 +59,8 @@ export function cleanDraft(text: string): string {
   // Supprimer les séparateurs résiduels en fin de texte
   cleaned = cleaned.replace(/\n[-—=]{2,}\s*$/, '');
 
-  // Supprimer TOUS les commentaires internes entre crochets [...]
-  cleaned = cleaned.replace(/\n?\[⚠️[^\]]*\]/g, '');
-  cleaned = cleaned.replace(/\n?\[⚠[^\]]*\]/g, '');
-  cleaned = cleaned.replace(/\n?\[ATTENTION[^\]]*\]/g, '');
-  cleaned = cleaned.replace(/\n?\[INFO MANQUANTE[^\]]*\]/g, '');
-  cleaned = cleaned.replace(/\n?\[PJ[^\]]*\]/g, '');
-  cleaned = cleaned.replace(/\n?\[TARIF[^\]]*\]/g, '');
-  cleaned = cleaned.replace(/\n?\[STOCK[^\]]*\]/g, '');
-  // Catch-all : tout entre crochets avec 5+ caractères
-  cleaned = cleaned.replace(/\n?\[[⚠️🔔📌]*[^\]]{5,}\]/g, '');
-  // Catch-all : toute ligne commençant par ⚠ (avec ou sans crochets)
-  cleaned = cleaned.replace(/\n⚠️?[^\n]*/g, '');
+  // Supprimer TOUT ce qui est entre crochets [...] (commentaires internes de l'agent)
+  cleaned = cleaned.replace(/\n?\[[^\]]{3,}\]/g, '');
 
   // Supprimer les signatures et formules de politesse en fin de mail (toutes langues)
   const banned = [

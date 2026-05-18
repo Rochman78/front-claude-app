@@ -181,7 +181,7 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
   });
 
   const today = new Date().toISOString().slice(0, 10);
-  const defaultDeadline = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  const defaultDeadline = new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10);
 
   const payload: Record<string, unknown> = {
     date: today,

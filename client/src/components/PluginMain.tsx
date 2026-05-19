@@ -515,16 +515,6 @@ export default function PluginMain({ context }: PluginMainProps) {
               i
             </button>
           </div>
-          {showTemplateSummary && (
-            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-              onClick={() => setShowTemplateSummary(null)}>
-              <div style={{ background: 'white', borderRadius: '12px', padding: '16px', maxWidth: '300px', width: '90%', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', whiteSpace: 'pre-wrap' }}
-                onClick={(e) => e.stopPropagation()}>
-                <p style={{ fontSize: '13px', lineHeight: '1.5' }}>{showTemplateSummary}</p>
-                <button className="btn-outline" style={{ marginTop: '10px', width: '100%' }} onClick={() => setShowTemplateSummary(null)}>Fermer</button>
-              </div>
-            </div>
-          )}
           {/* Liens PJ + procédure si template sélectionné */}
           {selectedTemplateId && (() => {
             const tpl = templates.find((t) => t.id === selectedTemplateId);
@@ -653,8 +643,8 @@ export default function PluginMain({ context }: PluginMainProps) {
             <p style={{ fontSize: '14px', marginBottom: '12px', fontWeight: 600 }}>
               Reprendre avec Claude
             </p>
-            {templates.length > 0 && (
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '10px' }}>
+            {templates.length > 0 && (<>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px' }}>
                 <select
                   value={selectedTemplateId}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
@@ -679,7 +669,23 @@ export default function PluginMain({ context }: PluginMainProps) {
                   i
                 </button>
               </div>
-            )}
+              {selectedTemplateId && (() => {
+                const tpl = templates.find((t) => t.id === selectedTemplateId);
+                if (!tpl || (!tpl.attachment_url && !tpl.procedure_url)) return null;
+                return (
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '8px', fontSize: '11px' }}>
+                    {tpl.procedure_url && (
+                      <a href={tpl.procedure_url} target="_blank" rel="noopener noreferrer" style={{ color: '#4a90d9', textDecoration: 'none' }}>
+                        Voir la procédure
+                      </a>
+                    )}
+                    {tpl.attachment_url && (
+                      <span style={{ color: '#38a169' }}>PJ auto jointe au push</span>
+                    )}
+                  </div>
+                );
+              })()}
+            </>)}
             <textarea
               value={resumeNote}
               onChange={(e) => setResumeNote(e.target.value)}
@@ -846,6 +852,18 @@ export default function PluginMain({ context }: PluginMainProps) {
             >
               Reprendre à 0
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Popup résumé template — z-index élevé, au-dessus de tout */}
+      {showTemplateSummary && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}
+          onClick={() => setShowTemplateSummary(null)}>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '16px', maxWidth: '300px', width: '90%', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', whiteSpace: 'pre-wrap' }}
+            onClick={(e) => e.stopPropagation()}>
+            <p style={{ fontSize: '13px', lineHeight: '1.5' }}>{showTemplateSummary}</p>
+            <button className="btn-outline" style={{ marginTop: '10px', width: '100%' }} onClick={() => setShowTemplateSummary(null)}>Fermer</button>
           </div>
         </div>
       )}

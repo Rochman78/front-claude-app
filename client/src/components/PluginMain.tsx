@@ -141,6 +141,7 @@ export default function PluginMain({ context }: PluginMainProps) {
     console.log(`[plugin] background result cached for ${bgFrontConvId}: ${messages.length} msgs`);
   };
   const [templates, setTemplates] = useState<{ id: string; name: string; summary: string; content: string }[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [showTemplateSummary, setShowTemplateSummary] = useState<string | null>(null);
   const [manualValidation, setManualValidation] = useState(false);
   const [draftInvalidated, setDraftInvalidated] = useState(false);
@@ -180,6 +181,7 @@ export default function PluginMain({ context }: PluginMainProps) {
     setShowQuoteConfirm(false);
     setPreAnalyzeNote('');
     setShowResumePopup(false);
+    setSelectedTemplateId('');
     setPushLang('auto');
 
     // Restaurer les infos devis depuis le cache mémoire ou la BDD
@@ -386,22 +388,30 @@ export default function PluginMain({ context }: PluginMainProps) {
     }
   }
 
-  function applyTemplate(templateId: string) {
-    const tpl = templates.find((t) => t.id === templateId);
-    if (!tpl) return;
+  function getTemplateInstruction(): string {
+    if (!selectedTemplateId) return '';
+    const tpl = templates.find((t) => t.id === selectedTemplateId);
+    if (!tpl) return '';
+    return `[INSTRUCTION : Applique le template "${tpl.name}" ci-dessous. Adapte-le au contexte du mail du client (nom, n° commande, détails). Rédige le brouillon en suivant la structure du template.]\n\n${tpl.content}`;
+  }
 
-    const instruction = `[INSTRUCTION : Applique le template "${tpl.name}" ci-dessous. Adapte-le au contexte du mail du client (nom, n° commande, détails). Rédige le brouillon en suivant la structure du template.]\n\n${tpl.content}`;
+  function handleAnalyzeWithTemplate() {
+    const templateInstr = getTemplateInstruction();
+    const userNote = preAnalyzeNote.trim();
+    const combined = [templateInstr, userNote].filter(Boolean).join('\n\n');
 
     if (hasMessages) {
       // Conversation en cours → envoyer comme message
       setManualValidation(false);
       setDraftInvalidated(true);
-      claude.sendMessage(instruction);
+      if (combined) {
+        claude.sendMessage(combined);
+      }
     } else {
-      // Pas encore d'analyse → lancer l'analyse avec le template en instruction
-      setPreAnalyzeNote(instruction);
-      handleAnalyze(instruction);
+      // Pas encore d'analyse → lancer l'analyse
+      handleAnalyze(combined || undefined);
     }
+    setSelectedTemplateId('');
   }
 
   // État initial : pas encore d'analyse
@@ -470,24 +480,32 @@ export default function PluginMain({ context }: PluginMainProps) {
           subject={subject}
         />
 
-      {/* Templates dropdown — toujours visible */}
+      {/* Template selector — toujours visible */}
       {templates.length > 0 && !claude.isStreaming && (
-        <div style={{ padding: '6px 0', display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <select
-            defaultValue=""
-            onChange={(e) => {
-              if (e.target.value) {
-                applyTemplate(e.target.value);
-                e.target.value = '';
-              }
-            }}
-            style={{ flex: 1, padding: '6px 8px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', color: '#555' }}
-          >
-            <option value="" disabled>Appliquer un template...</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
+        <div style={{ padding: '6px 0' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <select
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
+              style={{ flex: 1, padding: '6px 8px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', color: '#555' }}
+            >
+              <option value="">Aucun template</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            {selectedTemplateId && (
+              <button
+                onClick={() => {
+                  const tpl = templates.find((t) => t.id === selectedTemplateId);
+                  if (tpl) setShowTemplateSummary(tpl.summary);
+                }}
+                style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#4a90d9', fontWeight: 600 }}
+              >
+                i
+              </button>
+            )}
+          </div>
           {showTemplateSummary && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
               onClick={() => setShowTemplateSummary(null)}>
@@ -498,15 +516,6 @@ export default function PluginMain({ context }: PluginMainProps) {
               </div>
             </div>
           )}
-          <button
-            onClick={() => {
-              const summaries = templates.map((t) => `${t.name} : ${t.summary}`).join('\n\n');
-              setShowTemplateSummary(summaries);
-            }}
-            style={{ padding: '4px 8px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#4a90d9', fontWeight: 600 }}
-          >
-            i
-          </button>
         </div>
       )}
 
@@ -537,7 +546,7 @@ export default function PluginMain({ context }: PluginMainProps) {
               fontFamily: 'inherit',
             }}
           />
-          <button className="btn-primary" onClick={() => handleAnalyze()}>
+          <button className="btn-primary" onClick={() => handleAnalyzeWithTemplate()}>
             Analyser avec Claude
           </button>
         </div>
@@ -645,8 +654,11 @@ export default function PluginMain({ context }: PluginMainProps) {
                   setDraftInvalidated(true);
                   setQuoteDraftText(null);
                   setShowQuoteConfirm(false);
-                  setPreAnalyzeNote(resumeNote);
-                  await handleAnalyze(resumeNote);
+                  const templateInstr = getTemplateInstruction();
+                  const combined = [templateInstr, resumeNote].filter(Boolean).join('\n\n');
+                  setPreAnalyzeNote(combined);
+                  await handleAnalyze(combined || undefined);
+                  setSelectedTemplateId('');
                 }}
               >
                 Lancer

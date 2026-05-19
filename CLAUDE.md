@@ -91,6 +91,12 @@ front-claude-app/
 - Magic bytes pour détecter le vrai format (Front ment parfois sur le content_type)
 - Images > 3.7MB compressées via `sharp` (max 2000x2000, JPEG 80%)
 
+### Templates
+- Les templates (dropdown, bouton "i", liens procédure/PJ) doivent être **identiques** sur la page d'accueil ET dans la popup "Reprendre avec Claude". Toute modification doit s'appliquer aux DEUX endroits.
+- Templates stockés en BDD (table `templates`) avec : name, summary, content, attachment_url, procedure_url, store_code
+- `attachment_url` : PDF joint automatiquement au push dans Front (URL de téléchargement direct Google Drive)
+- `procedure_url` : lien cliquable "Voir la procédure" affiché dans le plugin
+
 ### Devis PDF
 - Standard (catalogue) : unit=piece, pas de description, pas de product_id
 - Sur mesure : unit=m2, quantité décimale, product_id=PRODUCT_ID_FILET, description délai

@@ -61,6 +61,10 @@ export async function POST(req: NextRequest) {
 - SUR MESURE uniquement : description = "Quantité : X | Total m² : Y | Délai de production + livraison : environ 14 jours"
 - STANDARD : pas de description.
 
+=== RÈGLE N°7 : COORDONNÉES CLIENT ===
+- Chercher le téléphone, nom, prénom, adresse dans TOUT le fil de mails (y compris le PREMIER message, souvent un formulaire de contact avec le numéro de téléphone).
+- Ne pas se limiter au dernier message.
+
 Réponds UNIQUEMENT avec le JSON, sans texte ni backticks.`;
 
     const userMessage = `Extrait les données du devis.

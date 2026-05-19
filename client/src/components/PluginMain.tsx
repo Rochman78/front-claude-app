@@ -627,6 +627,31 @@ export default function PluginMain({ context }: PluginMainProps) {
             <p style={{ fontSize: '14px', marginBottom: '12px', fontWeight: 600 }}>
               Reprendre avec Claude
             </p>
+            {templates.length > 0 && (
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '10px' }}>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                  style={{ flex: 1, padding: '6px 8px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', color: '#555' }}
+                >
+                  <option value="">Aucun template</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                {selectedTemplateId && (
+                  <button
+                    onClick={() => {
+                      const tpl = templates.find((t) => t.id === selectedTemplateId);
+                      if (tpl) setShowTemplateSummary(tpl.summary);
+                    }}
+                    style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#4a90d9', fontWeight: 600 }}
+                  >
+                    i
+                  </button>
+                )}
+              </div>
+            )}
             <textarea
               value={resumeNote}
               onChange={(e) => setResumeNote(e.target.value)}

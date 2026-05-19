@@ -140,6 +140,8 @@ export default function PluginMain({ context }: PluginMainProps) {
     conversationCache.clearPending(bgFrontConvId);
     console.log(`[plugin] background result cached for ${bgFrontConvId}: ${messages.length} msgs`);
   };
+  const [templates, setTemplates] = useState<{ id: string; name: string; summary: string; content: string }[]>([]);
+  const [showTemplateSummary, setShowTemplateSummary] = useState<string | null>(null);
   const [manualValidation, setManualValidation] = useState(false);
   const [draftInvalidated, setDraftInvalidated] = useState(false);
   const [quotePdfUrl, setQuotePdfUrl] = useState<string | null>(null);
@@ -384,6 +386,24 @@ export default function PluginMain({ context }: PluginMainProps) {
     }
   }
 
+  function applyTemplate(templateId: string) {
+    const tpl = templates.find((t) => t.id === templateId);
+    if (!tpl) return;
+
+    const instruction = `[INSTRUCTION : Applique le template "${tpl.name}" ci-dessous. Adapte-le au contexte du mail du client (nom, n° commande, détails). Rédige le brouillon en suivant la structure du template.]\n\n${tpl.content}`;
+
+    if (hasMessages) {
+      // Conversation en cours → envoyer comme message
+      setManualValidation(false);
+      setDraftInvalidated(true);
+      claude.sendMessage(instruction);
+    } else {
+      // Pas encore d'analyse → lancer l'analyse avec le template en instruction
+      setPreAnalyzeNote(instruction);
+      handleAnalyze(instruction);
+    }
+  }
+
   // État initial : pas encore d'analyse
   const hasMessages = claude.messages.length > 0;
 
@@ -410,6 +430,15 @@ export default function PluginMain({ context }: PluginMainProps) {
     setPushLang(lang);
     console.log(`[plugin] language from store ${store.code}: ${lang}`);
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store?.code]);
+
+  // Charger les templates au montage
+  useEffect(() => {
+    if (!store) return;
+    fetch(`${window.location.origin}/api/plugin/templates?store_code=${encodeURIComponent(store.code)}`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => { if (Array.isArray(data)) setTemplates(data); })
+      .catch(() => {});
   }, [store?.code]);
 
   // Auto-scroll vers le bas quand du contenu change
@@ -440,6 +469,46 @@ export default function PluginMain({ context }: PluginMainProps) {
           customerEmail={recipient?.handle || ''}
           subject={subject}
         />
+
+      {/* Templates dropdown — toujours visible */}
+      {templates.length > 0 && !claude.isStreaming && (
+        <div style={{ padding: '6px 0', display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value) {
+                applyTemplate(e.target.value);
+                e.target.value = '';
+              }
+            }}
+            style={{ flex: 1, padding: '6px 8px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', color: '#555' }}
+          >
+            <option value="" disabled>Appliquer un template...</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          {showTemplateSummary && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+              onClick={() => setShowTemplateSummary(null)}>
+              <div style={{ background: 'white', borderRadius: '12px', padding: '16px', maxWidth: '300px', width: '90%', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}
+                onClick={(e) => e.stopPropagation()}>
+                <p style={{ fontSize: '13px', lineHeight: '1.5' }}>{showTemplateSummary}</p>
+                <button className="btn-outline" style={{ marginTop: '10px', width: '100%' }} onClick={() => setShowTemplateSummary(null)}>Fermer</button>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => {
+              const summaries = templates.map((t) => `${t.name} : ${t.summary}`).join('\n\n');
+              setShowTemplateSummary(summaries);
+            }}
+            style={{ padding: '4px 8px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#4a90d9', fontWeight: 600 }}
+          >
+            i
+          </button>
+        </div>
+      )}
 
       {claude.error && (
         <div className="plugin-error">

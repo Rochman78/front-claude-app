@@ -487,7 +487,7 @@ export default function PluginMain({ context }: PluginMainProps) {
             <select
               value={selectedTemplateId}
               onChange={(e) => setSelectedTemplateId(e.target.value)}
-              style={{ flex: 1, padding: '6px 8px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', color: '#555' }}
+              style={{ flex: 1, padding: '6px 8px', fontSize: '12px', border: '2px solid #4a90d9', borderRadius: '6px', background: '#f0f7ff', color: '#2c5282', fontWeight: 500 }}
             >
               <option value="">Aucun template</option>
               {templates.map((t) => (
@@ -632,7 +632,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                 <select
                   value={selectedTemplateId}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
-                  style={{ flex: 1, padding: '6px 8px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', color: '#555' }}
+                  style={{ flex: 1, padding: '6px 8px', fontSize: '12px', border: '2px solid #4a90d9', borderRadius: '6px', background: '#f0f7ff', color: '#2c5282', fontWeight: 500 }}
                 >
                   <option value="">Aucun template</option>
                   {templates.map((t) => (

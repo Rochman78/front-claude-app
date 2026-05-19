@@ -494,16 +494,19 @@ export default function PluginMain({ context }: PluginMainProps) {
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
-            {selectedTemplateId && (
-              <button
-                onClick={() => {
+            <button
+              onClick={() => {
+                if (selectedTemplateId) {
                   const tpl = templates.find((t) => t.id === selectedTemplateId);
                   if (tpl) setShowTemplateSummary(tpl.summary);
-                }}
-                style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#4a90d9', fontWeight: 600 }}
-              >
-                i
-              </button>
+                } else {
+                  setShowTemplateSummary(templates.map((t) => `${t.name} : ${t.summary}`).join('\n\n'));
+                }
+              }}
+              style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#4a90d9', fontWeight: 600 }}
+            >
+              i
+            </button>
             )}
           </div>
           {showTemplateSummary && (

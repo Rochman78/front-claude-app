@@ -32,11 +32,13 @@ export async function POST(req: NextRequest) {
 - Les prix du catalogue standard sont en TTC → NE PAS les copier comme HT.
   Pour les produits standard, copier le prix TTC et mettre unit="piece".
 
-=== RÈGLE N°3 : LABEL ===
-- Si plusieurs filets identiques, préfixer : "10 x Filet de camouflage..."
+=== RÈGLE N°3 : LABEL (TOUJOURS dans la langue de la boutique) ===
+- Le brouillon est en français mais le label du devis PDF DOIT être dans la LANGUE DE LA BOUTIQUE.
+- Boutique RED → espagnol. TAR → allemand. HET → néerlandais. RETE → italien. LFC/LVO/MON/UNI/COCO → français.
+- Si plusieurs filets identiques, préfixer : "10 x Red de camuflaje..."
 - Pour un seul filet, pas de préfixe.
-- STANDARD : copier le nom du produit tel qu'il apparaît dans le texte.
-- SUR MESURE en langue étrangère, assembler depuis cette table EXACTE :
+- STANDARD : traduire le nom du produit dans la langue de la boutique.
+- SUR MESURE : assembler depuis cette table EXACTE :
   Types : FR=Filet de camouflage | DE=Tarnnetz | NL=Camouflagenet | ES=Red de camuflaje | IT=Rete mimetica | PT=Rede de camuflagem | EN=Camouflage net
   Formes : FR=rectangulaire | DE=rechteckig | NL=rechthoekig | ES=rectangular | IT=rettangolare | PT=retangular | EN=rectangular
   FR=triangulaire | DE=dreieckig | NL=driehoekig | ES=triangular | IT=triangolare | PT=triangular | EN=triangular

@@ -19,7 +19,7 @@ export function usePushDraft(context: FrontSingleConversationContext) {
   const [pushSuccess, setPushSuccess] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
 
-  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string, mailThread?: string, _storeCode?: string, forcedLang?: string) {
+  async function handlePush(cleaned: string, pdfUrl?: string, quoteNumber?: string, mailThread?: string, _storeCode?: string, forcedLang?: string, templateAttachmentUrl?: string) {
     setPushing(true);
     setPushError(null);
     setPushSuccess(false);
@@ -72,23 +72,29 @@ export function usePushDraft(context: FrontSingleConversationContext) {
         }
       }
 
-      if (pdfUrl) {
-        console.log('[plugin] pushing draft with PDF attachment');
+      // Déterminer la PJ à joindre : devis PDF ou attestation template
+      const attachUrl = pdfUrl || templateAttachmentUrl;
+      const attachFilename = pdfUrl
+        ? (quoteNumber ? `Devis-${quoteNumber}.pdf` : 'devis.pdf')
+        : (templateAttachmentUrl ? 'attestation-non-livraison.pdf' : '');
+
+      if (attachUrl) {
+        console.log(`[plugin] pushing draft with attachment: ${attachFilename}`);
         const response = await fetch(`${API_BASE}/api/plugin/push-draft`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conversationId: context.conversation.id,
             body: textToHtml(finalText),
-            pdfUrl,
-            pdfFilename: quoteNumber ? `Devis-${quoteNumber}.pdf` : 'devis.pdf',
+            pdfUrl: attachUrl,
+            pdfFilename: attachFilename,
           }),
         });
         if (!response.ok) {
           const err = await response.json();
           throw new Error(err.error || `Erreur ${response.status}`);
         }
-        console.log('[plugin] draft with PDF pushed successfully');
+        console.log('[plugin] draft with attachment pushed successfully');
       } else {
         const convType = (context.conversation as Record<string, unknown>).type ?? 'unknown';
         const convId = context.conversation.id;

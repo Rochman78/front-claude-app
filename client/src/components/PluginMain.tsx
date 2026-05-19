@@ -140,8 +140,9 @@ export default function PluginMain({ context }: PluginMainProps) {
     conversationCache.clearPending(bgFrontConvId);
     console.log(`[plugin] background result cached for ${bgFrontConvId}: ${messages.length} msgs`);
   };
-  const [templates, setTemplates] = useState<{ id: string; name: string; summary: string; content: string }[]>([]);
+  const [templates, setTemplates] = useState<{ id: string; name: string; summary: string; content: string; attachment_url?: string; procedure_url?: string }[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [templateAttachmentUrl, setTemplateAttachmentUrl] = useState<string>('');
   const [showTemplateSummary, setShowTemplateSummary] = useState<string | null>(null);
   const [manualValidation, setManualValidation] = useState(false);
   const [draftInvalidated, setDraftInvalidated] = useState(false);
@@ -400,6 +401,12 @@ export default function PluginMain({ context }: PluginMainProps) {
     const userNote = preAnalyzeNote.trim();
     const combined = [templateInstr, userNote].filter(Boolean).join('\n\n');
 
+    // Sauver l'URL de la PJ si le template en a une
+    const tpl = templates.find((t) => t.id === selectedTemplateId);
+    if (tpl?.attachment_url) {
+      setTemplateAttachmentUrl(tpl.attachment_url);
+    }
+
     if (hasMessages) {
       // Conversation en cours → envoyer comme message
       setManualValidation(false);
@@ -518,6 +525,23 @@ export default function PluginMain({ context }: PluginMainProps) {
               </div>
             </div>
           )}
+          {/* Liens PJ + procédure si template sélectionné */}
+          {selectedTemplateId && (() => {
+            const tpl = templates.find((t) => t.id === selectedTemplateId);
+            if (!tpl || (!tpl.attachment_url && !tpl.procedure_url)) return null;
+            return (
+              <div style={{ display: 'flex', gap: '10px', marginTop: '4px', fontSize: '11px' }}>
+                {tpl.procedure_url && (
+                  <a href={tpl.procedure_url} target="_blank" rel="noopener noreferrer" style={{ color: '#4a90d9', textDecoration: 'none' }}>
+                    Voir la procédure
+                  </a>
+                )}
+                {tpl.attachment_url && (
+                  <span style={{ color: '#38a169' }}>PJ auto : attestation jointe au push</span>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -769,7 +793,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                   onClick={() => {
                     const content = quoteDraftText || lastAssistantMsg?.content || '';
                     const cleaned = quoteDraftText ? content : cleanDraft(content);
-                    pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined, mailThread, store?.code, pushLang === 'auto' ? undefined : pushLang);
+                    pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined, mailThread, store?.code, pushLang === 'auto' ? undefined : pushLang, templateAttachmentUrl || undefined);
                   }}
                   disabled={pushDraft.pushing}
                 >

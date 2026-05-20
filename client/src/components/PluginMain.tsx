@@ -435,19 +435,60 @@ export default function PluginMain({ context }: PluginMainProps) {
   // QuotePanel visible dès qu'il y a au moins un message Claude
   const showQuotePanel = hasMessages && !claude.isStreaming;
 
-  // Détecter la langue du client quand le mailThread est disponible
-  // Déterminer la langue par défaut depuis le store code
+  // Détecter la langue depuis le corps du dernier mail client
   useEffect(() => {
     if (pushLang !== 'auto' || !store) return;
+
+    // Fallback store code en cas d'échec
     const storeLangMap: Record<string, string> = {
       LFC: 'fr', LVO: 'fr', COCO: 'fr', MON: 'fr', UNI: 'fr',
       TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
     };
-    const lang = storeLangMap[store.code] || 'fr';
-    setPushLang(lang);
-    console.log(`[plugin] language from store ${store.code}: ${lang}`);
+    const fallbackLang = storeLangMap[store.code] || 'fr';
+
+    (async () => {
+      try {
+        const msgsRes = await context.listMessages();
+        const msgs = msgsRes.results as unknown as { content?: { body?: string }; is_inbound?: boolean }[];
+        // Dernier message inbound (client)
+        const lastInbound = msgs.find((m) => m.is_inbound);
+        if (!lastInbound?.content?.body) {
+          setPushLang(fallbackLang);
+          return;
+        }
+        // Extraire le texte brut du corps du mail uniquement
+        const bodyText = lastInbound.content.body
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .substring(0, 1000);
+
+        if (!bodyText) {
+          setPushLang(fallbackLang);
+          return;
+        }
+
+        const res = await fetch(`${window.location.origin}/api/plugin/translate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ detectOnly: true, mailContent: bodyText }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.detectedLanguage) {
+            setPushLang(data.detectedLanguage);
+            console.log(`[plugin] language detected from last client mail: ${data.detectedLanguage}`);
+            return;
+          }
+        }
+      } catch {
+        // fallback
+      }
+      setPushLang(fallbackLang);
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store?.code]);
+  }, [store?.code, frontConvId]);
 
   // Charger les templates au montage
   useEffect(() => {

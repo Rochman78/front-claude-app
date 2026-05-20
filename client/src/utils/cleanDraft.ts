@@ -31,8 +31,10 @@ export function cleanDraft(text: string): string {
     cleaned = cleaned.substring(bonjourIndex);
   }
 
-  // Couper avant la section QUESTIONS (toutes langues, avec ou sans formatage markdown)
+  // Couper avant VÉRIFICATION ou QUESTIONS (toutes langues, avec ou sans formatage markdown)
   const questionsPatterns = [
+    /\n\**\s*VÉRIFICATION\s*\**\s*\n/i,
+    /\n\**\s*VERIFICATION\s*\**\s*\n/i,
     /\n\**\s*QUESTIONS?\s*\**\s*\n/i,
     /\n\**\s*PREGUNTAS?\s*\**\s*\n/i,
     /\n\**\s*FRAGEN\s*\**\s*\n/i,

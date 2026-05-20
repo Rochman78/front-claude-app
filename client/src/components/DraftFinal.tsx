@@ -72,14 +72,14 @@ export function usePushDraft(context: FrontSingleConversationContext) {
         }
       }
 
-      // Déterminer la PJ à joindre : devis PDF ou attestation template
+      // Déterminer la PJ à joindre : devis PDF ou PJ template
       const attachUrl = pdfUrl || templateAttachmentUrl;
       const attachFilename = pdfUrl
         ? (quoteNumber ? `Devis-${quoteNumber}.pdf` : 'devis.pdf')
-        : (templateAttachmentUrl ? 'attestation-non-livraison.pdf' : '');
+        : (templateAttachmentUrl ? 'document.pdf' : '');
 
       if (attachUrl) {
-        console.log(`[plugin] pushing draft with attachment: ${attachFilename}`);
+        console.log(`[plugin] pushing draft with attachment: ${attachFilename}, url: ${attachUrl.substring(0, 80)}...`);
         const response = await fetch(`${API_BASE}/api/plugin/push-draft`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

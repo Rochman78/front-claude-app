@@ -33,8 +33,8 @@ export function cleanDraft(text: string): string {
 
   // Couper avant VÉRIFICATION ou QUESTIONS (toutes langues, avec ou sans formatage markdown)
   const questionsPatterns = [
-    /\n\**\s*VÉRIFICATION\s*\**\s*\n/i,
-    /\n\**\s*VERIFICATION\s*\**\s*\n/i,
+    /\n\**\s*VÉRIFICATION\s*\**/i,
+    /\n\**\s*VERIFICATION\s*\**/i,
     /\n\**\s*QUESTIONS?\s*\**\s*\n/i,
     /\n\**\s*PREGUNTAS?\s*\**\s*\n/i,
     /\n\**\s*FRAGEN\s*\**\s*\n/i,

@@ -754,6 +754,9 @@ export default function PluginMain({ context }: PluginMainProps) {
                   setDraftInvalidated(true);
                   setQuoteDraftText(null);
                   setShowQuoteConfirm(false);
+                  setQuotePdfUrl(null);
+                  setQuoteNumber(null);
+                  setTemplateAttachmentUrl('');
                   const templateInstr = getTemplateInstruction();
                   const combined = [templateInstr, resumeNote].filter(Boolean).join('\n\n');
                   setPreAnalyzeNote(combined);

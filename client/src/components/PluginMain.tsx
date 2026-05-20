@@ -756,7 +756,9 @@ export default function PluginMain({ context }: PluginMainProps) {
                   setShowQuoteConfirm(false);
                   setQuotePdfUrl(null);
                   setQuoteNumber(null);
-                  setTemplateAttachmentUrl('');
+                  // Sauver l'URL PJ du template AVANT de reset
+                  const tplForAttach = templates.find((t) => t.id === selectedTemplateId);
+                  setTemplateAttachmentUrl(tplForAttach?.attachment_url || '');
                   const templateInstr = getTemplateInstruction();
                   const combined = [templateInstr, resumeNote].filter(Boolean).join('\n\n');
                   setPreAnalyzeNote(combined);

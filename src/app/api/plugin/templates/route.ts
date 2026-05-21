@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const storeCode = req.nextUrl.searchParams.get('store_code') || '';
 
     const { rows } = await pool.query(
-      "SELECT id, name, summary, content, attachment_url, procedure_url FROM templates WHERE store_code = 'all' OR store_code = $1 ORDER BY name",
+      "SELECT id, name, summary, content, attachment_url, procedure_url FROM templates WHERE store_code = 'all' OR store_code = $1 OR store_code LIKE '%' || $1 || '%' ORDER BY name",
       [storeCode]
     );
 

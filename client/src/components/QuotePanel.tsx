@@ -230,9 +230,6 @@ export default function QuotePanel({
             <div style={{ flex: 1 }}><span style={labelStyle}>TVA (%)</span><input style={inputStyle} value={f.vatPercent} onChange={(e) => upd('vatPercent', e.target.value)} /></div>
             <div style={{ flex: 1 }}><span style={labelStyle}>Remise (%)</span><input style={inputStyle} value={f.discountPercent} onChange={(e) => upd('discountPercent', e.target.value)} /></div>
           </div>
-          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-            <input type="checkbox" checked={f.freeShipping} onChange={(e) => upd('freeShipping', e.target.checked)} /> Livraison offerte
-          </label>
         </div>
 
         {/* Annexes images */}
@@ -518,17 +515,7 @@ export default function QuotePanel({
         vatRate: '',
       }));
 
-      // Ajouter livraison si offerte — prix HT depuis table de lookup
-      if (f.freeShipping) {
-        const transportHtTable: Record<string, number> = {
-          '0': 19.99, '17': 17.09, '18': 16.94, '19': 16.80, '20': 16.66,
-          '21': 16.52, '22': 16.39, '23': 16.25, '24': 16.12, '25': 15.99,
-          '25.5': 15.93, '27': 15.74,
-        };
-        const transportHT = transportHtTable[String(vatPercent)] || Math.round((19.99 / vatDivisor) * 100) / 100;
-        allLines.push({ type: 'transport', label: 'Transport sur mesure', quantity: 1, unitPrice: transportHT, unit: 'piece', vatRate: '' });
-        allLines.push({ type: 'transport_discount', label: 'Remise transport sur mesure', quantity: 1, unitPrice: -transportHT, unit: 'piece', vatRate: '' });
-      }
+      // Livraison offerte — plus de lignes transport/remise dans le devis
       const country = f.vatNumber?.match(/^([A-Z]{2})/)?.[1] || f.country || 'FR';
       const vatCode = vatPercent === 0 ? 'exempt' : `${country}_${Math.round(vatPercent * 10)}`;
 

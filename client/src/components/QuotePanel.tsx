@@ -495,7 +495,6 @@ export default function QuotePanel({
       // Tous les prix dans le formulaire sont en HT (Haiku les retourne en HT)
       // PAS de conversion ici — le prix est envoyé tel quel à Pennylane
       const vatPercent = parseFloat(f.vatPercent) || 0;
-      const vatDivisor = 1 + vatPercent / 100;
 
       const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => ({
         type: l.type || 'product',

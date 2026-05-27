@@ -1,0 +1,184 @@
+import { NextRequest } from 'next/server';
+import pool, { initDB } from '@/lib/db';
+import { frontFetch, textToHtml } from '@/lib/services/frontappService';
+import { getStoreByInboxName } from '@/lib/stores';
+import { cleanDraft, hasOpenQuestions } from '@/lib/cleanDraft';
+import { POST as analyzePOST } from '@/app/api/plugin/analyze/route';
+import { POST as pushDraftPOST } from '@/app/api/plugin/push-draft/route';
+
+// v1 : on ne traite QUE Le Filet de Camouflage. Élargir ensuite.
+const ENABLED_STORES = ['LFC'];
+
+export interface AutoDraftResult {
+  conversationId: string;
+  status: 'drafted' | 'skipped' | 'error';
+  reason?: string;
+}
+
+/** Texte lisible d'un message Front (préfère .text, sinon strip HTML de .body). */
+function messageText(m: Record<string, unknown>): string {
+  const t = (m.text as string) || '';
+  if (t.trim()) return t.trim();
+  const body = (m.body as string) || '';
+  return body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Résout un teammate pour signer le commentaire interne (best-effort, mis en cache). */
+let cachedAuthorId: string | null | undefined;
+async function resolveCommentAuthor(): Promise<string | null> {
+  if (cachedAuthorId !== undefined) return cachedAuthorId;
+  try {
+    const res = await frontFetch('/teammates');
+    if (res.ok) {
+      const data = await res.json();
+      const t = (data._results || []).find((x: Record<string, unknown>) => !x.is_blocked) || (data._results || [])[0];
+      cachedAuthorId = (t?.id as string) || null;
+    } else {
+      cachedAuthorId = null;
+    }
+  } catch {
+    cachedAuthorId = null;
+  }
+  return cachedAuthorId;
+}
+
+/** Poste un commentaire interne sur la conversation (non bloquant). */
+async function postComment(conversationId: string, body: string): Promise<void> {
+  try {
+    const authorId = await resolveCommentAuthor();
+    const payload: Record<string, string> = { body };
+    if (authorId) payload.author_id = authorId;
+    const res = await frontFetch(`/conversations/${conversationId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) console.warn(`[auto-draft] comment failed ${res.status} for ${conversationId}`);
+  } catch (err) {
+    console.warn('[auto-draft] comment error:', err);
+  }
+}
+
+async function record(conversationId: string, storeCode: string, status: string, reason: string): Promise<void> {
+  await pool.query(
+    `INSERT INTO auto_drafts (conversation_id, store_code, status, reason, created_at)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (conversation_id) DO UPDATE SET status = $3, reason = $4, created_at = $5`,
+    [conversationId, storeCode, status, reason.slice(0, 500), new Date().toISOString()]
+  );
+}
+
+/**
+ * Génère et pose un BROUILLON automatique pour une demande de devis (1er mail).
+ * Idempotent et plein de garde-fous : ne touche jamais une conv déjà répondue,
+ * déjà traitée, hors LFC, ou sans tag "Devis". Ne fait QUE des brouillons.
+ */
+export async function processAutoDraft(conversationId: string): Promise<AutoDraftResult> {
+  await initDB();
+  const skip = (reason: string): AutoDraftResult => ({ conversationId, status: 'skipped', reason });
+
+  try {
+    // 0. Déjà traité ? (idempotence)
+    const seen = await pool.query('SELECT status FROM auto_drafts WHERE conversation_id = $1', [conversationId]);
+    if (seen.rows.length > 0) return skip(`déjà traité (${seen.rows[0].status})`);
+
+    // 1. Conversation + tags
+    const convRes = await frontFetch(`/conversations/${conversationId}`);
+    if (!convRes.ok) return { conversationId, status: 'error', reason: `conv ${convRes.status}` };
+    const conv = await convRes.json();
+    const tags: string[] = (conv.tags || []).map((t: Record<string, unknown>) => String(t.name || '').toLowerCase());
+    if (!tags.includes('devis')) return skip('pas de tag Devis');
+
+    // 2. Inbox → boutique (v1 : LFC only)
+    let inboxName = '';
+    try {
+      const inbRes = await frontFetch(`/conversations/${conversationId}/inboxes`);
+      if (inbRes.ok) inboxName = ((await inbRes.json())._results || [])[0]?.name || '';
+    } catch { /* ignore */ }
+    const store = getStoreByInboxName(inboxName);
+    if (!store) return skip(`inbox non mappée: "${inboxName}"`);
+    if (!ENABLED_STORES.includes(store.code)) return skip(`boutique ${store.code} pas encore activée (v1 = LFC)`);
+
+    // 3. Messages : 1er mail uniquement (aucune réponse déjà envoyée)
+    const msgsRes = await frontFetch(`/conversations/${conversationId}/messages`);
+    if (!msgsRes.ok) return { conversationId, status: 'error', reason: `messages ${msgsRes.status}` };
+    const msgs: Record<string, unknown>[] = (await msgsRes.json())._results || [];
+    const hasReply = msgs.some((m) => m.is_inbound === false && m.is_draft === false);
+    if (hasReply) return skip('réponse déjà envoyée');
+    const hasDraft = msgs.some((m) => m.is_draft === true);
+    if (hasDraft) return skip('brouillon déjà présent');
+
+    const inbound = msgs
+      .filter((m) => m.is_inbound === true)
+      .sort((a, b) => (Number(a.created_at) || 0) - (Number(b.created_at) || 0));
+    if (inbound.length === 0) return skip('aucun message client');
+
+    // 4. Contexte pour analyze
+    const mailContent = inbound.map(messageText).filter(Boolean).join('\n\n---\n\n');
+    if (mailContent.length < 10) return skip('contenu client vide');
+    const latest = inbound[inbound.length - 1];
+    const fromRec = ((latest.recipients as Record<string, unknown>[]) || []).find((r) => r.role === 'from');
+    const customerEmail = (fromRec?.handle as string) || '';
+    const subject = (conv.subject as string) || '';
+
+    // 5. Pipeline analyze existant (instructions agent + docs + stock + images), non-stream
+    const analyzeReq = new NextRequest('https://internal/api/plugin/analyze', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        storeCode: store.code,
+        customerEmail,
+        customerName: '',
+        mailContent,
+        frontConversationId: conversationId,
+        subject,
+      }),
+    });
+    const analyzeRes = await analyzePOST(analyzeReq);
+    if (!analyzeRes.ok) {
+      const e = await analyzeRes.text().catch(() => '');
+      await record(conversationId, store.code, 'error', `analyze ${analyzeRes.status}: ${e}`);
+      return { conversationId, status: 'error', reason: `analyze ${analyzeRes.status}` };
+    }
+    const rawDraft = await analyzeRes.text();
+    if (!rawDraft || rawDraft.startsWith('__ERROR__')) {
+      await record(conversationId, store.code, 'error', 'analyze a renvoyé une erreur');
+      return { conversationId, status: 'error', reason: 'analyze __ERROR__' };
+    }
+
+    // 6. Nettoyage → corps mail client (sans questions ni notes internes)
+    const emailText = cleanDraft(rawDraft);
+    if (!emailText || emailText.length < 20) {
+      await record(conversationId, store.code, 'error', 'brouillon vide après nettoyage');
+      return { conversationId, status: 'error', reason: 'brouillon vide' };
+    }
+    const html = textToHtml(emailText);
+
+    // 7. Poser le brouillon dans Front (réutilise push-draft : canal/auteur/dédoublonnage gérés)
+    const pushReq = new NextRequest('https://internal/api/plugin/push-draft', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ conversationId, body: html }),
+    });
+    const pushRes = await pushDraftPOST(pushReq);
+    if (!pushRes.ok) {
+      const e = await pushRes.text().catch(() => '');
+      await record(conversationId, store.code, 'error', `push-draft ${pushRes.status}: ${e}`);
+      return { conversationId, status: 'error', reason: `push-draft ${pushRes.status}` };
+    }
+
+    // 8. Idempotence + commentaire interne pour l'agent
+    await record(conversationId, store.code, 'drafted', '');
+    const questions = hasOpenQuestions(rawDraft);
+    const note = questions
+      ? '✍️ Brouillon généré automatiquement par Claude. ⚠️ Points à vérifier avant envoi (voir l\'analyse ci-dessous).'
+      : '✍️ Brouillon généré automatiquement par Claude. À relire avant envoi.';
+    await postComment(conversationId, `${note}\n\n— Analyse Claude —\n${rawDraft.slice(0, 4000)}`);
+
+    console.log(`[auto-draft] ${conversationId} (${store.code}) → brouillon posé${questions ? ' (avec questions)' : ''}`);
+    return { conversationId, status: 'drafted' };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'erreur inconnue';
+    console.error(`[auto-draft] ${conversationId} error:`, msg);
+    return { conversationId, status: 'error', reason: msg };
+  }
+}

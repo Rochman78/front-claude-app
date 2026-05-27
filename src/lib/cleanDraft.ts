@@ -29,6 +29,107 @@ export function cleanDraftContent(raw: string): string {
 }
 
 /**
+ * Extrait UNIQUEMENT le brouillon mail depuis la réponse Claude.
+ * Version serveur, identique à client/src/utils/cleanDraft.ts : prend "Bonjour"
+ * jusqu'avant QUESTIONS/VÉRIFICATION, retire commentaires [...] et signatures.
+ * Utilisé par le brouillon automatique (auto-draft) pour ne JAMAIS envoyer de
+ * notes internes (questions, alertes [⚠️...]) au client.
+ */
+export function cleanDraft(text: string): string {
+  let cleaned = text;
+
+  const draftMarkers = [/\bBROUILLON\b/i, /\bMAIL FINAL\b/i, /\bDRAFT\b/i, /\bENTWURF\b/i, /\bBORRADOR\b/i, /\bBOZZA\b/i];
+  let markerEnd = -1;
+  for (const marker of draftMarkers) {
+    const match = cleaned.match(marker);
+    if (match && match.index !== undefined) {
+      markerEnd = match.index + match[0].length;
+      break;
+    }
+  }
+
+  const greetings = ['Bonjour', 'Hallo', 'Hola', 'Buongiorno', 'Goedendag', 'Beste', 'Dear', 'Hello', 'Hi '];
+  const searchFrom = markerEnd > 0 ? markerEnd : 0;
+  let bonjourIndex = -1;
+  for (const greeting of greetings) {
+    const idx = cleaned.indexOf(greeting, searchFrom);
+    if (idx >= 0 && (bonjourIndex < 0 || idx < bonjourIndex)) {
+      bonjourIndex = idx;
+    }
+  }
+  if (bonjourIndex > 0) {
+    cleaned = cleaned.substring(bonjourIndex);
+  }
+
+  const questionsPatterns = [
+    /\n\**\s*VÉRIFICATION\s*\**/i,
+    /\n\**\s*VERIFICATION\s*\**/i,
+    /\n\**\s*QUESTIONS?\s*\**\s*\n/i,
+    /\n\**\s*PREGUNTAS?\s*\**\s*\n/i,
+    /\n\**\s*FRAGEN\s*\**\s*\n/i,
+    /\n\**\s*VRAGEN\s*\**\s*\n/i,
+    /\n\**\s*DOMANDE\s*\**\s*\n/i,
+    /\n\**\s*PERGUNTAS?\s*\**\s*\n/i,
+    /\nPas de question/i,
+    /\nTu peux valider/i,
+    /\nSin preguntas/i,
+    /\nKeine Fragen/i,
+    /\nGeen vragen/i,
+    /\nNessuna domanda/i,
+    /\n\d+\.\s*\[⚠️/,
+    /\nStock vérifié/i,
+  ];
+  for (const pattern of questionsPatterns) {
+    const match = cleaned.match(pattern);
+    if (match && match.index !== undefined) {
+      cleaned = cleaned.substring(0, match.index);
+      break;
+    }
+  }
+
+  cleaned = cleaned.replace(/\n[-—=]{2,}\s*$/, '');
+  cleaned = cleaned.replace(/\n?\[[^\]]{3,}\]/g, '');
+
+  const banned = [
+    'Cordialement', 'Bien à vous', 'Bien cordialement',
+    "L'équipe", 'Le service client', 'À votre disposition',
+    'Belle journée', 'Bonne journée', 'Excellente journée',
+    'Nous vous souhaitons', 'À bientôt',
+    'Saludos cordiales', 'Atentamente', 'Un cordial saludo',
+    'Mit freundlichen Grüßen', 'Freundliche Grüße', 'Beste Grüße',
+    'Met vriendelijke groet', 'Hartelijke groet',
+    'Cordiali saluti', 'Distinti saluti',
+    'Atenciosamente', 'Cumprimentos',
+    'Best regards', 'Kind regards', 'Sincerely',
+  ];
+
+  const lines = cleaned.split('\n');
+  while (lines.length > 0) {
+    const last = lines[lines.length - 1].trim();
+    if (last === '' || banned.some((b) => last.toLowerCase().includes(b.toLowerCase()))) {
+      lines.pop();
+    } else {
+      break;
+    }
+  }
+
+  return lines.join('\n').trim();
+}
+
+/**
+ * Détecte si la réponse Claude contient des questions/points à vérifier en attente.
+ */
+export function hasOpenQuestions(text: string): boolean {
+  if (/\bQUESTIONS?\s*\n/i.test(text)) return true;
+  if (/\bVÉRIFICATION\b/i.test(text)) return true;
+  if (/\[⚠️/.test(text)) return true;
+  const afterBonjour = text.indexOf('Bonjour');
+  const bodyAfterDraft = afterBonjour >= 0 ? text.substring(afterBonjour) : text;
+  if (/\n\d+\.\s+.+\?/.test(bodyAfterDraft)) return true;
+  return false;
+}
+
+/**
  * Nettoie le brouillon final avant envoi vers Front App.
  * Supprime les marqueurs d'étape et les signatures auto-générées par Claude.
  */

@@ -149,13 +149,30 @@ export async function getConversationImages(conversationId: string): Promise<{ d
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           let imgBuffer: any = Buffer.from(await attRes.arrayBuffer());
 
-          if (isPdf) {
+          // Détecter le VRAI type via magic bytes — Front ment souvent sur le content_type
+          // (un fichier annoncé .pdf peut être corrompu, tronqué, ou en réalité une image)
+          const magic = imgBuffer.slice(0, 4);
+          const isRealPdf = magic[0] === 0x25 && magic[1] === 0x50 && magic[2] === 0x44 && magic[3] === 0x46; // %PDF
+          const isRealImage =
+            (magic[0] === 0xFF && magic[1] === 0xD8) || // JPEG
+            (magic[0] === 0x89 && magic[1] === 0x50) || // PNG
+            (magic[0] === 0x47 && magic[1] === 0x49) || // GIF
+            (magic[0] === 0x52 && magic[1] === 0x49);   // WEBP (RIFF)
+
+          if (isPdf && !isRealPdf && !isRealImage) {
+            // Annoncé comme PDF mais octets invalides → skip plutôt que faire planter l'appel Claude
+            console.warn(`[frontapp] skipping ${att.filename}: PDF invalide (magic bytes ${magic.toString('hex')})`);
+            continue;
+          }
+
+          if (isRealPdf) {
             // PDF : envoyer tel quel en base64
             const base64 = imgBuffer.toString('base64');
             images.push({ data: base64, mediaType: 'application/pdf', name: att.filename || 'document.pdf', type: 'pdf' });
             console.log(`[frontapp] extracted PDF: ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB)`);
           } else {
-            // Image : vérifier taille et compresser si nécessaire
+            // Image (y compris un fichier annoncé .pdf mais qui est en réalité une image) :
+            // vérifier taille et compresser si nécessaire
             if (imgBuffer.byteLength < minSize) {
               console.log(`[frontapp] skipping small image ${att.filename} (${imgBuffer.byteLength} bytes actual)`);
               continue;

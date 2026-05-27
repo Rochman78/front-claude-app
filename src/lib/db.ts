@@ -113,6 +113,13 @@ export async function initDB() {
       has_draft BOOLEAN NOT NULL DEFAULT FALSE,
       cached_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS auto_drafts (
+      conversation_id TEXT PRIMARY KEY,
+      store_code TEXT NOT NULL,
+      status TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
   `);
 
   initialized = true;

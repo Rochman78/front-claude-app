@@ -5,9 +5,7 @@ import { getStoreByInboxName } from '@/lib/stores';
 import { cleanDraft } from '@/lib/cleanDraft';
 import { POST as analyzePOST } from '@/app/api/plugin/analyze/route';
 import { POST as pushDraftPOST } from '@/app/api/plugin/push-draft/route';
-
-// v1 : on ne traite QUE Le Filet de Camouflage. Élargir ensuite.
-const ENABLED_STORES = ['LFC'];
+import { POST as translatePOST } from '@/app/api/plugin/translate/route';
 
 export interface AutoDraftResult {
   conversationId: string;
@@ -96,7 +94,6 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
     } catch { /* ignore */ }
     const store = getStoreByInboxName(inboxName);
     if (!store) return skip(`inbox non mappée: "${inboxName}"`);
-    if (!ENABLED_STORES.includes(store.code)) return skip(`boutique ${store.code} pas encore activée (v1 = LFC)`);
 
     // 3. Messages : 1er mail uniquement (aucune réponse déjà envoyée)
     const msgsRes = await frontFetch(`/conversations/${conversationId}/messages`);
@@ -151,7 +148,32 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
       await record(conversationId, store.code, 'error', 'brouillon vide après nettoyage');
       return { conversationId, status: 'error', reason: 'brouillon vide' };
     }
-    const html = textToHtml(emailText);
+
+    // 6b. Traduction pour les boutiques non francophones (Claude rédige toujours en FR).
+    // Si la traduction échoue, on NE poste PAS : mieux vaut pas de brouillon qu'un
+    // brouillon en français envoyé à un client étranger.
+    let finalText = emailText;
+    if (store.defaultLang && store.defaultLang !== 'fr') {
+      try {
+        const trReq = new NextRequest('https://internal/api/plugin/translate', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text: emailText, targetLanguage: store.defaultLang, mailContent }),
+        });
+        const trRes = await translatePOST(trReq);
+        if (!trRes.ok) {
+          await record(conversationId, store.code, 'error', `translate ${trRes.status}`);
+          return { conversationId, status: 'error', reason: `translate ${trRes.status}` };
+        }
+        const tr = await trRes.json();
+        if (tr.wasTranslated && tr.translatedText) finalText = tr.translatedText;
+      } catch (e) {
+        const m = e instanceof Error ? e.message : 'erreur';
+        await record(conversationId, store.code, 'error', `translate: ${m}`);
+        return { conversationId, status: 'error', reason: `translate: ${m}` };
+      }
+    }
+    const html = textToHtml(finalText);
 
     // 7. Poser le brouillon dans Front (réutilise push-draft : canal/auteur/dédoublonnage gérés)
     const pushReq = new NextRequest('https://internal/api/plugin/push-draft', {

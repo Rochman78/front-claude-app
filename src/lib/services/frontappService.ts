@@ -272,7 +272,20 @@ export async function resolveAuthorId(conversationId: string): Promise<string | 
 }
 
 export function textToHtml(text: string): string {
-  return text.split('\n').map((line: string) => line || '<br>').join('<br>');
+  // Blocs séparés par une ligne vide → un <p> chacun (un seul interligne entre eux).
+  // Sauts de ligne simples dans un bloc → <br>. Évite le double interligne.
+  const escapeHtml = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return text
+    .split(/\n\s*\n/)
+    .map((block) => {
+      const trimmed = block.trim();
+      if (!trimmed) return '';
+      const html = trimmed.split('\n').map((line) => escapeHtml(line.trimEnd())).join('<br>');
+      return `<p>${html}</p>`;
+    })
+    .filter(Boolean)
+    .join('');
 }
 
 export async function createDraft(conversationId: string, body: string, channelId: string, authorId?: string): Promise<Record<string, unknown>> {

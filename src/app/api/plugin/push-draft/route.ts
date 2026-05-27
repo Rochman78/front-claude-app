@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
 
       addField('body', body);
       addField('mode', 'shared');
+      addField('should_add_default_signature', 'true');
       if (channelId) addField('channel_id', channelId);
       if (authorId) addField('author_id', authorId);
 
@@ -107,7 +108,7 @@ export async function POST(req: NextRequest) {
       });
     } else {
       // JSON sans pièce jointe
-      const payload: Record<string, string> = { body, mode: 'shared' };
+      const payload: Record<string, unknown> = { body, mode: 'shared', should_add_default_signature: true };
       if (channelId) payload.channel_id = channelId;
       if (authorId) payload.author_id = authorId;
 
@@ -136,6 +137,7 @@ export async function POST(req: NextRequest) {
         };
         addField2('body', body);
         addField2('mode', 'shared');
+        addField2('should_add_default_signature', 'true');
         if (authorId) addField2('author_id', authorId);
         parts2.push(Buffer.from(`--${boundary2}\r\nContent-Disposition: form-data; name="attachments[]"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`));
         parts2.push(pdfBuffer);
@@ -146,7 +148,7 @@ export async function POST(req: NextRequest) {
           body: Buffer.concat(parts2),
         });
       } else {
-        const retryPayload: Record<string, string> = { body, mode: 'shared' };
+        const retryPayload: Record<string, unknown> = { body, mode: 'shared', should_add_default_signature: true };
         if (authorId) retryPayload.author_id = authorId;
         retryResponse = await fetch(`${FRONT_API_URL}/conversations/${conversationId}/drafts`, {
           method: 'POST',

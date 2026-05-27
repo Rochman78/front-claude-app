@@ -55,6 +55,11 @@ front-claude-app/
 - Le code QuotePanel envoie les prix **tels quels** du formulaire à Pennylane.
 - PIÈGE : Haiku/Sonnet peut convertir de son côté → double conversion. Le prompt dit "copier depuis le tableau, pas calculer".
 
+### Tranche de surface (grille sur mesure)
+- La grille sur mesure a 4 colonnes : `< 2 m²` | `2-5 m²` | `6-10 m²` | `> 10 m²`. La tranche se choisit sur la **surface totale** (tous filets confondus).
+- PIÈGE : Claude reste sur `6-10 m²` pour une surface > 10 m². La colonne `> 10 m²` couvre **tout ≥ 10 m²** (24 m², 50 m²…). Ex : 24 m² acier rectangle = **15,50 €/m²**, PAS 23,50 (qui est la tranche 6-10).
+- Garde-fou dans le doc `devis-sur-mesure-base-documentaire.txt` : la tranche est le **critère 4** de la VÉRIFICATION OBLIGATOIRE, et le prompt exige d'annoncer ligne+colonne dans QUESTIONS avant de chiffrer. Doc identique sur les 8 boutiques.
+
 ### PRODUCT_ID_FILET (Pennylane)
 - Le produit `14369303` dans Pennylane a une **description template** ("Quantité : ** | Total m² | Délai...").
 - Utiliser ce product_id **uniquement** pour les filets sur mesure (unit=m2, quantité décimale).

@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: 'user',
-          content: `Traduis ce mail de service client du français vers le ${langName}. Garde exactement le même ton, la même structure et le même formatage. Ne traduis PAS les noms propres (noms de produits, noms de boutique, etc.). Retourne UNIQUEMENT le texte traduit, sans commentaire ni explication.\n\n${text}`,
+          content: `Traduis ce mail de service client du français vers le ${langName}. Garde exactement le même ton, la même structure et le même formatage.\n\nTraduis TOUT le contenu, Y COMPRIS les descriptions de produits (ex : « Filet de camouflage rectangulaire sable, contour polyester Ø 6 mm » DOIT être traduit). Ne laisse AUCUNE phrase ni aucun libellé en français.\n\nGarde uniquement tels quels (NE traduis PAS) : les noms de marque/boutique, les références/codes produit, les adresses email, les URL, les nombres, prix, unités et symboles.\n\nRetourne UNIQUEMENT le texte traduit, sans commentaire ni explication.\n\n${text}`,
         },
       ],
     });

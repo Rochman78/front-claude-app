@@ -176,8 +176,20 @@ export async function getConversationImages(conversationId: string): Promise<{ d
               console.log(`[frontapp] corrected media type for ${att.filename}: ${contentType} → ${finalMediaType}`);
             }
             const maxBase64Size = 3700000;
-            if (imgBuffer.byteLength > maxBase64Size) {
-              console.log(`[frontapp] compressing ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB → target < 3.7MB)`);
+            const maxDimension = 7500; // marge sous la limite API Claude (8000px)
+            // Lire les dimensions : Claude rejette toute image > 8000px même si elle est légère
+            let tooLarge = imgBuffer.byteLength > maxBase64Size;
+            try {
+              const meta = await sharp(imgBuffer).metadata();
+              if ((meta.width || 0) > maxDimension || (meta.height || 0) > maxDimension) {
+                console.log(`[frontapp] ${att.filename} dimensions ${meta.width}x${meta.height} > ${maxDimension}px → resize`);
+                tooLarge = true;
+              }
+            } catch (metaErr) {
+              console.warn(`[frontapp] metadata read failed for ${att.filename}:`, metaErr);
+            }
+            if (tooLarge) {
+              console.log(`[frontapp] compressing ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB → target < 3.7MB, max 2000px)`);
               try {
                 imgBuffer = await sharp(imgBuffer)
                   .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
@@ -187,7 +199,9 @@ export async function getConversationImages(conversationId: string): Promise<{ d
                 console.log(`[frontapp] compressed to ${Math.round(imgBuffer.byteLength / 1024)}KB`);
               } catch (compressErr) {
                 console.warn(`[frontapp] compression failed for ${att.filename}:`, compressErr);
-                if (imgBuffer.byteLength > maxSize) continue;
+                // Si on n'a pas pu réduire une image trop lourde OU trop grande, on la skip
+                // plutôt que de faire planter l'appel Claude (erreur 400 dimensions/taille)
+                continue;
               }
             }
             const base64 = imgBuffer.toString('base64');

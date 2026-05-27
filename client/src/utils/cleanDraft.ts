@@ -6,6 +6,25 @@
 export function cleanDraft(text: string): string {
   let cleaned = text;
 
+  // Réponses "bavardes" : Claude produit parfois PLUSIEURS tentatives de brouillon
+  // + du méta-commentaire ("Laissez-moi rédiger", "Voilà c'est propre"...), dont la
+  // dernière peut être tronquée. On isole le DERNIER mail COMPLET (repéré par la
+  // formule de clôture standard) et la salutation qui le précède.
+  const closingRe = /N['’]?h[ée]sitez pas (?:à|a) nous contacter[^\n]*/gi;
+  let lastClose: RegExpExecArray | null = null;
+  let cm: RegExpExecArray | null;
+  while ((cm = closingRe.exec(cleaned)) !== null) lastClose = cm;
+  if (lastClose) {
+    const closeEnd = lastClose.index + lastClose[0].length;
+    const greets = ['Bonjour', 'Hallo', 'Hola', 'Buongiorno', 'Goedendag', 'Beste', 'Dear', 'Hello'];
+    let gStart = -1;
+    for (const g of greets) {
+      const idx = cleaned.lastIndexOf(g, lastClose.index);
+      if (idx > gStart) gStart = idx;
+    }
+    if (gStart >= 0) cleaned = cleaned.slice(gStart, closeEnd);
+  }
+
   // Chercher le marqueur de brouillon (BROUILLON, MAIL FINAL, etc.) et prendre le "Bonjour" après
   const draftMarkers = [/\bBROUILLON\b/i, /\bMAIL FINAL\b/i, /\bDRAFT\b/i, /\bENTWURF\b/i, /\bBORRADOR\b/i, /\bBOZZA\b/i];
   let markerEnd = -1;

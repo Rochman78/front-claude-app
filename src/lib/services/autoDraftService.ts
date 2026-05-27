@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import pool, { initDB } from '@/lib/db';
 import { frontFetch, textToHtml } from '@/lib/services/frontappService';
 import { getStoreByInboxName } from '@/lib/stores';
-import { cleanDraft, hasOpenQuestions } from '@/lib/cleanDraft';
+import { cleanDraft } from '@/lib/cleanDraft';
 import { POST as analyzePOST } from '@/app/api/plugin/analyze/route';
 import { POST as pushDraftPOST } from '@/app/api/plugin/push-draft/route';
 
@@ -166,15 +166,11 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
       return { conversationId, status: 'error', reason: `push-draft ${pushRes.status}` };
     }
 
-    // 8. Idempotence + commentaire interne pour l'agent
+    // 8. Idempotence + commentaire interne court pour l'agent
     await record(conversationId, store.code, 'drafted', '');
-    const questions = hasOpenQuestions(rawDraft);
-    const note = questions
-      ? '✍️ Brouillon généré automatiquement par Claude. ⚠️ Points à vérifier avant envoi (voir l\'analyse ci-dessous).'
-      : '✍️ Brouillon généré automatiquement par Claude. À relire avant envoi.';
-    await postComment(conversationId, `${note}\n\n— Analyse Claude —\n${rawDraft.slice(0, 4000)}`);
+    await postComment(conversationId, '✍️ Brouillon créé automatiquement par Claude. Tout le détail est dans le plugin si besoin d\'aller vérifier.');
 
-    console.log(`[auto-draft] ${conversationId} (${store.code}) → brouillon posé${questions ? ' (avec questions)' : ''}`);
+    console.log(`[auto-draft] ${conversationId} (${store.code}) → brouillon posé`);
     return { conversationId, status: 'drafted' };
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'erreur inconnue';

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     }
 
     await initDB();
-    const { storeCode, customerEmail, customerName, mailContent, frontConversationId, subject, channel } = await req.json();
+    const { storeCode, customerEmail, customerName, mailContent, frontConversationId, subject, channel, forceFresh } = await req.json();
 
     if (!storeCode || !mailContent || !frontConversationId) {
       return NextResponse.json({ error: 'storeCode, mailContent et frontConversationId requis' }, { status: 400 });
@@ -184,7 +184,9 @@ Exemple de réponse :
     }
 
     // 6. Construire le message utilisateur avec le contexte mail + stock
-    const isResume = existingMessages.length > 0;
+    // forceFresh : ignore l'historique précédent (utilisé par l'auto-draft pour
+    // toujours partir d'une analyse vierge même si la conv a déjà été traitée).
+    const isResume = !forceFresh && existingMessages.length > 0;
     const userMessage = isResume
       ? `[Suite de la conversation] Le client a répondu. Voici le fil de mails COMPLET et MIS À JOUR (les messages les plus récents sont les plus importants). Tiens compte de tout ce que tu as échangé avec le gérant précédemment et propose un nouveau brouillon cohérent avec le déroulé de la conversation. Donne plus de poids aux messages les plus récents du client.\n\nClient : ${customerName || ''} (${customerEmail || ''})\n\n${mailContent}${stockInfo}`
       : `[Analyse demandée] Voici le fil de mails du client ${customerName || ''} (${customerEmail || ''}) :\n\n${mailContent}${stockInfo}`;
@@ -197,8 +199,9 @@ Exemple de réponse :
       [userMsgId, conversation.id, 'user', userMessage, now]
     );
 
-    // Limiter l'historique : si > 50 messages, garder le premier + les 20 derniers
-    let trimmedHistory = existingMessages.map((m) => ({ role: m.role, content: m.content }));
+    // Limiter l'historique : si > 50 messages, garder le premier + les 20 derniers.
+    // En mode forceFresh, on ignore complètement l'historique pour partir vierge.
+    let trimmedHistory = forceFresh ? [] : existingMessages.map((m) => ({ role: m.role, content: m.content }));
     if (trimmedHistory.length > 50) {
       console.warn(`[plugin/analyze] historique trop long (${trimmedHistory.length} msgs), trim à 21`);
       trimmedHistory = [trimmedHistory[0], ...trimmedHistory.slice(-20)];

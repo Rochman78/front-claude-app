@@ -129,6 +129,10 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
         mailContent,
         frontConversationId: conversationId,
         subject,
+        // Auto-draft : on part TOUJOURS d'une analyse vierge. Sinon, en cas de
+        // re-traitement (brouillon supprimé par l'équipe), Claude se confond et
+        // sort du méta-commentaire ("le client n'a pas répondu...").
+        forceFresh: true,
       }),
     });
     const analyzeRes = await analyzePOST(analyzeReq);
@@ -148,6 +152,26 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
     if (!emailText || emailText.length < 20) {
       await record(conversationId, store.code, 'error', 'brouillon vide après nettoyage');
       return { conversationId, status: 'error', reason: 'brouillon vide' };
+    }
+
+    // 6a. Garde-fou qualité : on ne poste que si ça RESSEMBLE à un vrai mail.
+    // Détecte les cas où Claude part en méta-commentaire ("Je vois que le fil...",
+    // "Il n'y a pas de réponse..."), une conv mal-taguée (pas une vraie demande
+    // de devis), ou une réponse tronquée. Critères cumulés :
+    //   • commence par une salutation reconnue (Bonjour/Hallo/Hola/...)
+    //   • contient la formule de clôture standard
+    //   • taille minimale (un vrai devis fait plusieurs paragraphes)
+    const greetingOk = /^(Bonjour|Hallo|Hola|Buongiorno|Goedendag|Beste|Dear|Hello)\b/i.test(emailText.trim());
+    const closingOk = /N['’]?h[ée]sitez pas (?:à|a) nous contacter/i.test(emailText);
+    if (!greetingOk || !closingOk || emailText.length < 150) {
+      const why = `mail mal formé (greeting=${greetingOk}, closing=${closingOk}, len=${emailText.length})`;
+      console.warn(`[auto-draft] ${conversationId} ${why} — pas de pose`);
+      await record(conversationId, store.code, 'error', why);
+      await postComment(
+        conversationId,
+        '⚠️ Auto-draft Claude : la réponse générée ne ressemble pas à un mail valide (peut-être un cas non-devis ou ambigu). Aucun brouillon posé — à traiter via le plugin.'
+      );
+      return { conversationId, status: 'error', reason: why };
     }
 
     // 6b. Traduction pour les boutiques non francophones (Claude rédige toujours en FR).

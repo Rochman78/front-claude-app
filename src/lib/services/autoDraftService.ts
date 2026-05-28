@@ -75,9 +75,10 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
   const skip = (reason: string): AutoDraftResult => ({ conversationId, status: 'skipped', reason });
 
   try {
-    // 0. Déjà traité ? (idempotence)
-    const seen = await pool.query('SELECT status FROM auto_drafts WHERE conversation_id = $1', [conversationId]);
-    if (seen.rows.length > 0) return skip(`déjà traité (${seen.rows[0].status})`);
+    // 0. Idempotence via la VÉRITÉ Front (hasDraft / hasReply) plus loin, pas via
+    //    la table auto_drafts seule. Si l'équipe a supprimé le brouillon sans
+    //    répondre, on doit pouvoir en regénérer un (avec la version courante du
+    //    code). La table auto_drafts ne sert plus qu'à l'historique/diagnostic.
 
     // 1. Conversation + tags
     const convRes = await frontFetch(`/conversations/${conversationId}`);

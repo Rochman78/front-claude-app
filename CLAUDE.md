@@ -55,6 +55,12 @@ front-claude-app/
 - Le code QuotePanel envoie les prix **tels quels** du formulaire à Pennylane.
 - PIÈGE : Haiku/Sonnet peut convertir de son côté → double conversion. Le prompt dit "copier depuis le tableau, pas calculer".
 
+### Standard vs sur-mesure (jamais de substitution)
+- Si la taille demandée existe au catalogue (tailles **réversibles** : 3×4 = 4×3) → STANDARD, prix TTC.
+- Sinon → SUR MESURE aux **dimensions exactes** demandées. **Jamais** de proposition d'une taille standard « proche » à la place (ni avant, ni à côté du chiffrage sur-mesure).
+- Si le client emploie « sur mesure », « dimensions exactes », « à façon », « personnalisé » → sur-mesure obligatoire, même si une taille catalogue est très proche.
+- Encodé dans `agents.instructions` (rule #1 + section « STANDARD vs SUR MESURE » §4) pour les 8 boutiques avec sur-mesure (COCO exclue — pas de sur-mesure).
+
 ### Tranche de surface (grille sur mesure)
 - La grille sur mesure a 4 colonnes : `< 2 m²` | `2-5 m²` | `6-10 m²` | `> 10 m²`. La tranche se choisit sur la **surface totale** (tous filets confondus).
 - PIÈGE : Claude reste sur `6-10 m²` pour une surface > 10 m². La colonne `> 10 m²` couvre **tout ≥ 10 m²** (24 m², 50 m²…). Ex : 24 m² acier rectangle = **15,50 €/m²**, PAS 23,50 (qui est la tranche 6-10).

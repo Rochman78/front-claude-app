@@ -96,22 +96,31 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
     const store = getStoreByInboxName(inboxName);
     if (!store) return skip(`inbox non mappée: "${inboxName}"`);
 
-    // 3. Messages : 1er mail uniquement (aucune réponse déjà envoyée)
+    // 3. Règle stricte : la conv doit contenir EXACTEMENT 1 message (le mail client).
+    //    S'il y a un brouillon, une réponse, ou plusieurs entrants → c'est qu'il s'est
+    //    déjà passé quelque chose → on laisse le humain s'en occuper.
     const msgsRes = await frontFetch(`/conversations/${conversationId}/messages`);
     if (!msgsRes.ok) return { conversationId, status: 'error', reason: `messages ${msgsRes.status}` };
     const msgs: Record<string, unknown>[] = (await msgsRes.json())._results || [];
-    const hasReply = msgs.some((m) => m.is_inbound === false && m.is_draft === false);
-    if (hasReply) return skip('réponse déjà envoyée');
-    const hasDraft = msgs.some((m) => m.is_draft === true);
-    if (hasDraft) return skip('brouillon déjà présent');
+    if (msgs.length !== 1) return skip(`la conv contient ${msgs.length} messages (auto-draft = 1 seul mail attendu)`);
+    const sole = msgs[0];
+    if (sole.is_inbound !== true) return skip('l\'unique message n\'est pas entrant');
+    if (sole.is_draft === true) return skip('l\'unique message est un brouillon');
+    const inbound = [sole];
 
-    const inbound = msgs
-      .filter((m) => m.is_inbound === true)
-      .sort((a, b) => (Number(a.created_at) || 0) - (Number(b.created_at) || 0));
-    if (inbound.length === 0) return skip('aucun message client');
+    // 3a. Vérifier que c'est une vraie demande de devis issue du formulaire du site.
+    // Empêche le déclenchement sur les conversations taguées Devis qui sont en fait
+    // la suite d'un échange précédent (Mail Orange/Outlook cite tout l'historique
+    // dans le corps → matcher partout déclenche sur les replies). On exige donc
+    // l'opening line en DÉBUT de message (premiers 300 caractères après trim).
+    const FORM_START = /Vous avez reçu un nouveau message du formulaire|Du hast eine neue Nachricht über das Kontaktformular|Je hebt een nieuw bericht ontvangen via het contactformulier|Recibiste un mensaje nuevo desde el formulario de contacto|Hai ricevuto un nuovo messaggio dal modulo di contatto|nuovo messaggio dal modulo di contatto/i;
+    const inboundBodies = inbound.map(messageText);
+    if (!inboundBodies.some((b) => FORM_START.test(b.trim().slice(0, 300)))) {
+      return skip('pas une demande de formulaire du site (suite d\'échange ou hors-périmètre)');
+    }
 
     // 4. Contexte pour analyze
-    const mailContent = inbound.map(messageText).filter(Boolean).join('\n\n---\n\n');
+    const mailContent = inboundBodies.filter(Boolean).join('\n\n---\n\n');
     if (mailContent.length < 10) return skip('contenu client vide');
     const latest = inbound[inbound.length - 1];
     const fromRec = ((latest.recipients as Record<string, unknown>[]) || []).find((r) => r.role === 'from');

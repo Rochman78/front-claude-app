@@ -61,6 +61,14 @@ front-claude-app/
 - Si le client emploie « sur mesure », « dimensions exactes », « à façon », « personnalisé » → sur-mesure obligatoire, même si une taille catalogue est très proche.
 - Encodé dans `agents.instructions` (rule #1 + section « STANDARD vs SUR MESURE » §4) pour les 8 boutiques avec sur-mesure (COCO exclue — pas de sur-mesure).
 
+### Jamais recommander une taille plus petite que la surface à couvrir
+- Le client doit avoir un filet qui couvre **EXACTEMENT** sa surface (ou immédiatement au-dessus s'il veut du débord).
+- INTERDIT : « prenez 25 cm de moins », « -5 à 10 % pour effet drapé/tension », « la taille inférieure suffira pour tendre ». Ces conseils ont causé des erreurs SAV graves (filets sous-dimensionnés, cas Richard CHIERICI mai 2026).
+- Boucles/dragonnes/œillets périphériques = **soudés en plus** de la dimension utile → le client décide où les placer, on ne réduit pas la commande pour ça.
+- Pose entre arbres/poteaux : **AJOUTER** 40-50 cm à la distance entre supports (matière à enrouler), jamais retirer.
+- Encodé dans `agents.instructions` (règle #5 sur les 8 boutiques sur-mesure + équivalent COCO).
+- **À fixer côté site** : la page produit / formulaire devis qui conseille « enlever 25 cm aux 3 côtés » → source du bug. Pas modifiable depuis le code (Shopify).
+
 ### Tranche de surface (grille sur mesure)
 - La grille sur mesure a 4 colonnes : `< 2 m²` | `2-5 m²` | `6-10 m²` | `> 10 m²`. La tranche se choisit sur la **surface totale** (tous filets confondus).
 - PIÈGE : Claude reste sur `6-10 m²` pour une surface > 10 m². La colonne `> 10 m²` couvre **tout ≥ 10 m²** (24 m², 50 m²…). Ex : 24 m² acier rectangle = **15,50 €/m²**, PAS 23,50 (qui est la tranche 6-10).

@@ -464,12 +464,9 @@ function extractFromText(text: string, context?: { customerEmail?: string; custo
     lines.push(acc);
   }
 
-  // Détecter livraison offerte (FR/NL/DE/ES/IT/EN)
-  const livraisonOfferte = /livraison\s*(?:offerte|gratuite|incluse)|kostenlos|gratis\s*verzending|gratuita|(?:free|complimentary)\s*(?:shipping|delivery)/i.test(priceText);
-  if (livraisonOfferte) {
-    lines.push({ type: 'transport', label: 'Transport sur mesure', quantity: 1, unitPrice: '19.99', unit: 'piece' });
-    lines.push({ type: 'transport_discount', label: 'Remise transport sur mesure', quantity: 1, unitPrice: '-19.99', unit: 'piece' });
-  }
+  // Livraison toujours incluse sur sur mesure → AUCUNE ligne transport dans le devis.
+  // (Avant : on poussait une ligne transport 19,99 € + une remise -19,99 € pour
+  //  visualiser "offert" dans le PDF. Désormais : zéro ligne transport, point.)
 
   // Construire le sujet
   const surMesureLabel = storeLang === 'fr' ? 'filet sur mesure' : (storeLang === 'nl' ? 'net op maat' : (storeLang === 'de' ? 'Tarnnetz nach Maß' : (storeLang === 'es' ? 'red a medida' : (storeLang === 'it' ? 'rete su misura' : 'custom net'))));

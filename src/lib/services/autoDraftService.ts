@@ -75,10 +75,26 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
   const skip = (reason: string): AutoDraftResult => ({ conversationId, status: 'skipped', reason });
 
   try {
-    // 0. Idempotence via la VÉRITÉ Front (hasDraft / hasReply) plus loin, pas via
-    //    la table auto_drafts seule. Si l'équipe a supprimé le brouillon sans
-    //    répondre, on doit pouvoir en regénérer un (avec la version courante du
-    //    code). La table auto_drafts ne sert plus qu'à l'historique/diagnostic.
+    // 0a. Skip rapide si on a déjà tenté et échoué récemment sur cette conv.
+    //     Évite de re-brûler des appels Claude + Front API à chaque poll cron sur
+    //     des convs où Claude n'arrive pas à produire un brouillon valide (ex :
+    //     demandes ambiguës, SAV mal-tagués). Au-delà de 12 h on re-tente
+    //     (au cas où le contexte change).
+    const seen = await pool.query(
+      'SELECT status, created_at FROM auto_drafts WHERE conversation_id = $1',
+      [conversationId]
+    );
+    if (seen.rows.length > 0 && seen.rows[0].status === 'error') {
+      const ageMs = Date.now() - new Date(seen.rows[0].created_at).getTime();
+      const ageH = ageMs / 3600000;
+      if (ageH < 12) {
+        return skip(`erreur récente il y a ${ageH.toFixed(1)} h — pas de retry avant 12 h`);
+      }
+    }
+
+    // 0b. Pour les status='drafted' : on n'utilise PAS la table comme garde-fou
+    //     (l'équipe a pu supprimer le brouillon). C'est l'état Front (hasDraft /
+    //     hasReply) plus loin qui tranche.
 
     // 1. Conversation + tags
     const convRes = await frontFetch(`/conversations/${conversationId}`);

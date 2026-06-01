@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 - Remise globale (ex: -10%) → champ "discountPercent", PAS une ligne dans "lines".
 
 === RÈGLE N°5 : DESCRIPTION ===
-- SUR MESURE uniquement : description = "Quantité : X | Total m² : Y | Délai de production + livraison : environ 14 jours"
+- SUR MESURE uniquement : description = "Quantité : X | Total m² : Y | Délai de production + livraison : environ 21 jours"
 - STANDARD : pas de description.
 
 === RÈGLE N°7 : COORDONNÉES CLIENT ===

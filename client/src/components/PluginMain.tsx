@@ -551,7 +551,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                   setShowTemplateSummary(templates.map((t) => `${t.name} : ${t.summary}`).join('\n\n'));
                 }
               }}
-              style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#4a90d9', fontWeight: 600 }}
+              style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#000', fontWeight: 600 }}
             >
               i
             </button>
@@ -705,7 +705,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                       setShowTemplateSummary(templates.map((t) => `${t.name} : ${t.summary}`).join('\n\n'));
                     }
                   }}
-                  style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#4a90d9', fontWeight: 600 }}
+                  style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#000', fontWeight: 600 }}
                 >
                   i
                 </button>

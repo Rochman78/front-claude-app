@@ -123,10 +123,16 @@ export function cleanDraft(text: string): string {
     'Best regards', 'Kind regards', 'Sincerely',
   ];
 
+  // On ne supprime que les lignes COURTES (≤ 80 chars) contenant un mot banni —
+  // typique d'une signature ("Cordialement,", "L'équipe X", "À votre disposition,").
+  // Sinon une vraie phrase de contenu qui contient au milieu "à votre disposition"
+  // ou "nous vous souhaitons" se ferait charcuter (bug observé).
   const lines = cleaned.split('\n');
   while (lines.length > 0) {
     const last = lines[lines.length - 1].trim();
-    if (last === '' || banned.some((b) => last.toLowerCase().includes(b.toLowerCase()))) {
+    if (last === '') {
+      lines.pop();
+    } else if (last.length <= 80 && banned.some((b) => last.toLowerCase().includes(b.toLowerCase()))) {
       lines.pop();
     } else {
       break;

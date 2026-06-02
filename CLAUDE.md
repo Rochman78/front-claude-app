@@ -55,6 +55,12 @@ front-claude-app/
 - Le code QuotePanel envoie les prix **tels quels** du formulaire à Pennylane.
 - PIÈGE : Haiku/Sonnet peut convertir de son côté → double conversion. Le prompt dit "copier depuis le tableau, pas calculer".
 
+### Frais de retour — JAMAIS « à nos frais » par défaut
+- Règle par défaut : frais de retour à la charge du **client** (art. L.221-23). Formulations comme *« le retour est pris en charge à nos frais »*, *« vous n'avez rien à régler pour l'expédition »*, *« retour à nos frais »* sont **INTERDITES** sauf instruction explicite du gérant.
+- Exception légale automatique : produit défectueux / défaut de conformité / erreur de notre part → frais à notre charge (art. L.217-11), mais à VÉRIFIER avant.
+- Pronom ambigu dans la consigne du gérant (« leurs frais », « ses frais ») → ne jamais interpréter, demander en QUESTIONS.
+- Cas Bruno VIDAILLAC 02/06/2026 (`cnv_1ljjlk47`) : Claude avait écrit « à nos frais » par mauvaise interprétation de « leurs frais ». Encodé dans `agents.instructions` (9 boutiques) après le bloc « PAS DE CODE RÉDUCTION ».
+
 ### Standard vs sur-mesure (jamais de substitution)
 - Si la taille demandée existe au catalogue (tailles **réversibles** : 3×4 = 4×3) → STANDARD, prix TTC.
 - Sinon → SUR MESURE aux **dimensions exactes** demandées. **Jamais** de proposition d'une taille standard « proche » à la place (ni avant, ni à côté du chiffrage sur-mesure).

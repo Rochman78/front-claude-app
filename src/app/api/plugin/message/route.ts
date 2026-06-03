@@ -110,16 +110,17 @@ export async function POST(req: NextRequest) {
         const skuExtractPrompt = `Tu es un assistant qui identifie les produits catalogue mentionnés dans une conversation et retrouve les SKU correspondants.
 
 CONVERSATION RÉCENTE :
-${recentContext.substring(0, 2000)}
+${recentContext.substring(0, 4000)}
 
-CATALOGUE (extrait) :
-${catalogueFile.content.substring(0, 8000)}
+CATALOGUE COMPLET :
+${catalogueFile.content.substring(0, 35000)}
 
 RÈGLES :
-- Identifie les produits CATALOGUE STANDARD mentionnés (couleur, taille, finition)
-- Retrouve le SKU (code EAN 13 chiffres commençant par 37) dans le catalogue
-- Retourne UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
-- Si aucun produit catalogue identifié, retourne : AUCUN`;
+- Le catalogue contient PLUSIEURS sections par couleur (noir, sable, blanc, bleu, vert, militaire, gris renforcé, etc.), par matière (polyester / câble acier / fibre de coco) et accessoires. Parcourir TOUT le catalogue (pas juste les premières lignes).
+- Identifier les produits CATALOGUE STANDARD mentionnés (couleur, taille, finition).
+- Vérifier ATTENTIVEMENT que la COULEUR ET la TAILLE correspondent EXACTEMENT à une ligne du catalogue. Les tailles sont RÉVERSIBLES (3x4 = 4x3). Si la correspondance n'est pas exacte, NE PAS retourner de SKU — ne JAMAIS inventer ni proposer un SKU "approchant".
+- Retourner UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
+- Si aucun produit catalogue identifié, retourner : AUCUN`;
 
         const skuResult = await callClaude(
           [{ role: 'user', content: skuExtractPrompt }],

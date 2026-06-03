@@ -59,7 +59,13 @@ front-claude-app/
 - Règle par défaut : frais de retour à la charge du **client** (art. L.221-23). Formulations comme *« le retour est pris en charge à nos frais »*, *« vous n'avez rien à régler pour l'expédition »*, *« retour à nos frais »* sont **INTERDITES** sauf instruction explicite du gérant.
 - Exception légale automatique : produit défectueux / défaut de conformité / erreur de notre part → frais à notre charge (art. L.217-11), mais à VÉRIFIER avant.
 - Pronom ambigu dans la consigne du gérant (« leurs frais », « ses frais ») → ne jamais interpréter, demander en QUESTIONS.
-- Cas Bruno VIDAILLAC 02/06/2026 (`cnv_1ljjlk47`) : Claude avait écrit « à nos frais » par mauvaise interprétation de « leurs frais ». Encodé dans `agents.instructions` (9 boutiques) après le bloc « PAS DE CODE RÉDUCTION ».
+- Cas Bruno VIDAILLAC 02/06/2026 (`cnv_1ljjlk47`) : Claude avait écrit « à nos frais » par mauvaise interprétation de « leurs frais ». Encodé dans `agents.instructions` (9 boutiques).
+
+### Échange (retour + nouvelle commande) — code promo 15% (politique 03/06/2026)
+- Retour SIMPLE (rétractation pure, pas de rachat) : frais retour client + remboursement, **pas de code promo**.
+- ÉCHANGE (le client retourne pour racheter chez nous) : frais retour client + remboursement de l'ancienne, **+ code promo 15%** sur la nouvelle commande (geste fidélisation).
+- Le code est **généré par le gérant dans Shopify** (1 usage, lié à l'email client) — l'agent annonce dans le mail et flagge dans QUESTIONS pour que le gérant crée le code.
+- Encodé dans `agents.instructions` (9 boutiques, remplace l'ancienne règle « PAS DE CODE RÉDUCTION ») + dans `template-echange-erreur-client.txt`.
 
 ### Standard vs sur-mesure (jamais de substitution)
 - Si la taille demandée existe au catalogue (tailles **réversibles** : 3×4 = 4×3) → STANDARD, prix TTC.

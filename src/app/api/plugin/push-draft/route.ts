@@ -266,14 +266,16 @@ async function resolveChannelAndAuthor(conversationId: string): Promise<{ channe
     const conv = await convRes.json();
     convType = conv.type || 'unknown';
 
-    // Si convType est unknown, déduire depuis le type du dernier message
-    if (convType === 'unknown' && conv.last_message?.type) {
+    // Si convType est non-spécifique ('unknown' ou 'conversation' que Front renvoie
+    // comme catégorie fourre-tout), déduire depuis le type du dernier message.
+    const isNonSpecific = (t: string) => t === 'unknown' || t === 'conversation';
+    if (isNonSpecific(convType) && conv.last_message?.type) {
       convType = conv.last_message.type === 'front_chat' ? 'chat' : conv.last_message.type;
       console.log(`[push-draft/resolve] convType deduced from last_message.type: ${conv.last_message.type} → ${convType}`);
     }
 
-    // Si toujours unknown (last_message absent), récupérer les messages pour déduire le type
-    if (convType === 'unknown') {
+    // Si toujours non-spécifique (last_message absent), récupérer les messages pour déduire le type
+    if (isNonSpecific(convType)) {
       try {
         const msgsRes = await frontFetch(`/conversations/${conversationId}/messages`);
         if (msgsRes.ok) {

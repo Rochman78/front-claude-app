@@ -124,7 +124,7 @@ RÈGLES :
 
         const skuResult = await callClaude(
           [{ role: 'user', content: skuExtractPrompt }],
-          { model: 'claude-haiku-4-5-20251001', maxTokens: 500 }
+          { model: 'claude-sonnet-4-6', maxTokens: 500 }
         );
 
         if (skuResult && !skuResult.includes('AUCUN')) {

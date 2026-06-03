@@ -515,7 +515,11 @@ export default function QuotePanel({
       }));
 
       // Livraison offerte — plus de lignes transport/remise dans le devis
-      const country = f.vatNumber?.match(/^([A-Z]{2})/)?.[1] || f.country || 'FR';
+      // Pennylane exige le code pays en MAJUSCULES (ex: FR_200) sinon retourne une erreur
+      // générique trompeuse sur invoice_lines. On force l'uppercase + slice(0,2) pour parer
+      // aux saisies "France", "fr", "Fr-FR", etc.
+      const rawCountry = f.vatNumber?.match(/^([A-Za-z]{2})/)?.[1] || f.country || 'FR';
+      const country = String(rawCountry).toUpperCase().slice(0, 2);
       const vatCode = vatPercent === 0 ? 'exempt' : `${country}_${Math.round(vatPercent * 10)}`;
 
       // Appliquer le vatCode à toutes les lignes

@@ -78,9 +78,11 @@ function detectCountryFromText(text: string): string | null {
 
 /** Convertit un taux TVA (%) + pays en code Pennylane (ex: 'AT_200') */
 function toPennylaneVatCode(rate: number, country: string): string {
-  if (rate === 0) return 'tax_free_0';
+  if (rate === 0) return 'exempt';
   const rateInt = Math.round(rate * 10);
-  return `${country}_${rateInt}`;
+  // Pennylane exige le code pays alpha-2 en MAJUSCULES (sinon HTTP 400 trompeur)
+  const cc = String(country || 'FR').toUpperCase().slice(0, 2);
+  return `${cc}_${rateInt}`;
 }
 
 /** Trouve le pays à partir du taux TVA et du texte complet */

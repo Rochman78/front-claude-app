@@ -49,17 +49,33 @@ front-claude-app/
 
 ## Pièges connus — NE PAS reproduire
 
-### Prix accessoires
-- Les prix catalogue sont en **TTC**. Les prix grille sur mesure sont en **HT**.
-- NE JAMAIS convertir TTC→HT dans le code. La conversion se fait via le **tableau de lookup** dans le document `devis-sur-mesure` (pré-calculé par taux de TVA).
-- Le code QuotePanel envoie les prix **tels quels** du formulaire à Pennylane.
-- PIÈGE : Haiku/Sonnet peut convertir de son côté → double conversion. Le prompt dit "copier depuis le tableau, pas calculer".
+### Prix devis — Architecture des agent_files (refacto 03/06/2026)
+
+**3 fichiers spécialisés** par boutique (sauf COCO qui n'a pas de sur-mesure) :
+
+| Fichier | Contenu | Quand le lire |
+|---|---|---|
+| `instructions-devis.txt` | Format JSON Pennylane, process, régimes TVA, templates texte, règle de routing prix | À chaque devis, en premier |
+| `prix-ht-sur-mesure.txt` | Grille HT/m² par forme + finition + ignifugé × tranche surface | Pour les filets sur-mesure |
+| `prix-ht-standards.txt` | Filets standards + accessoires + transport — HT pré-calculés par taux TVA | Pour les filets standards, accessoires, transport |
+| `catalogue-XXX.txt` | Liste SKU + TTC (pour vendeurs / site, **JAMAIS pour les devis**) | Référence non-devis |
+
+**Règle absolue** : pour un devis, **JAMAIS recalculer le HT depuis le TTC catalogue** (cause de double TVA, cf cas Sylvaine SIMONET-BONNET 03/06/2026). Toujours lire le HT déjà pré-calculé dans `prix-ht-standards.txt` à la colonne du taux TVA du client.
+
+**Génération** : les `prix-ht-standards.txt` sont générés depuis le catalogue local. Pour RED/MON/RETE (catalogues en langue locale au format multi-lignes), on cross-référence les SKUs avec LFC (autorité TTC) — scripts dans `/tmp/migrate_agent_files.py` + `/tmp/fix_via_sku.py`.
+
+**Backup pré-refacto** : `backups/agent_files_backup_20260603-120752.json` (1,3 MB, restaurable en INSERT SQL).
 
 ### Frais de retour — JAMAIS « à nos frais » par défaut
 - Règle par défaut : frais de retour à la charge du **client** (art. L.221-23). Formulations comme *« le retour est pris en charge à nos frais »*, *« vous n'avez rien à régler pour l'expédition »*, *« retour à nos frais »* sont **INTERDITES** sauf instruction explicite du gérant.
 - Exception légale automatique : produit défectueux / défaut de conformité / erreur de notre part → frais à notre charge (art. L.217-11), mais à VÉRIFIER avant.
 - Pronom ambigu dans la consigne du gérant (« leurs frais », « ses frais ») → ne jamais interpréter, demander en QUESTIONS.
 - Cas Bruno VIDAILLAC 02/06/2026 (`cnv_1ljjlk47`) : Claude avait écrit « à nos frais » par mauvaise interprétation de « leurs frais ». Encodé dans `agents.instructions` (9 boutiques).
+
+### Numéro de commande — l'agent lit l'objet/corps AVANT de demander (03/06/2026)
+- Avant de demander un n° de commande au client, **l'agent doit chercher** dans l'objet du mail ET dans le corps. Patterns reconnus : `#LFC12345`, `Commande #12345`, `Bestellung`, `Pedido`, `Ordine`, `Bestelling`, `Order #12345`.
+- Si trouvé → utilise directement, ne redemande pas.
+- Encodé dans `agents.instructions` × 9 boutiques (règle juste après le WORKFLOW).
 
 ### Échange (retour + nouvelle commande) — code promo 15% (politique 03/06/2026)
 - Retour SIMPLE (rétractation pure, pas de rachat) : frais retour client + remboursement, **pas de code promo**.
@@ -135,6 +151,9 @@ front-claude-app/
 - TVA intra (LIC) : si n° TVA intra renseigné + pays UE hors FR → TVA auto à 0% + mention légale Article 138
 - Remise globale → champ `discountPercent` (pas une ligne produit)
 - Téléphone obligatoire pour générer
+- **Délais** : sur-mesure = **21 jours** (fabrication + livraison) | standard catalogue = 48-72 h (livraison France gratuite)
+- **Boucles câble acier 10 cm** soudées aux 4 coins du filet (hors dimensions du filet), sert de points d'accroche principaux
+- **Arrondi** : dimensions ET surface **au dixième** (1 décimale). NE PAS arrondir les valeurs intermédiaires. Pour triangle 3-côtés, utiliser Héron pour ne pas perdre en précision sur la hauteur. Règle dans `prix-ht-sur-mesure.txt` × 8 boutiques.
 
 ### Stock Octopia
 - Auth OAuth2 avec `sellerId` en **header** (pas query param)

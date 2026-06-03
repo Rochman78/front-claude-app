@@ -126,17 +126,18 @@ export async function POST(req: NextRequest) {
         const skuExtractPrompt = `Tu es un assistant qui identifie les produits demandés par le client dans un mail, et qui retrouve les SKU correspondants dans le catalogue.
 
 MAIL DU CLIENT :
-${mailContent.substring(0, 2000)}
+${mailContent.substring(0, 4000)}
 
-CATALOGUE (extrait) :
-${catalogueDoc.content.substring(0, 8000)}
+CATALOGUE COMPLET :
+${catalogueDoc.content.substring(0, 35000)}
 
 RÈGLES :
-- Identifie les produits CATALOGUE STANDARD que le client demande (couleur, taille, finition)
-- Retrouve le SKU (code EAN 13 chiffres commençant par 37) dans le catalogue
-- Si le client demande du sur mesure (dimensions non standard), ne retourne AUCUN SKU
-- Retourne UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
-- Si aucun produit catalogue identifié, retourne : AUCUN
+- Le catalogue contient PLUSIEURS sections par couleur (noir, sable, blanc, bleu, vert, militaire, gris renforcé, etc.), par matière (polyester / câble acier / fibre de coco) et accessoires. Parcourir TOUT le catalogue (pas juste les premières lignes).
+- Identifier les produits CATALOGUE STANDARD que le client demande (couleur, taille, finition).
+- Vérifier ATTENTIVEMENT que la COULEUR ET la TAILLE demandées correspondent EXACTEMENT à une ligne du catalogue avant de retourner un SKU. Les tailles sont RÉVERSIBLES (3x4 = 4x3). Si la correspondance n'est pas exacte (taille proche, couleur proche), NE PAS retourner de SKU — ne JAMAIS inventer ni proposer un SKU "approchant".
+- Si le client demande du sur mesure (dimensions non standard), ne retourner AUCUN SKU.
+- Retourner UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
+- Si aucun produit catalogue identifié, retourner : AUCUN
 
 Exemple de réponse :
 3760388670833|Filet camouflage noir 2x2|5

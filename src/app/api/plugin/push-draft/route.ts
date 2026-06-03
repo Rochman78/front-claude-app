@@ -123,6 +123,9 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`[plugin/push-draft] create draft → ${response.status} (pdf=${!!pdfBuffer})`);
+    // On consomme le body une seule fois pour pouvoir le réutiliser pour la
+    // détection 400/channel + la réponse finale.
+    const firstText = await response.text();
 
     // Si 403 "channel type does not match", réessayer sans channel_id
     if (response.status === 403 && channelId) {
@@ -165,13 +168,84 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Front API: ${retryResponse.status} - ${err2}` }, { status: retryResponse.status });
     }
 
-    if (!response.ok) {
-      const err = await response.text();
-      return NextResponse.json({ error: `Front API: ${response.status} - ${err}` }, { status: response.status });
+    // Si 400 "channel_id missing" et qu'on n'avait pas envoyé de channel_id,
+    // tenter de retrouver n'importe quel canal de la conv et réessayer AVEC.
+    if (response.status === 400 && !channelId && /channel/i.test(firstText)) {
+      console.log('[plugin/push-draft] 400 channel_id missing — tentative de fallback channel...');
+      let fallbackChannel = '';
+      try {
+        const convRes = await frontFetch(`/conversations/${conversationId}`);
+        if (convRes.ok) {
+          const conv = await convRes.json();
+          const inboxesUrl = conv._links?.related?.inboxes;
+          if (inboxesUrl) {
+            const inbRes = await fetch(inboxesUrl, { headers: { Authorization: authHeader, Accept: 'application/json' } });
+            if (inbRes.ok) {
+              const inboxes = (await inbRes.json())._results || [];
+              for (const inbox of inboxes) {
+                const chRes = await frontFetch(`/inboxes/${inbox.id}/channels`);
+                if (chRes.ok) {
+                  const channels = (await chRes.json())._results || [];
+                  if (channels.length > 0) {
+                    const smtp = channels.find((c: Record<string, unknown>) => c.type === 'smtp');
+                    const picked = smtp || channels[0];
+                    fallbackChannel = picked.id as string;
+                    console.log(`[plugin/push-draft] 400 fallback channel: ${fallbackChannel} (type=${picked.type}) from inbox ${inbox.id}`);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (e) { console.warn('[plugin/push-draft] 400 fallback lookup error:', e); }
+
+      if (fallbackChannel) {
+        let retryResponse2: Response;
+        if (pdfBuffer) {
+          const filename = pdfFilename || 'devis.pdf';
+          const boundary3 = `----FormBoundary${Date.now()}`;
+          const parts3: Buffer[] = [];
+          const addField3 = (name: string, value: string) => {
+            parts3.push(Buffer.from(`--${boundary3}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+          };
+          addField3('body', body);
+          addField3('mode', 'shared');
+          addField3('should_add_default_signature', 'true');
+          addField3('channel_id', fallbackChannel);
+          if (authorId) addField3('author_id', authorId);
+          parts3.push(Buffer.from(`--${boundary3}\r\nContent-Disposition: form-data; name="attachments[]"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`));
+          parts3.push(pdfBuffer);
+          parts3.push(Buffer.from(`\r\n--${boundary3}--\r\n`));
+          retryResponse2 = await fetch(`${FRONT_API_URL}/conversations/${conversationId}/drafts`, {
+            method: 'POST',
+            headers: { Authorization: authHeader, 'Content-Type': `multipart/form-data; boundary=${boundary3}` },
+            body: Buffer.concat(parts3),
+          });
+        } else {
+          const retryPayload2: Record<string, unknown> = { body, mode: 'shared', should_add_default_signature: true, channel_id: fallbackChannel };
+          if (authorId) retryPayload2.author_id = authorId;
+          retryResponse2 = await fetch(`${FRONT_API_URL}/conversations/${conversationId}/drafts`, {
+            method: 'POST',
+            headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+            body: JSON.stringify(retryPayload2),
+          });
+        }
+        console.log(`[plugin/push-draft] retry with fallback channel → ${retryResponse2.status}`);
+        if (retryResponse2.ok) {
+          const text3 = await retryResponse2.text();
+          return NextResponse.json(text3 ? JSON.parse(text3) : { success: true });
+        }
+        const err3 = await retryResponse2.text();
+        return NextResponse.json({ error: `Front API: ${retryResponse2.status} - ${err3}` }, { status: retryResponse2.status });
+      }
     }
 
-    const text = await response.text();
-    const result = text ? JSON.parse(text) : { success: true };
+    if (!response.ok) {
+      return NextResponse.json({ error: `Front API: ${response.status} - ${firstText}` }, { status: response.status });
+    }
+
+    const result = firstText ? JSON.parse(firstText) : { success: true };
     return NextResponse.json(result);
 
   } catch (err) {

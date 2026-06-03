@@ -124,6 +124,48 @@ export interface CreateQuoteParams {
   inboxName?: string;
 }
 
+/**
+ * Normalise un code TVA vers le format attendu par Pennylane : `XX_NNN`
+ * où XX = code pays alpha-2 (UPPERCASE) et NNN = taux × 10 (entier).
+ *
+ * Pennylane est très strict et renvoie une erreur générique trompeuse
+ * ("The schema of the object invoice_lines isn't one of the following...")
+ * dès qu'un seul code TVA est invalide. On normalise donc agressivement.
+ *
+ * Cas acceptés :
+ *   - "FR_200", "fr_200" → "FR_200"  (déjà au format, uppercased)
+ *   - "exempt", "tax_free", "tax_free_0", "0", 0, null → "exempt"
+ *   - 20, "20", "20.0", "20%" → "{fallbackCountry}_200"
+ *   - "FR_20", "FR_TVA_20", "France_200" → tente extraction, sinon throw
+ */
+export function normalizeVatRate(raw: unknown, fallbackCountry: string = 'FR'): string {
+  // Cas exempt
+  if (raw === null || raw === undefined || raw === '' || raw === 0 || raw === '0') return 'exempt';
+  const s = String(raw).trim();
+  if (!s) return 'exempt';
+  const lower = s.toLowerCase();
+  if (lower === 'exempt' || lower === 'tax_free' || lower === 'tax_free_0' || lower === 'none') {
+    return 'exempt';
+  }
+  // Format Pennylane natif : 2 lettres + _ + chiffres
+  const native = s.match(/^([a-z]{2})_(\d+)$/i);
+  if (native) return `${native[1].toUpperCase()}_${native[2]}`;
+  // Format dégradé : extraire 2 lettres consécutives (pays) et le 1er nombre
+  // ex : "FR_TVA_20", "France_200" → pays trouvé via prefix 2 lettres
+  const country = (s.match(/^([a-z]{2})/i)?.[1] || fallbackCountry).toUpperCase();
+  const numMatch = s.match(/(\d+(?:[.,]\d+)?)/);
+  if (numMatch) {
+    const num = parseFloat(numMatch[1].replace(',', '.'));
+    if (!isNaN(num) && num >= 0) {
+      // Heuristique : si < 30, c'est un pourcentage à multiplier par 10. Sinon déjà ×10.
+      const tenth = num < 30 ? Math.round(num * 10) : Math.round(num);
+      if (tenth === 0) return 'exempt';
+      return `${country}_${tenth}`;
+    }
+  }
+  throw new Error(`Code TVA invalide "${s}" — attendu format Pennylane "FR_200", "DE_190", "exempt", etc.`);
+}
+
 export async function resolveCustomerId(customer?: Record<string, unknown>, customerId?: string): Promise<string> {
   if (customerId) return customerId;
   if (!customer) throw new Error('Impossible de créer ou trouver le client');
@@ -164,11 +206,20 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
 
   const templateId = getTemplateId(params.inboxName || '');
 
-  const invoiceLines = params.lines.map((line) => {
+  // Pays fallback pour normaliser les codes TVA numériques (ex: 20 → FR_200)
+  const customerCountry = String(
+    ((params.customer?.address as Record<string, unknown> | undefined)?.country as string | undefined) || 'FR'
+  ).toUpperCase().slice(0, 2);
+
+  const invoiceLines = params.lines.map((line, idx) => {
     const isProduct = (line.type || 'free') === 'product';
-    // Normalise les codes TVA invalides
-    let vatRate = line.vatRate || 'FR_200';
-    if (vatRate === 'tax_free_0' || vatRate === 'tax_free') vatRate = 'exempt';
+    let vatRate: string;
+    try {
+      vatRate = normalizeVatRate(line.vatRate, customerCountry);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'erreur inconnue';
+      throw new Error(`Ligne ${idx + 1} (${line.label || '?'}) : ${msg}`);
+    }
     return {
       label: line.label || '',
       quantity: line.quantity || 1,
@@ -225,8 +276,18 @@ export async function createQuote(params: CreateQuoteParams): Promise<Record<str
 
   const errBody = await res.text();
   let errMsg: string;
-  try { errMsg = JSON.parse(errBody).message || errBody; }
-  catch { errMsg = errBody; }
+  try {
+    const parsed = JSON.parse(errBody);
+    errMsg = parsed.message || errBody;
+    // Pennylane renvoie un message générique trompeur sur invoice_lines quand un champ
+    // de ligne est invalide (vat_rate, unit, etc.). On enrichit l'erreur avec un dump
+    // des champs critiques pour faciliter le debug en prod.
+    if (errMsg.includes("schema of the object invoice_lines")) {
+      const summary = invoiceLines.map((l, i) => `[${i + 1}] vat_rate=${(l as Record<string, unknown>).vat_rate} unit=${(l as Record<string, unknown>).unit} qty=${(l as Record<string, unknown>).quantity}`).join(' | ');
+      errMsg = `${errMsg} — lignes : ${summary}`;
+    }
+  } catch { errMsg = errBody; }
+  console.error('[pennylane] createQuote payload (failed):', JSON.stringify(payload));
   throw new Error(`Erreur Pennylane (${res.status}): ${errMsg}`);
 }
 

@@ -107,6 +107,12 @@ front-claude-app/
 - Utiliser ce product_id **uniquement** pour les filets sur mesure (unit=m2, quantité décimale).
 - Pour les produits standard catalogue : **pas de product_id** → ligne libre sans description template.
 
+### Format vat_rate Pennylane (piège erreur trompeuse)
+- Format obligatoire : `XX_NNN` où XX = code pays alpha-2 MAJUSCULE, NNN = taux × 10.
+  Exemples : `FR_200` (20%), `FR_55` (5,5%), `DE_190`, `ES_210`, `IT_220`, `NL_210`, `BE_210`, `LU_170`. 0% → `exempt`.
+- **Tout code invalide** (`"20"`, `"fr_200"`, `"FR_20"` pour 20%, `"tax_free_0"`, `"France_200"`) provoque une erreur 400 **trompeuse** : `"The schema of the object invoice_lines isn't one of the following: 'Product-based Invoice Line' ..."`. Le message ne mentionne JAMAIS vat_rate.
+- `pennylaneService.normalizeVatRate()` normalise robustement (accepte nombre, format dégradé, casse mixte) → toujours passer par cette fonction côté serveur.
+
 ### cleanDraft (nettoyage avant push)
 - Doit supprimer : QUESTIONS/PREGUNTAS/FRAGEN/etc., commentaires [⚠️...], signatures (toutes langues)
 - Les sections QUESTIONS peuvent être formatées en **bold markdown** (`**PREGUNTAS**`) → le regex doit gérer `\**`

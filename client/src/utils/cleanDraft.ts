@@ -51,9 +51,12 @@ export function cleanDraft(text: string): string {
   }
 
   // Couper avant VÉRIFICATION ou QUESTIONS (toutes langues, avec ou sans formatage markdown)
+  // ⚠️ VÉRIFICATION/VERIFICATION : MAJUSCULES STRICTES (pas de flag `i`) + \n final obligatoire,
+  // sinon on coupe le mail quand Claude écrit "Vérification catalogue —..." comme intro de
+  // paragraphe dans le brouillon (bug Teresa Almenara cnv_xxx 04/06/2026).
   const questionsPatterns = [
-    /\n\**\s*VÉRIFICATION\s*\**/i,
-    /\n\**\s*VERIFICATION\s*\**/i,
+    /\n\**\s*VÉRIFICATION\s*\**\s*\n/,
+    /\n\**\s*VERIFICATION\s*\**\s*\n/,
     /\n\**\s*QUESTIONS?\s*\**\s*\n/i,
     /\n\**\s*PREGUNTAS?\s*\**\s*\n/i,
     /\n\**\s*FRAGEN\s*\**\s*\n/i,

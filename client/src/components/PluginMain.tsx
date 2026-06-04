@@ -158,6 +158,10 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [resolvedEmail, setResolvedEmail] = useState<string>('');
   const [resolvedName, setResolvedName] = useState<string>('');
   const [pushLang, setPushLang] = useState<string>('auto');
+  // Langue détectée sur le mail du client (purement informative — n'écrase
+  // PAS pushLang ; sert juste à afficher un warning au push si différente
+  // de la langue de la boutique).
+  const [detectedLang, setDetectedLang] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const prevConvId = useRef<string>('');
   const justSwitchedRef = useRef<boolean>(false);
@@ -435,40 +439,34 @@ export default function PluginMain({ context }: PluginMainProps) {
   // QuotePanel visible dès qu'il y a au moins un message Claude
   const showQuotePanel = hasMessages && !claude.isStreaming;
 
-  // Détecter la langue depuis le corps du dernier mail client
+  // Politique langue : pushLang est INITIALISÉ avec la langue de la boutique
+  // (prévisible, conforme à la config du shop). La détection sur le mail du
+  // client tourne en parallèle uniquement pour signaler un mismatch au push.
   useEffect(() => {
-    if (pushLang !== 'auto' || !store) return;
-
-    // Fallback store code en cas d'échec
+    if (!store) return;
     const storeLangMap: Record<string, string> = {
       LFC: 'fr', LVO: 'fr', COCO: 'fr', MON: 'fr', UNI: 'fr',
       TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
     };
-    const fallbackLang = storeLangMap[store.code] || 'fr';
+    const shopLang = storeLangMap[store.code] || 'fr';
+    setPushLang(shopLang);
+    setDetectedLang(null);
 
+    // Détection en arrière-plan : ne change pas pushLang, alimente juste
+    // detectedLang pour l'éventuel warning au push.
     (async () => {
       try {
         const msgsRes = await context.listMessages();
         const msgs = msgsRes.results as unknown as { content?: { body?: string }; is_inbound?: boolean }[];
-        // Dernier message inbound (client)
         const lastInbound = msgs.find((m) => m.is_inbound);
-        if (!lastInbound?.content?.body) {
-          setPushLang(fallbackLang);
-          return;
-        }
-        // Extraire le texte brut du corps du mail uniquement
+        if (!lastInbound?.content?.body) return;
         const bodyText = lastInbound.content.body
           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
           .replace(/<[^>]+>/g, ' ')
           .replace(/\s+/g, ' ')
           .trim()
-          .substring(0, 1000);
-
-        if (!bodyText) {
-          setPushLang(fallbackLang);
-          return;
-        }
-
+          .substring(0, 2500);
+        if (!bodyText) return;
         const res = await fetch(`${window.location.origin}/api/plugin/translate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -477,15 +475,11 @@ export default function PluginMain({ context }: PluginMainProps) {
         if (res.ok) {
           const data = await res.json();
           if (data?.detectedLanguage) {
-            setPushLang(data.detectedLanguage);
-            console.log(`[plugin] language detected from last client mail: ${data.detectedLanguage}`);
-            return;
+            setDetectedLang(data.detectedLanguage);
+            console.log(`[plugin] detected client lang: ${data.detectedLanguage} (shop default: ${shopLang})`);
           }
         }
-      } catch {
-        // fallback
-      }
-      setPushLang(fallbackLang);
+      } catch { /* silencieux : on garde shopLang sans warning */ }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store?.code, frontConvId]);
@@ -845,7 +839,26 @@ export default function PluginMain({ context }: PluginMainProps) {
                   onClick={() => {
                     const content = quoteDraftText || lastAssistantMsg?.content || '';
                     const cleaned = quoteDraftText ? content : cleanDraft(content);
-                    pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined, mailThread, store?.code, pushLang === 'auto' ? undefined : pushLang, templateAttachmentUrl || undefined);
+                    // Si la langue détectée chez le client diffère de la
+                    // langue actuelle du push (= langue boutique par défaut),
+                    // on demande au gérant ce qu'il préfère.
+                    let chosenLang = pushLang;
+                    if (detectedLang && pushLang !== 'auto' && detectedLang !== pushLang) {
+                      const names: Record<string, string> = {
+                        fr: 'français', en: 'anglais', de: 'allemand', nl: 'néerlandais',
+                        es: 'espagnol', it: 'italien', pt: 'portugais',
+                      };
+                      const clientLabel = names[detectedLang] || detectedLang;
+                      const shopLabel = names[pushLang] || pushLang;
+                      const ok = window.confirm(
+                        `⚠️ Langue du client détectée : ${clientLabel}\n` +
+                        `Langue de la boutique : ${shopLabel}\n\n` +
+                        `OK → traduire dans la langue du CLIENT (${clientLabel})\n` +
+                        `Annuler → garder la langue de la BOUTIQUE (${shopLabel})`
+                      );
+                      chosenLang = ok ? detectedLang : pushLang;
+                    }
+                    pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined, mailThread, store?.code, chosenLang === 'auto' ? undefined : chosenLang, templateAttachmentUrl || undefined);
                   }}
                   disabled={pushDraft.pushing}
                 >

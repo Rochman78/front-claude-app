@@ -179,22 +179,20 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
       return { conversationId, status: 'error', reason: 'brouillon vide' };
     }
 
-    // 6a. Garde-fou qualité : on ne poste que si ça RESSEMBLE à un vrai mail.
-    // Détecte les cas où Claude part en méta-commentaire ("Je vois que le fil...",
-    // "Il n'y a pas de réponse..."), une conv mal-taguée (pas une vraie demande
-    // de devis), ou une réponse tronquée. Critères cumulés :
-    //   • commence par une salutation reconnue (Bonjour/Hallo/Hola/...)
-    //   • contient la formule de clôture standard
-    //   • taille minimale (un vrai devis fait plusieurs paragraphes)
+    // 6a. Garde-fou qualité PERMISSIF : on ne bloque que les cas franchement
+    // cassés (méta-commentaire sans salutation, réponse vide ou tronquée
+    // ridiculement courte). Pour TOUT le reste — y compris les mails qui
+    // posent une question, demandent une vérification, ou n'ont pas la
+    // clôture standard — on pose le brouillon (c'est un BROUILLON, l'équipe
+    // relit avant envoi de toute façon).
     const greetingOk = /^(Bonjour|Hallo|Hola|Buongiorno|Goedendag|Beste|Dear|Hello)\b/i.test(emailText.trim());
-    const closingOk = /N['’]?h[ée]sitez pas (?:à|a) nous contacter/i.test(emailText);
-    if (!greetingOk || !closingOk || emailText.length < 150) {
-      const why = `mail mal formé (greeting=${greetingOk}, closing=${closingOk}, len=${emailText.length})`;
+    if (!greetingOk || emailText.length < 200) {
+      const why = `mail mal formé (greeting=${greetingOk}, len=${emailText.length})`;
       console.warn(`[auto-draft] ${conversationId} ${why} — pas de pose`);
       await record(conversationId, store.code, 'error', why);
       await postComment(
         conversationId,
-        '⚠️ Auto-draft Claude : la réponse générée ne ressemble pas à un mail valide (peut-être un cas non-devis ou ambigu). Aucun brouillon posé — à traiter via le plugin.'
+        '⚠️ Auto-draft Claude : la réponse générée ne ressemble pas à un mail valide (méta-commentaire ou trop courte). Aucun brouillon posé — à traiter via le plugin.'
       );
       return { conversationId, status: 'error', reason: why };
     }

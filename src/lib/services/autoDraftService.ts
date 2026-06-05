@@ -3,6 +3,7 @@ import pool, { initDB } from '@/lib/db';
 import { frontFetch, textToHtml } from '@/lib/services/frontappService';
 import { getStoreByInboxName } from '@/lib/stores';
 import { cleanDraft } from '@/lib/cleanDraft';
+import { callClaude } from '@/lib/services/claudeService';
 import { POST as analyzePOST } from '@/app/api/plugin/analyze/route';
 import { POST as pushDraftPOST } from '@/app/api/plugin/push-draft/route';
 import { POST as translatePOST } from '@/app/api/plugin/translate/route';
@@ -124,15 +125,40 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
     if (sole.is_draft === true) return skip('l\'unique message est un brouillon');
     const inbound = [sole];
 
-    // 3a. Vérifier que c'est une vraie demande de devis issue du formulaire du site.
-    // Empêche le déclenchement sur les conversations taguées Devis qui sont en fait
-    // la suite d'un échange précédent (Mail Orange/Outlook cite tout l'historique
-    // dans le corps → matcher partout déclenche sur les replies). On exige donc
-    // l'opening line en DÉBUT de message (premiers 300 caractères après trim).
+    // 3a. Vérifier que c'est une vraie demande de devis.
+    // Path 1 (fast, instantané) : opening line de formulaire du site → accept direct.
+    // Path 2 (LLM classifier, ~1-2s) : si pas formulaire, demander à Sonnet si c'est
+    //   bien une demande de devis. Couvre les mails directs (hors formulaire) où le
+    //   client demande explicitement un prix/chiffrage.
     const FORM_START = /Vous avez reçu un nouveau message du formulaire|Du hast eine neue Nachricht über das Kontaktformular|Je hebt een nieuw bericht ontvangen via het contactformulier|Recibiste un mensaje nuevo desde el formulario de contacto|Hai ricevuto un nuovo messaggio dal modulo di contatto|nuovo messaggio dal modulo di contatto/i;
     const inboundBodies = inbound.map(messageText);
-    if (!inboundBodies.some((b) => FORM_START.test(b.trim().slice(0, 300)))) {
-      return skip('pas une demande de formulaire du site (suite d\'échange ou hors-périmètre)');
+    const isFromForm = inboundBodies.some((b) => FORM_START.test(b.trim().slice(0, 300)));
+
+    if (!isFromForm) {
+      const fullBody = inboundBodies.join('\n\n').substring(0, 4000);
+      try {
+        const classifyPrompt = `Tu reçois un mail client envoyé à une boutique qui vend des FILETS DE CAMOUFLAGE, VOILES D'OMBRAGE et accessoires de fixation.
+
+Réponds UNIQUEMENT par OUI ou NON :
+- OUI = le client demande EXPLICITEMENT un devis, un prix, un chiffrage, ou des informations tarifaires sur un produit (taille, finition, couleur, quantité).
+- NON = tout autre cas : complainte/SAV, suivi de commande, garantie, question générique sans demande de prix, mail de remerciement, spam, etc.
+
+Mail :
+${fullBody}`;
+        const verdict = (await callClaude(
+          [{ role: 'user', content: classifyPrompt }],
+          { model: 'claude-sonnet-4-6', maxTokens: 10 }
+        )).trim().toUpperCase();
+        const wantsQuote = verdict.startsWith('OUI');
+        console.log(`[auto-draft] ${conversationId} classifier verdict="${verdict.slice(0, 30)}" → ${wantsQuote ? 'accept' : 'skip'}`);
+        if (!wantsQuote) {
+          return skip(`classifier LLM: non-demande-de-devis (verdict="${verdict.slice(0, 20)}")`);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'classifier err';
+        console.warn(`[auto-draft] ${conversationId} classifier failed: ${msg} — skip par prudence`);
+        return skip(`classifier LLM error: ${msg.slice(0, 60)}`);
+      }
     }
 
     // 4. Contexte pour analyze

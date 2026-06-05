@@ -125,7 +125,48 @@ export async function POST(req: NextRequest) {
     console.log(`[plugin/push-draft] create draft → ${response.status} (pdf=${!!pdfBuffer})`);
     // On consomme le body une seule fois pour pouvoir le réutiliser pour la
     // détection 400/channel + la réponse finale.
-    const firstText = await response.text();
+    let firstText = await response.text();
+
+    // Si 429 (Front rate limit), respecter le retry-after indiqué et retenter une fois.
+    // Front renvoie un body type {"_error":{"status":429,..."message":"Rate limit exceeded. Please retry in <N> milliseconds."}}.
+    if (response.status === 429) {
+      const m = firstText.match(/retry in (\d+) milliseconds/i);
+      const waitMs = m ? Math.min(parseInt(m[1], 10) + 300, 20000) : 3000;
+      console.log(`[plugin/push-draft] 429 rate limit → wait ${waitMs}ms and retry`);
+      await new Promise((r) => setTimeout(r, waitMs));
+      if (pdfBuffer) {
+        const filenameR = pdfFilename || 'devis.pdf';
+        const boundaryR = `----FormBoundary${Date.now()}`;
+        const partsR: Buffer[] = [];
+        const addFieldR = (name: string, value: string) => {
+          partsR.push(Buffer.from(`--${boundaryR}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+        };
+        addFieldR('body', body);
+        addFieldR('mode', 'shared');
+        addFieldR('should_add_default_signature', 'true');
+        if (channelId) addFieldR('channel_id', channelId);
+        if (authorId) addFieldR('author_id', authorId);
+        partsR.push(Buffer.from(`--${boundaryR}\r\nContent-Disposition: form-data; name="attachments[]"; filename="${filenameR}"\r\nContent-Type: application/pdf\r\n\r\n`));
+        partsR.push(pdfBuffer);
+        partsR.push(Buffer.from(`\r\n--${boundaryR}--\r\n`));
+        response = await fetch(`${FRONT_API_URL}/conversations/${conversationId}/drafts`, {
+          method: 'POST',
+          headers: { Authorization: authHeader, 'Content-Type': `multipart/form-data; boundary=${boundaryR}` },
+          body: Buffer.concat(partsR),
+        });
+      } else {
+        const payloadR: Record<string, unknown> = { body, mode: 'shared', should_add_default_signature: true };
+        if (channelId) payloadR.channel_id = channelId;
+        if (authorId) payloadR.author_id = authorId;
+        response = await fetch(`${FRONT_API_URL}/conversations/${conversationId}/drafts`, {
+          method: 'POST',
+          headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payloadR),
+        });
+      }
+      firstText = await response.text();
+      console.log(`[plugin/push-draft] after 429 retry → ${response.status}`);
+    }
 
     // Si 403 "channel type does not match", réessayer sans channel_id
     if (response.status === 403 && channelId) {

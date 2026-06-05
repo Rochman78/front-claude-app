@@ -95,6 +95,12 @@ export async function getConversationImages(conversationId: string): Promise<{ d
   const maxSize = 5 * 1024 * 1024; // 5MB max
   const maxPdfSize = 30 * 1024 * 1024; // 30MB max pour les PDF
 
+  // Dédup : la même PJ peut apparaître plusieurs fois dans un fil (signature mail
+  // intégrée, citation des messages précédents, etc.) — typique d'image001.png à
+  // 763 KB répétée 4× = 4 téléchargements + 4 envois Claude inutiles → bug "tourne
+  // en boucle" sur conv épaisse. Clé = nom + taille, suffisamment safe en pratique.
+  const seenAttachments = new Set<string>();
+
   try {
     const res = await frontFetch(`/conversations/${conversationId}/messages`);
     if (!res.ok) return [];
@@ -122,6 +128,13 @@ export async function getConversationImages(conversationId: string): Promise<{ d
           console.log(`[frontapp] skipping logo/signature image: ${att.filename}`);
           continue;
         }
+        // Déduplication : même PJ déjà rencontrée (citation/signature répétée)
+        const dedupKey = `${att.filename || ''}_${attSize}`;
+        if (seenAttachments.has(dedupKey)) {
+          console.log(`[frontapp] skipping duplicate attachment: ${att.filename} (${attSize} bytes — déjà ajouté)`);
+          continue;
+        }
+        seenAttachments.add(dedupKey);
         const size = att.size || 0;
         if (!isPdf && size > 0 && size < minSize) {
           console.log(`[frontapp] skipping small image ${att.filename} (${size} bytes)`);

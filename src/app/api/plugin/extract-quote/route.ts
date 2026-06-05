@@ -65,6 +65,12 @@ export async function POST(req: NextRequest) {
 - Chercher le téléphone, nom, prénom, adresse dans TOUT le fil de mails (y compris le PREMIER message, souvent un formulaire de contact avec le numéro de téléphone).
 - Ne pas se limiter au dernier message.
 
+=== RÈGLE N°8 : OÙ EST LE CHIFFRAGE ===
+- Le « CHIFFRAGE SERVICE CLIENT » ci-dessous correspond au DERNIER message Claude, qui peut être une simple clarification, une question de relance ou une confirmation de commande SANS prix.
+- Si ce dernier message ne contient PAS de prix/taille/quantité explicite, alors le chiffrage est forcément dans un MAIL ANTÉRIEUR du fil — CHERCHER dans « MAILS » le message NOUS le plus récent qui contient les détails du devis (taille, couleur, finition, prix HT/TTC, quantité, transport, kit/accessoire éventuels).
+- Si le client a demandé une modification depuis ce devis (changement de couleur, ajout d'accessoire, code promo…), appliquer ces modifications au chiffrage extrait.
+- Ne JAMAIS retourner un JSON vide en disant "rien trouvé" si le fil de mails contient un devis : extraire ce devis et appliquer les modifications mentionnées.
+
 Réponds UNIQUEMENT avec le JSON, sans texte ni backticks.`;
 
     const userMessage = `Extrait les données du devis.

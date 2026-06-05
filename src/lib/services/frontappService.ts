@@ -124,14 +124,22 @@ export async function getConversationImages(conversationId: string): Promise<{ d
         }
         const filename = (att.filename || '').toLowerCase();
         // Exclure les logos, signatures, icônes par nom de fichier
-        if (/^logo|signature|banner|bannière|icon/i.test(filename)) {
+        // Pattern `imageNNN.png/jpg` = signature Outlook (cid:image001.png@…) —
+        // toujours filtrer (cas observé : image001.png 763 KB répétée 4× dans
+        // un fil, ralentit l'analyse Claude inutilement).
+        if (/^(logo|signature|banner|bannière|icon)/i.test(filename) ||
+            /^image\d{3,}\.(png|jpe?g|gif)$/i.test(filename)) {
           console.log(`[frontapp] skipping logo/signature image: ${att.filename}`);
           continue;
         }
-        // Déduplication : même PJ déjà rencontrée (citation/signature répétée)
-        const dedupKey = `${att.filename || ''}_${attSize}`;
+        // Déduplication : même PJ déjà rencontrée (citation/signature répétée).
+        // Clé tolérante à 1 KB de différence : les signatures réinsérées dans les
+        // citations ont souvent quelques bytes EXIF/metadata qui varient
+        // (ex : image001.png 763798 vs 763796 bytes — même image, 2 bytes diff).
+        const sizeBucket = Math.round(attSize / 1024); // arrondi au KB
+        const dedupKey = `${att.filename || ''}_${sizeBucket}`;
         if (seenAttachments.has(dedupKey)) {
-          console.log(`[frontapp] skipping duplicate attachment: ${att.filename} (${attSize} bytes — déjà ajouté)`);
+          console.log(`[frontapp] skipping duplicate attachment: ${att.filename} (${attSize} bytes — déjà ajouté, bucket=${sizeBucket}KB)`);
           continue;
         }
         seenAttachments.add(dedupKey);
@@ -247,6 +255,8 @@ export async function getConversationImages(conversationId: string): Promise<{ d
     console.warn('[frontapp] getConversationImages error:', err);
   }
 
+  const totalB64 = images.reduce((s, im) => s + im.data.length, 0);
+  console.log(`[frontapp] getConversationImages done: ${images.length} attachments, ~${Math.round(totalB64 / 1024)}KB base64 total`);
   return images;
 }
 

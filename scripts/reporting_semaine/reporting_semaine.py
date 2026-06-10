@@ -105,6 +105,85 @@ def iso_week_to_monday(year, week):
     week1_monday = jan4 - datetime.timedelta(days=jan4_dow - 1)
     return week1_monday + datetime.timedelta(weeks=week - 1)
 
+def effective_received(ts: float) -> float:
+    """Heure 'effective' de réception SLA : un mail reçu Sam/Dim/férié est assimilé
+    à 00:00 du prochain jour ouvré (règle métier validée par Charles 2026-06-02)."""
+    dt = datetime.datetime.fromtimestamp(ts, TZ)
+    advanced = False
+    while dt.weekday() >= 5 or dt.strftime('%Y-%m-%d') in HOLIDAYS_FR:
+        if not advanced:
+            dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            advanced = True
+        dt = dt + datetime.timedelta(days=1)
+    return dt.timestamp()
+
+def compute_sla_metrics(raw: dict, work_days: list[str]) -> dict:
+    """Calcule :
+      - avg_response_h : moyenne (heures) entre effective_received et 1re réponse.
+        Seulement les mails NON-bruit qui ont reçu une réponse.
+      - vendredi_backlog : nombre de mails reçus Lun-Jeu (non-bruit) qui n'ont
+        toujours PAS de réponse outbound à Ven 23:59 FR.
+      - response_count : nombre de paires utilisées dans la moyenne (pour info).
+      - target_h : 24 (cible Charles)."""
+    import bisect
+    inbounds = raw.get('inbound_msgs') or []
+    outbound_by_conv = raw.get('outbound_by_conv') or {}
+
+    response_times_h = []
+    for inb in inbounds:
+        if inb.get('is_noise'):
+            continue
+        cid = inb['conv_id']
+        outs = outbound_by_conv.get(cid) or []
+        idx = bisect.bisect_right(outs, inb['ts'])
+        if idx >= len(outs):
+            continue
+        first_out_ts = outs[idx]
+        eff_ts = effective_received(inb['ts'])
+        delta_h = (first_out_ts - eff_ts) / 3600.0
+        if delta_h < 0:
+            continue
+        response_times_h.append(delta_h)
+    avg_h = sum(response_times_h) / len(response_times_h) if response_times_h else 0.0
+
+    # Backlog Ven soir : cutoff = Ven 23:59:59 du jour ouvré le plus tardif
+    if work_days:
+        last_work_day = work_days[-1]
+        dt = datetime.datetime.fromisoformat(last_work_day + 'T23:59:59').replace(tzinfo=TZ)
+        cutoff_ts = dt.timestamp()
+        thursday_eod = dt.replace(hour=0, minute=0, second=0, microsecond=0) - datetime.timedelta(hours=0)
+        # Plage des mails à examiner : reçus pendant les jours ouvrés SAUF le dernier
+        early_work = [d for d in work_days[:-1] if d not in HOLIDAYS_FR
+                      and datetime.date.fromisoformat(d).weekday() < 5]
+        if early_work:
+            early_start = datetime.datetime.fromisoformat(early_work[0] + 'T00:00:00').replace(tzinfo=TZ).timestamp()
+            # Fin "jeudi soir" = début vendredi 00:00
+            early_end = datetime.datetime.fromisoformat(work_days[-1] + 'T00:00:00').replace(tzinfo=TZ).timestamp()
+        else:
+            early_start = early_end = cutoff_ts
+    else:
+        cutoff_ts = early_start = early_end = 0
+
+    backlog_count = 0
+    for inb in inbounds:
+        if inb.get('is_noise'):
+            continue
+        ts = inb['ts']
+        if ts < early_start or ts >= early_end:
+            continue
+        outs = outbound_by_conv.get(inb['conv_id']) or []
+        idx = bisect.bisect_right(outs, ts)
+        responded_before_cutoff = idx < len(outs) and outs[idx] <= cutoff_ts
+        if not responded_before_cutoff:
+            backlog_count += 1
+
+    return {
+        'avg_response_h': round(avg_h, 1),
+        'response_count': len(response_times_h),
+        'vendredi_backlog': backlog_count,
+        'target_h': 24,
+    }
+
 # ──────────────────────────────────────────────────────────────────────────
 # FRONT API
 # ──────────────────────────────────────────────────────────────────────────
@@ -185,6 +264,11 @@ def fetch_data(days, token):
     sent_tm = {tid: {d: 0 for d in days} for tid in TEAMMATES}
     comm_tm = {tid: {d: 0 for d in days} for tid in TEAMMATES}
     samples = {tid: [] for tid in TEAMMATES}
+    # Pour les KPIs SLA : on garde TOUS les inbounds dans la fenêtre + TOUS les
+    # outbounds par conv (pas seulement les inbounds en compteur). Permet de pairer
+    # chaque mail reçu avec sa 1re réponse → temps de réponse moyen + backlog Ven soir.
+    inbound_msgs: list = []        # liste de {'conv_id', 'ts', 'is_noise'}
+    outbound_by_conv: dict = {}    # {conv_id: [ts, ts, …] sorted}
 
     print(f'[2/2] Fetch messages × {len(convs)} convs (single-thread, peut prendre 30-90 min selon le rate limit)…', flush=True)
     t0 = time.time()
@@ -200,10 +284,15 @@ def fetch_data(days, token):
             day = datetime.datetime.fromtimestamp(ts, TZ).strftime('%Y-%m-%d')
             if day not in rec_total: continue
             if m.get('is_inbound'):
+                noise = is_noise(m)
                 rec_total[day] += 1
-                if is_noise(m): rec_noise[day] += 1
+                if noise: rec_noise[day] += 1
+                inbound_msgs.append({'conv_id': cid, 'ts': ts, 'is_noise': noise})
             else:
                 author = (m.get('author') or {}).get('id')
+                # outbound pour SLA — même si auteur != teammate (mails Front auto-reply
+                # par ex), on les compte comme "réponse"
+                outbound_by_conv.setdefault(cid, []).append(ts)
                 if author in TEAMMATES:
                     sent_tm[author][day] += 1
                     samples[author].append({
@@ -230,8 +319,14 @@ def fetch_data(days, token):
             print(f'  · {idx+1}/{len(convs)} ({el:.0f}s, ETA {eta:.0f}s)', file=sys.stderr, flush=True)
 
     print(f'  ✓ done in {time.time()-t0:.0f}s\n')
+
+    # Tri des outbounds par conv (pour bisect dans le calcul du temps de réponse)
+    for cid in outbound_by_conv:
+        outbound_by_conv[cid].sort()
+
     return {'days': days, 'rec_total': rec_total, 'rec_noise': rec_noise,
-            'sent_tm': sent_tm, 'comm_tm': comm_tm, 'samples': samples}
+            'sent_tm': sent_tm, 'comm_tm': comm_tm, 'samples': samples,
+            'inbound_msgs': inbound_msgs, 'outbound_by_conv': outbound_by_conv}
 
 # ──────────────────────────────────────────────────────────────────────────
 # BUILD XLSX
@@ -384,6 +479,30 @@ def build_xlsx(raw, week_num, ctx_day, work_days, out_path):
         ('Note', 'Filtre bruit reconstitué — peut différer 1-2 % du S22 originel.'),
         ('Note', f'Vendredi {ctx_day} affiché pour contexte uniquement (semaine précédente).'),
     ]:
+        v = str(val); v = ' '+v if v.startswith('=') else v
+        ws.cell(row=row, column=1, value=lbl)
+        ws.cell(row=row, column=2, value=v)
+        row += 1
+
+    # ─── BLOC SLA : temps de réponse + backlog vendredi ────────────────────
+    row += 1
+    ws.cell(row=row, column=1, value='PERFORMANCE ÉQUIPE — SLA').font = bold; row += 1
+    sla = compute_sla_metrics(raw, work_days)
+    avg_h = sla['avg_response_h']
+    target = sla['target_h']
+    delta = round(avg_h - target, 1)
+    sign = '+' if delta > 0 else ''
+    sla_status = '✅ OK' if avg_h <= target else '⚠️ au-delà de la cible'
+
+    sla_rows = [
+        ('Temps de réponse moyen', f'{avg_h} h (sur {sla["response_count"]} mails répondus)'),
+        ('Cible', f'{target} h (calendrier depuis effective_received — assimilation Sam/Dim/férié au prochain jour ouvré 00:00)'),
+        ('Écart vs cible', f'{sign}{delta} h — {sla_status}'),
+        ('Backlog vendredi soir (cible 0)', f'{sla["vendredi_backlog"]} mails reçus Lun-Jeu sans réponse à Ven 23:59 FR'),
+        ('Note', 'Temps de réponse : moyenne calendaire des (1ère réponse − effective_received) pour les mails NON-bruit ayant reçu une réponse dans la fenêtre.'),
+        ('Note', 'Backlog : un mail reçu Lun-Jeu compte 1 si AUCUN outbound n\'est posté avant Ven 23:59 FR (peu importe l\'auteur).'),
+    ]
+    for lbl, val in sla_rows:
         v = str(val); v = ' '+v if v.startswith('=') else v
         ws.cell(row=row, column=1, value=lbl)
         ws.cell(row=row, column=2, value=v)

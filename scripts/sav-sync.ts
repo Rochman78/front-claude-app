@@ -391,7 +391,71 @@ async function main() {
     if (i % 1000 === 0) console.log(`    ... events ${i}/${filteredEvents.length}`);
   }
 
-  // ─── Phase 5 : log sav_sync_log ───────────────────────────
+  // ─── Phase 5 : post-traitement (timestamps + compteurs sur sav_conversations) ──
+  // Calcule depuis les messages/events les agrégats utiles aux requêtes reporting.
+  // Idempotent (on peut le rejouer, il recalcule depuis 0 par conv).
+  console.log(`\n━━━ Phase 5 : post-traitement timestamps ━━━`);
+  await db.query(`
+    UPDATE sav_conversations c
+    SET
+      created_at = COALESCE(stats.first_msg_at, c.created_at),
+      first_inbound_at = stats.first_in_at,
+      first_outbound_at = stats.first_out_at,
+      last_inbound_at = stats.last_in_at,
+      last_outbound_at = stats.last_out_at,
+      total_inbound_messages = stats.in_count,
+      total_outbound_messages = stats.out_count,
+      response_time_seconds = CASE
+        WHEN stats.first_in_at IS NOT NULL AND stats.first_out_at IS NOT NULL
+             AND stats.first_out_at > stats.first_in_at
+        THEN EXTRACT(EPOCH FROM (stats.first_out_at - stats.first_in_at))::INT
+        ELSE NULL
+      END
+    FROM (
+      SELECT conversation_id,
+        MIN(created_at) AS first_msg_at,
+        MIN(created_at) FILTER (WHERE direction='in')  AS first_in_at,
+        MIN(created_at) FILTER (WHERE direction='out') AS first_out_at,
+        MAX(created_at) FILTER (WHERE direction='in')  AS last_in_at,
+        MAX(created_at) FILTER (WHERE direction='out') AS last_out_at,
+        COUNT(*) FILTER (WHERE direction='in')  AS in_count,
+        COUNT(*) FILTER (WHERE direction='out') AS out_count
+      FROM sav_messages
+      WHERE conversation_id = ANY($1::text[])
+      GROUP BY conversation_id
+    ) stats
+    WHERE c.id = stats.conversation_id
+  `, [Array.from(convData.keys())]);
+
+  await db.query(`
+    UPDATE sav_conversations c
+    SET total_comments = sub.cnt
+    FROM (SELECT conversation_id, COUNT(*) AS cnt
+          FROM sav_comments
+          WHERE conversation_id = ANY($1::text[])
+          GROUP BY conversation_id) sub
+    WHERE c.id = sub.conversation_id
+  `, [Array.from(convData.keys())]);
+
+  await db.query(`
+    UPDATE sav_conversations c
+    SET
+      archived_at = arc.archived_at,
+      archived_by_teammate_id = arc.actor_teammate_id
+    FROM (
+      SELECT DISTINCT ON (conversation_id) conversation_id,
+             created_at AS archived_at,
+             actor_teammate_id
+      FROM sav_events
+      WHERE type = 'archive'
+        AND conversation_id = ANY($1::text[])
+      ORDER BY conversation_id, created_at ASC
+    ) arc
+    WHERE c.id = arc.conversation_id
+  `, [Array.from(convData.keys())]);
+  console.log(`  ✓ Post-traitement terminé`);
+
+  // ─── Phase 6 : log sav_sync_log ───────────────────────────
   const duration = Math.round((Date.now() - startMs) / 1000);
   await db.query(`
     UPDATE sav_sync_log SET finished_at=NOW(), status=$1, duration_seconds=$2,

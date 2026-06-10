@@ -22,13 +22,13 @@ export interface QuoteCustomer {
 /** Mapping store_code → pays par défaut du marché */
 const STORE_DEFAULT_COUNTRY: Record<string, string> = {
   LFC: 'FR', LVO: 'FR', COCO: 'FR', MON: 'FR', UNI: 'FR',
-  TAR: 'DE', HET: 'NL', RED: 'ES', RETE: 'IT',
+  TAR: 'DE', HET: 'NL', RED: 'ES', REDE: 'PT', RETE: 'IT',
 };
 
 /** Mapping store_code → langue des labels devis */
 const STORE_LABEL_LANG: Record<string, string> = {
   LFC: 'fr', LVO: 'fr', COCO: 'fr', MON: 'fr', UNI: 'fr',
-  TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
+  TAR: 'de', HET: 'nl', RED: 'es', REDE: 'pt', RETE: 'it',
 };
 
 /** Taux TVA normaux par pays (2026) — pour résoudre pays depuis le taux */

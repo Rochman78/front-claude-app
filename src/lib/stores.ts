@@ -19,7 +19,8 @@ export const STORES: StoreConfig[] = [
   { code: 'MON',  name: 'Mon Ombrage',              email: 'bonjour@mon-ombrage.fr',                  defaultLang: 'fr', pennylaneTemplateId: 883869, inboxMatchPattern: 'mon ombrage' },
   { code: 'TAR',  name: 'Tarnnetz',                 email: 'Kontakt@tarnnetz.com',                    defaultLang: 'de', pennylaneTemplateId: 257174, inboxMatchPattern: 'tarnnetz' },
   { code: 'HET',  name: 'Het Camouflagenet',        email: 'contact@het-camouflagenet.nl',             defaultLang: 'nl', pennylaneTemplateId: 257162, inboxMatchPattern: 'het' },
-  { code: 'RED',  name: 'Red de Camuflaje',         email: 'contacto@red-de-camuflaje.com',            defaultLang: 'es', pennylaneTemplateId: 257168, inboxMatchPattern: 'red' },
+  { code: 'RED',  name: 'Red de Camuflaje',         email: 'contacto@red-de-camuflaje.com',            defaultLang: 'es', pennylaneTemplateId: 257168, inboxMatchPattern: 'red de' },
+  { code: 'REDE', name: 'Rede Camuflagem',          email: 'contacto@rede-camuflagem.pt',              defaultLang: 'pt', pennylaneTemplateId: 257168, inboxMatchPattern: 'rede' },
   { code: 'RETE', name: 'Rete Mimetica',            email: 'contatto@rete-mimetica.it',                defaultLang: 'it', pennylaneTemplateId: 861190, inboxMatchPattern: 'rete' },
   { code: 'UNI',  name: "L'Univers du Camouflage",  email: 'contact@univers-camouflage.fr',            defaultLang: 'fr', pennylaneTemplateId: 883875, inboxMatchPattern: 'univers' },
 ];

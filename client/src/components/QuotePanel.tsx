@@ -8,7 +8,7 @@ const API_BASE = window.location.origin;
 /** Langue par défaut de chaque boutique */
 const STORE_LANG: Record<string, string> = {
   LFC: 'fr', LVO: 'fr', COCO: 'fr', MON: 'fr', UNI: 'fr',
-  TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
+  TAR: 'de', HET: 'nl', RED: 'es', REDE: 'pt', RETE: 'it',
 };
 
 interface ImageSelection {
@@ -562,6 +562,7 @@ export default function QuotePanel({
       if (storeLang !== 'fr') {
         const labelMap: Record<string, { product: string; transport: string; remise: string; description: string }> = {
           es: { product: 'Red de camuflaje {shape} a medida', transport: 'Transporte a medida', remise: 'Descuento transporte a medida', description: 'Cantidad : {qty} | Total m² : {m2} | Plazo de producción + entrega : aprox. 21 días' },
+          pt: { product: 'Rede de camuflagem {shape} por medida', transport: 'Transporte por medida', remise: 'Desconto de transporte por medida', description: 'Quantidade : {qty} | Total m² : {m2} | Prazo de produção + entrega : aprox. 21 dias' },
           de: { product: 'Tarnnetz {shape} nach Maß', transport: 'Versand nach Maß', remise: 'Versandrabatt nach Maß', description: 'Menge : {qty} | Gesamt m² : {m2} | Produktions- + Lieferzeit : ca. 21 Tage' },
           nl: { product: 'Camouflagenet {shape} op maat', transport: 'Verzending op maat', remise: 'Verzendkorting op maat', description: 'Aantal : {qty} | Totaal m² : {m2} | Productie + levertijd : ca. 21 dagen' },
           it: { product: 'Rete mimetica {shape} su misura', transport: 'Trasporto su misura', remise: 'Sconto trasporto su misura', description: 'Quantità : {qty} | Totale m² : {m2} | Tempi di produzione + consegna : circa 21 giorni' },
@@ -569,6 +570,7 @@ export default function QuotePanel({
         };
         const shapeMap: Record<string, Record<string, string>> = {
           es: { rectangulaire: 'rectangular', triangulaire: 'triangular', 'trapézoïdal': 'trapezoidal', carré: 'cuadrada' },
+          pt: { rectangulaire: 'retangular', triangulaire: 'triangular', 'trapézoïdal': 'trapezoidal', carré: 'quadrada' },
           de: { rectangulaire: 'rechteckig', triangulaire: 'dreieckig', 'trapézoïdal': 'trapezförmig', carré: 'quadratisch' },
           nl: { rectangulaire: 'rechthoekig', triangulaire: 'driehoekig', 'trapézoïdal': 'trapeziumvormig', carré: 'vierkant' },
           it: { rectangulaire: 'rettangolare', triangulaire: 'triangolare', 'trapézoïdal': 'trapezoidale', carré: 'quadrata' },

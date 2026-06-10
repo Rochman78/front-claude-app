@@ -9,6 +9,7 @@ const EMAIL_MAPPING: Record<string, string> = {
   'kontakt@tarnnetz.com': 'TAR',
   'contact@het-camouflagenet.nl': 'HET',
   'contacto@red-de-camuflaje.com': 'RED',
+  'contacto@rede-camuflagem.pt': 'REDE',
   'contatto@rete-mimetica.it': 'RETE',
   'contact@univers-camouflage.fr': 'UNI',
 };
@@ -21,7 +22,8 @@ const NAME_PATTERNS: [string, string][] = [
   ['mon ombrage', 'MON'],
   ['tarnnetz', 'TAR'],
   ['het', 'HET'],
-  ['red', 'RED'],
+  ['rede', 'REDE'],   // doit être avant 'red' (sinon 'rede' matche 'red')
+  ['red de', 'RED'],
   ['rete', 'RETE'],
   ['univers', 'UNI'],
 ];

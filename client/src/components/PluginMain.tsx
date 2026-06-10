@@ -802,11 +802,11 @@ export default function PluginMain({ context }: PluginMainProps) {
           }}>
             <div style={{
               background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '360px', width: '90%',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.15)', color: '#000',
             }}>
               {quoteMailMode === 'choose' && (
                 <>
-                  <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '14px', lineHeight: '1.5' }}>
+                  <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '14px', lineHeight: '1.5', color: '#000' }}>
                     Quel mail joindre au devis ?
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -858,10 +858,10 @@ export default function PluginMain({ context }: PluginMainProps) {
               )}
               {quoteMailMode === 'consigne' && (
                 <>
-                  <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', lineHeight: '1.5' }}>
+                  <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', lineHeight: '1.5', color: '#000' }}>
                     🤖 &nbsp;Mail custom (Claude)
                   </p>
-                  <p style={{ fontSize: '12px', color: '#555', marginBottom: '10px', lineHeight: '1.45' }}>
+                  <p style={{ fontSize: '12px', color: '#000', marginBottom: '10px', lineHeight: '1.45' }}>
                     Donne une consigne courte à Claude. Il rédigera un mail adapté à la conv qui accompagnera le devis PDF. Laisse vide → Claude s'adapte tout seul à la conversation.
                   </p>
                   <textarea
@@ -872,7 +872,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                     style={{
                       width: '100%', padding: '8px 10px', fontSize: '13px',
                       border: '1px solid #ddd', borderRadius: '6px', resize: 'vertical',
-                      fontFamily: 'inherit', marginBottom: '12px',
+                      fontFamily: 'inherit', marginBottom: '12px', color: '#000', background: 'white',
                     }}
                   />
                   <div style={{ display: 'flex', gap: '8px' }}>

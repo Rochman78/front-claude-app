@@ -296,7 +296,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function resolveChannelAndAuthor(conversationId: string): Promise<{ channelId: string; authorId: string; convType: string }> {
+export async function resolveChannelAndAuthor(conversationId: string): Promise<{ channelId: string; authorId: string; convType: string }> {
   let channelId = '';
   let authorId = '';
   let convType = 'unknown';

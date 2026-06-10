@@ -6,11 +6,12 @@ import { cleanDraft } from '@/lib/cleanDraft';
 import { callClaude } from '@/lib/services/claudeService';
 import { POST as analyzePOST } from '@/app/api/plugin/analyze/route';
 import { POST as pushDraftPOST } from '@/app/api/plugin/push-draft/route';
+import { POST as sendMessagePOST } from '@/app/api/plugin/send-message/route';
 import { POST as translatePOST } from '@/app/api/plugin/translate/route';
 
 export interface AutoDraftResult {
   conversationId: string;
-  status: 'drafted' | 'skipped' | 'error';
+  status: 'drafted' | 'sent' | 'skipped' | 'error';
   reason?: string;
 }
 
@@ -249,25 +250,38 @@ ${fullBody}`;
     }
     const html = textToHtml(finalText);
 
-    // 7. Poser le brouillon dans Front (réutilise push-draft : canal/auteur/dédoublonnage gérés)
-    const pushReq = new NextRequest('https://internal/api/plugin/push-draft', {
+    // 7. Poser dans Front : auto-send OU auto-draft selon la variable d'env.
+    // AUTO_SEND_ENABLED=true → envoie le mail au client direct.
+    // Sinon (défaut) → crée juste un brouillon que l'équipe relit/envoie à la main.
+    // Kill switch : il suffit de mettre AUTO_SEND_ENABLED=false sur Render et redeploy
+    // pour rebasculer en mode brouillon, sans toucher au code.
+    const sendMode = process.env.AUTO_SEND_ENABLED === 'true';
+
+    const endpointName = sendMode ? 'send-message' : 'push-draft';
+    const handler = sendMode ? sendMessagePOST : pushDraftPOST;
+    const url = sendMode ? 'https://internal/api/plugin/send-message' : 'https://internal/api/plugin/push-draft';
+    const handlerReq = new NextRequest(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ conversationId, body: html }),
     });
-    const pushRes = await pushDraftPOST(pushReq);
-    if (!pushRes.ok) {
-      const e = await pushRes.text().catch(() => '');
-      await record(conversationId, store.code, 'error', `push-draft ${pushRes.status}: ${e}`);
-      return { conversationId, status: 'error', reason: `push-draft ${pushRes.status}` };
+    const handlerRes = await handler(handlerReq);
+    if (!handlerRes.ok) {
+      const e = await handlerRes.text().catch(() => '');
+      await record(conversationId, store.code, 'error', `${endpointName} ${handlerRes.status}: ${e}`);
+      return { conversationId, status: 'error', reason: `${endpointName} ${handlerRes.status}` };
     }
 
     // 8. Idempotence + commentaire interne court pour l'agent
-    await record(conversationId, store.code, 'drafted', '');
-    await postComment(conversationId, '✍️ Brouillon créé automatiquement par Claude. Tout le détail est dans le plugin si besoin d\'aller vérifier.');
+    const finalStatus: 'sent' | 'drafted' = sendMode ? 'sent' : 'drafted';
+    await record(conversationId, store.code, finalStatus, '');
+    const comment = sendMode
+      ? '📤 Mail envoyé automatiquement par Claude (auto-send devis). Si la réponse n\'est pas bonne, contre-mail rapidement.'
+      : '✍️ Brouillon créé automatiquement par Claude. Tout le détail est dans le plugin si besoin d\'aller vérifier.';
+    await postComment(conversationId, comment);
 
-    console.log(`[auto-draft] ${conversationId} (${store.code}) → brouillon posé`);
-    return { conversationId, status: 'drafted' };
+    console.log(`[auto-draft] ${conversationId} (${store.code}) → ${sendMode ? 'ENVOYÉ' : 'brouillon posé'}`);
+    return { conversationId, status: finalStatus };
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'erreur inconnue';
     console.error(`[auto-draft] ${conversationId} error:`, msg);

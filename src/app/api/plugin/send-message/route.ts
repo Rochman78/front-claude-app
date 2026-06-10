@@ -22,8 +22,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'conversationId et body requis' }, { status: 400 });
     }
 
-    const token = process.env.FRONT_API_TOKEN;
-    if (!token) return NextResponse.json({ error: 'FRONT_API_TOKEN non configurée' }, { status: 500 });
+    // On préfère un token dédié à l'envoi (scope messages:send isolé), avec fallback
+    // sur le token principal si la variable séparée n'est pas définie. Permet de
+    // limiter la portée d'un éventuel leak du token send-only.
+    const token = process.env.FRONT_API_TOKEN_SEND || process.env.FRONT_API_TOKEN;
+    if (!token) return NextResponse.json({ error: 'FRONT_API_TOKEN(_SEND) non configurée' }, { status: 500 });
 
     const { channelId, authorId } = await resolveChannelAndAuthor(conversationId);
     console.log(`[send-message] conv=${conversationId} channel=${channelId || '(none)'} author=${authorId || '(none)'}`);

@@ -71,8 +71,10 @@ const db = new Client({
 });
 
 // ─── Front API helper ──────────────────────────────────────────
-const SLEEP = 250; // ms entre requêtes (anti-429)
-async function frontFetch(path: string, retries = 5): Promise<any> {
+const SLEEP = 500;  // ms entre requêtes (anti-429, doublé pour résister à un Front saturé)
+async function frontFetch(path: string, retries = 8): Promise<any> {
+  // Retries augmenté à 8 (wait max ~2 min) pour survivre à un Front sous pression.
+  // Le coût d'un retry échec = la perte totale d'une page de pagination.
   const url = path.startsWith('http') ? path : `${FRONT_API}${path}`;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -82,7 +84,7 @@ async function frontFetch(path: string, retries = 5): Promise<any> {
       });
       if (res.status === 429 || res.status >= 500) {
         if (attempt === retries) throw new Error(`HTTP ${res.status} après ${retries} retries`);
-        const wait = Math.min(30_000, 1000 * Math.pow(2, attempt));
+        const wait = Math.min(60_000, 1000 * Math.pow(2, attempt));
         console.warn(`  ⚠️  ${res.status} → retry ${attempt + 1}/${retries} dans ${wait}ms`);
         await new Promise(r => setTimeout(r, wait));
         continue;
@@ -91,7 +93,7 @@ async function frontFetch(path: string, retries = 5): Promise<any> {
       return await res.json();
     } catch (err: any) {
       if (attempt === retries) throw err;
-      await new Promise(r => setTimeout(r, Math.min(30_000, 1000 * Math.pow(2, attempt))));
+      await new Promise(r => setTimeout(r, Math.min(60_000, 1000 * Math.pow(2, attempt))));
     }
   }
 }

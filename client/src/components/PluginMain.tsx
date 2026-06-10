@@ -767,46 +767,80 @@ export default function PluginMain({ context }: PluginMainProps) {
         </div>
       )}
 
-      {showQuoteConfirm && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-        }}>
+      {showQuoteConfirm && (() => {
+        const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
+        const mailGeneral =
+          `Bonjour ${prenom},\n\n` +
+          `Veuillez trouver ci-joint votre devis.\n\n` +
+          `Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
+          `N'hésitez pas à nous contacter si vous avez la moindre question.`;
+        const mailChorus =
+          `Bonjour ${prenom},\n\n` +
+          `Veuillez trouver ci-joint votre devis.\n\n` +
+          `Pour donner suite, nous vous remercions de bien vouloir nous transmettre votre validation écrite (bon de commande, accord signé) par retour de mail. Nous procéderons ensuite à la livraison, puis le règlement pourra se faire par Chorus Pro à réception, conformément à la procédure des marchés publics.\n\n` +
+          `N'hésitez pas à nous contacter si vous avez la moindre question.`;
+        return (
           <div style={{
-            background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '320px', width: '90%',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
           }}>
-            <p style={{ fontSize: '14px', marginBottom: '16px', lineHeight: '1.5' }}>
-              Remplacer le brouillon par le mail d'accompagnement du devis ?
-            </p>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                className="btn-outline"
-                style={{ flex: 1 }}
-                onClick={() => setShowQuoteConfirm(false)}
-              >
-                Non
-              </button>
-              <button
-                className="btn-primary"
-                style={{ flex: 1 }}
-                onClick={() => {
-                  const prenom = (recipient?.name || '').split(/\s+/)[0] || 'Madame, Monsieur';
-                  setQuoteDraftText(
-                    `Bonjour ${prenom},\n\n` +
-                    `Veuillez trouver ci-joint votre devis.\n\n` +
-                    `Pour donner suite à ce devis, il vous suffit de nous retourner le devis signé ou votre accord par retour de mail, puis de procéder au virement bancaire aux coordonnées indiquées sur le devis.\n\n` +
-                    `N'hésitez pas à nous contacter si vous avez la moindre question.`
-                  );
-                  setShowQuoteConfirm(false);
-                }}
-              >
-                Oui
-              </button>
+            <div style={{
+              background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '340px', width: '90%',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            }}>
+              <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '14px', lineHeight: '1.5' }}>
+                Quel mail joindre au devis ?
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button
+                  className="btn-primary"
+                  style={{ textAlign: 'left', padding: '10px 12px' }}
+                  onClick={() => {
+                    setQuoteDraftText(mailGeneral);
+                    setShowQuoteConfirm(false);
+                  }}
+                >
+                  📄 &nbsp;Mail général
+                  <div style={{ fontSize: '11px', fontWeight: 400, opacity: 0.8, marginTop: '2px' }}>
+                    Standard, règlement par virement
+                  </div>
+                </button>
+                <button
+                  className="btn-primary"
+                  style={{ textAlign: 'left', padding: '10px 12px' }}
+                  onClick={() => {
+                    setQuoteDraftText(mailChorus);
+                    setShowQuoteConfirm(false);
+                  }}
+                >
+                  🏛️ &nbsp;Mail Chorus Pro
+                  <div style={{ fontSize: '11px', fontWeight: 400, opacity: 0.8, marginTop: '2px' }}>
+                    Mairies / établissements publics
+                  </div>
+                </button>
+                <button
+                  className="btn-outline"
+                  style={{ textAlign: 'left', padding: '10px 12px', opacity: 0.55, cursor: 'not-allowed' }}
+                  disabled
+                  title="Bientôt disponible"
+                >
+                  🤖 &nbsp;Autre mail (Claude)
+                  <div style={{ fontSize: '11px', fontWeight: 400, opacity: 0.7, marginTop: '2px' }}>
+                    Mail custom contextuel — bientôt
+                  </div>
+                </button>
+                <button
+                  className="btn-outline"
+                  style={{ marginTop: '4px' }}
+                  onClick={() => setShowQuoteConfirm(false)}
+                >
+                  Annuler
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       </div>
       {/* ═══ CONTAINER BOUTONS FIXE EN BAS ═══ */}

@@ -661,6 +661,8 @@ export default function PluginMain({ context }: PluginMainProps) {
                 body: JSON.stringify({ frontConversationId: frontConvId, storeCode: store?.code, quoteNumber: qNumber, pennylaneUrl, pdfUrl }),
               }).catch(() => {});
               // Demander si on remplace le brouillon par le mail générique devis
+              setQuoteMailMode('choose');
+              setQuoteClaudeConsigne('');
               setShowQuoteConfirm(true);
             }}
           />
@@ -782,64 +784,124 @@ export default function PluginMain({ context }: PluginMainProps) {
           `Veuillez trouver ci-joint votre devis.\n\n` +
           `Pour donner suite, nous vous remercions de bien vouloir nous transmettre votre validation écrite (bon de commande, accord signé) par retour de mail. Nous procéderons ensuite à la livraison, puis le règlement pourra se faire par Chorus Pro à réception, conformément à la procédure des marchés publics.\n\n` +
           `N'hésitez pas à nous contacter si vous avez la moindre question.`;
+        const buildClaudeNote = (consigne: string): string => {
+          const parts: string[] = [];
+          parts.push(`Le brouillon que tu vas rédiger accompagne un DEVIS PDF qui vient d'être généré (référence : ${quoteNumber || 'en cours'}) et qui sera joint automatiquement au mail. Tu n'as PAS à reprendre les détails chiffrés du devis (produits, prix, totaux) — le client les verra dans le PDF.`);
+          if (consigne.trim()) {
+            parts.push(`Consigne du gérant : ${consigne.trim()}`);
+          } else {
+            parts.push(`Aucune consigne particulière du gérant — adapte-toi au fil de la conversation : si le client a posé une question ou exprimé une attente, prends-la en compte avant ou après la mention du devis joint.`);
+          }
+          parts.push(`Rédige un mail bref (4-8 lignes max), poli, en français. Termine par une invitation à revenir vers nous en cas de question.`);
+          return parts.join('\n\n');
+        };
         return (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
             background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
           }}>
             <div style={{
-              background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '340px', width: '90%',
+              background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '360px', width: '90%',
               boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
             }}>
-              <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '14px', lineHeight: '1.5' }}>
-                Quel mail joindre au devis ?
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button
-                  className="btn-primary"
-                  style={{ textAlign: 'left', padding: '10px 12px' }}
-                  onClick={() => {
-                    setQuoteDraftText(mailGeneral);
-                    setShowQuoteConfirm(false);
-                  }}
-                >
-                  📄 &nbsp;Mail général
-                  <div style={{ fontSize: '11px', fontWeight: 400, opacity: 0.8, marginTop: '2px' }}>
-                    Standard, règlement par virement
+              {quoteMailMode === 'choose' && (
+                <>
+                  <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '14px', lineHeight: '1.5' }}>
+                    Quel mail joindre au devis ?
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <button
+                      className="btn-primary"
+                      style={{ textAlign: 'left', padding: '10px 12px' }}
+                      onClick={() => {
+                        setQuoteDraftText(mailGeneral);
+                        setShowQuoteConfirm(false);
+                      }}
+                    >
+                      📄 &nbsp;Mail général
+                      <div style={{ fontSize: '11px', fontWeight: 400, opacity: 0.8, marginTop: '2px' }}>
+                        Standard, règlement par virement
+                      </div>
+                    </button>
+                    <button
+                      className="btn-primary"
+                      style={{ textAlign: 'left', padding: '10px 12px' }}
+                      onClick={() => {
+                        setQuoteDraftText(mailChorus);
+                        setShowQuoteConfirm(false);
+                      }}
+                    >
+                      🏛️ &nbsp;Mail Chorus Pro
+                      <div style={{ fontSize: '11px', fontWeight: 400, opacity: 0.8, marginTop: '2px' }}>
+                        Mairies / établissements publics
+                      </div>
+                    </button>
+                    <button
+                      className="btn-primary"
+                      style={{ textAlign: 'left', padding: '10px 12px' }}
+                      onClick={() => setQuoteMailMode('consigne')}
+                    >
+                      🤖 &nbsp;Autre mail (Claude)
+                      <div style={{ fontSize: '11px', fontWeight: 400, opacity: 0.8, marginTop: '2px' }}>
+                        Mail custom contextuel — donne une consigne courte
+                      </div>
+                    </button>
+                    <button
+                      className="btn-outline"
+                      style={{ marginTop: '4px' }}
+                      onClick={() => setShowQuoteConfirm(false)}
+                    >
+                      Annuler
+                    </button>
                   </div>
-                </button>
-                <button
-                  className="btn-primary"
-                  style={{ textAlign: 'left', padding: '10px 12px' }}
-                  onClick={() => {
-                    setQuoteDraftText(mailChorus);
-                    setShowQuoteConfirm(false);
-                  }}
-                >
-                  🏛️ &nbsp;Mail Chorus Pro
-                  <div style={{ fontSize: '11px', fontWeight: 400, opacity: 0.8, marginTop: '2px' }}>
-                    Mairies / établissements publics
+                </>
+              )}
+              {quoteMailMode === 'consigne' && (
+                <>
+                  <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', lineHeight: '1.5' }}>
+                    🤖 &nbsp;Mail custom (Claude)
+                  </p>
+                  <p style={{ fontSize: '12px', color: '#555', marginBottom: '10px', lineHeight: '1.45' }}>
+                    Donne une consigne courte à Claude. Il rédigera un mail adapté à la conv qui accompagnera le devis PDF. Laisse vide → Claude s'adapte tout seul à la conversation.
+                  </p>
+                  <textarea
+                    value={quoteClaudeConsigne}
+                    onChange={(e) => setQuoteClaudeConsigne(e.target.value)}
+                    placeholder="Ex: Réponds à sa question sur les délais avant de transmettre le devis."
+                    rows={3}
+                    style={{
+                      width: '100%', padding: '8px 10px', fontSize: '13px',
+                      border: '1px solid #ddd', borderRadius: '6px', resize: 'vertical',
+                      fontFamily: 'inherit', marginBottom: '12px',
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      className="btn-outline"
+                      style={{ flex: 1 }}
+                      onClick={() => setQuoteMailMode('choose')}
+                    >
+                      Retour
+                    </button>
+                    <button
+                      className="btn-primary"
+                      style={{ flex: 1 }}
+                      onClick={async () => {
+                        const note = buildClaudeNote(quoteClaudeConsigne);
+                        setShowQuoteConfirm(false);
+                        // Bypass du mail-type → Claude rédige, son output sera utilisé au push
+                        setQuoteDraftText(null);
+                        setManualValidation(false);
+                        setDraftInvalidated(true);
+                        setPreAnalyzeNote(note);
+                        await handleAnalyze(note);
+                      }}
+                    >
+                      Lancer
+                    </button>
                   </div>
-                </button>
-                <button
-                  className="btn-outline"
-                  style={{ textAlign: 'left', padding: '10px 12px', opacity: 0.55, cursor: 'not-allowed' }}
-                  disabled
-                  title="Bientôt disponible"
-                >
-                  🤖 &nbsp;Autre mail (Claude)
-                  <div style={{ fontSize: '11px', fontWeight: 400, opacity: 0.7, marginTop: '2px' }}>
-                    Mail custom contextuel — bientôt
-                  </div>
-                </button>
-                <button
-                  className="btn-outline"
-                  style={{ marginTop: '4px' }}
-                  onClick={() => setShowQuoteConfirm(false)}
-                >
-                  Annuler
-                </button>
-              </div>
+                </>
+              )}
             </div>
           </div>
         );

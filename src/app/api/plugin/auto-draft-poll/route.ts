@@ -44,8 +44,10 @@ async function run(req: NextRequest) {
     }
 
     const drafted = results.filter((r) => r.status === 'drafted').length;
-    console.log(`[auto-draft-poll] inboxes=${shopInboxes.length} scanned=${scanned} candidates=${candidates} drafted=${drafted}`);
-    return NextResponse.json({ shopInboxes: shopInboxes.length, scanned, candidates, drafted, results });
+    const sent = results.filter((r) => r.status === 'sent').length;
+    const mode = process.env.AUTO_SEND_ENABLED === 'true' ? 'send' : 'draft';
+    console.log(`[auto-draft-poll] mode=${mode} inboxes=${shopInboxes.length} scanned=${scanned} candidates=${candidates} drafted=${drafted} sent=${sent}`);
+    return NextResponse.json({ mode, shopInboxes: shopInboxes.length, scanned, candidates, drafted, sent, results });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'erreur inconnue';
     console.error('[auto-draft-poll] error:', msg);

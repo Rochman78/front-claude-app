@@ -152,6 +152,9 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [quoteDraftText, setQuoteDraftText] = useState<string | null>(null);
   const [mailThread, setMailThread] = useState<string>('');
   const [showQuoteConfirm, setShowQuoteConfirm] = useState(false);
+  // Modale 'envoi devis' : 'choose' = sélection du mail (3 boutons), 'consigne' = saisie d'une consigne pour Claude
+  const [quoteMailMode, setQuoteMailMode] = useState<'choose' | 'consigne'>('choose');
+  const [quoteClaudeConsigne, setQuoteClaudeConsigne] = useState<string>('');
   const [preAnalyzeNote, setPreAnalyzeNote] = useState<string>('');
   const [showResumePopup, setShowResumePopup] = useState(false);
   const [resumeNote, setResumeNote] = useState<string>('');

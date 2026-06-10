@@ -156,21 +156,13 @@ async function main() {
   totals.events_seen = allEvents.length;
   console.log(`  ✓ ${allEvents.length} events fetched`);
 
-  // Filtre côté script par inbox active (les events sans inbox = on garde par défaut, ex: comment/tag)
-  function eventInboxOk(e: any): boolean {
-    const src = e.source || {};
-    const data = src.data;
-    let eventInboxes: string[] = [];
-    if (Array.isArray(data)) {
-      eventInboxes = data.filter(it => it?.id?.startsWith?.('inb_')).map(it => it.id);
-    } else if (data && typeof data === 'object' && data.id?.startsWith?.('inb_')) {
-      eventInboxes = [data.id];
-    }
-    if (eventInboxes.length === 0) return true; // event sans inbox explicite → on garde
-    return eventInboxes.some(id => activeInboxIds.has(id));
-  }
-  const filteredEvents = allEvents.filter(eventInboxOk);
-  console.log(`  ${filteredEvents.length} events après filtre inbox actives`);
+  // ⚠️ PAS de filtre côté script. La V1 filtrait sur source.data.id qui contient
+  // souvent des inbox de ROUTING (ex: inb_ftot3 Zephyr O.S.C interne) et non l'inbox
+  // de la conv. Du coup on jetait 27% des inbound légitimes.
+  // On garde TOUT en BDD. Le filtrage par boutique se fait à l'usage via
+  // sav_conversations.inbox_id (qui pointe la VRAIE inbox de la conv).
+  const filteredEvents = allEvents;
+  console.log(`  ${filteredEvents.length} events conservés (aucun filtre source)`);
 
   // ─── Phase 2 : extraire conv_ids + msg_ids ────────────────
   console.log('\n━━━ Phase 2 : extraction conv_ids + msg_ids ━━━');

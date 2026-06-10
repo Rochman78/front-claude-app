@@ -1,26 +1,24 @@
 #!/usr/bin/env tsx
 /**
- * SAV SYNC — Aspire les données Front API → tables sav_*
+ * SAV SYNC V2 — Aspire les données Front API → tables sav_*
  *
  * Usage :
- *   tsx scripts/sav-sync.ts                       # sync 7 derniers jours (défaut)
- *   tsx scripts/sav-sync.ts --days 1              # sync 1 dernier jour
- *   tsx scripts/sav-sync.ts --from 2026-06-02 --to 2026-06-09
- *   tsx scripts/sav-sync.ts --inbox LFC           # une seule boutique
- *   tsx scripts/sav-sync.ts --dry-run             # ne touche pas la BDD
+ *   tsx scripts/sav-sync.ts                              # 48h glissantes (mode cron)
+ *   tsx scripts/sav-sync.ts --from 2026-05-25 --to 2026-06-10  # backfill explicite
+ *   tsx scripts/sav-sync.ts --last-48h                   # idem défaut
  *
- * Étapes par inbox :
- *   1. Liste les conversations de la fenêtre (paginé)
- *   2. Pour chaque conv : fetch messages + comments + events
- *   3. Calcule les champs dérivés (first_inbound_at, response_time, etc.)
- *   4. Upsert dans toutes les tables (idempotent)
+ * Stratégie validée 10/06 (après échec sav-sync v1) :
+ *   1. /events?q[after]&q[before]  paginé global (≠ /inboxes/{id}/conversations qui ne filtre pas)
+ *   2. Filtre côté script par inbox active (les events portent l'inbox dans source.data)
+ *   3. Pour chaque message (inbound + out_reply) : fetch /messages/{id} pour author + body + attachments
+ *   4. Upsert idempotent (ON CONFLICT DO UPDATE) dans 7 tables
  *   5. Log dans sav_sync_log
  */
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { Client } from 'pg';
 
-// Charge .env manuellement (évite dépendance dotenv)
+// ─── Charge .env manuellement ──────────────────────────────────
 const envPath = join(process.cwd(), '.env');
 if (existsSync(envPath)) {
   for (const line of readFileSync(envPath, 'utf-8').split('\n')) {
@@ -32,7 +30,6 @@ if (existsSync(envPath)) {
 const FRONT_API   = 'https://api2.frontapp.com';
 const FRONT_TOKEN = process.env.FRONT_API_TOKEN;
 const DB_URL      = process.env.DATABASE_URL;
-
 if (!FRONT_TOKEN) { console.error('❌ FRONT_API_TOKEN manquant'); process.exit(1); }
 if (!DB_URL)      { console.error('❌ DATABASE_URL manquant');    process.exit(1); }
 
@@ -44,486 +41,385 @@ function arg(name: string): string | undefined {
 }
 function hasFlag(name: string): boolean { return args.includes(`--${name}`); }
 
-const days  = parseInt(arg('days') || '7', 10);
-const from  = arg('from');
-const to    = arg('to');
-const onlyInbox = arg('inbox');
-const dryRun = hasFlag('dry-run');
+const argFrom = arg('from');
+const argTo   = arg('to');
+const last48  = hasFlag('last-48h') || (!argFrom && !argTo);
 
-const now = new Date();
-const fromDate = from ? new Date(from) : new Date(now.getTime() - days * 86400000);
-const toDate   = to   ? new Date(to)   : now;
+let fromDate: Date, toDate: Date;
+if (argFrom && argTo) {
+  // Dates Paris (UTC+2 en été) → en UTC pour Front
+  fromDate = new Date(`${argFrom}T00:00:00+02:00`);
+  toDate   = new Date(`${argTo}T23:59:59+02:00`);
+} else {
+  // 48h glissantes
+  toDate   = new Date();
+  fromDate = new Date(toDate.getTime() - 48 * 3600 * 1000);
+}
 
-console.log(`═══ SAV SYNC ═══`);
+const fromUnix = Math.floor(fromDate.getTime() / 1000);
+const toUnix   = Math.floor(toDate.getTime() / 1000);
+
+console.log(`═══ SAV SYNC V2 ═══`);
 console.log(`  fenêtre : ${fromDate.toISOString()} → ${toDate.toISOString()}`);
-console.log(`  inbox   : ${onlyInbox || 'TOUTES actives'}`);
-console.log(`  dry-run : ${dryRun}`);
+console.log(`  mode    : ${last48 ? '48h glissantes (cron)' : 'backfill manuel'}`);
 console.log('');
 
-// ─── Front API helper avec retry exponentiel borné ─────────────
-// 3 retries max sur 429/5xx, exponentiel 1s/2s/4s. Au-delà on throw → l'appelant décide.
-async function frontFetch(path: string, retries = 3): Promise<any> {
-  const url = path.startsWith('http') ? path : `${FRONT_API}${path}`;
-  let lastErr: string = '';
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${FRONT_TOKEN}`, Accept: 'application/json' },
-        // Timeout 45s — sans ça, une requête lente Front bloque toute la sync indéfiniment
-        signal: AbortSignal.timeout(45_000),
-      });
-      if (res.status === 429 || res.status >= 500) {
-        lastErr = `${res.status}`;
-        if (attempt === retries) break;
-        const wait = 1000 * Math.pow(2, attempt);
-        console.warn(`  ⚠️  ${res.status} sur ${path.slice(0, 80)} → retry ${attempt + 1}/${retries} dans ${wait}ms`);
-        await new Promise(r => setTimeout(r, wait));
-        continue;
-      }
-      if (!res.ok) {
-        throw new Error(`Front API ${res.status} sur ${path}: ${(await res.text()).slice(0, 200)}`);
-      }
-      return await res.json();
-    } catch (err: any) {
-      lastErr = err.message || String(err);
-      if (attempt === retries) break;
-      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-    }
-  }
-  throw new Error(`Front API échec définitif après ${retries + 1} tentatives sur ${path.slice(0, 100)} : ${lastErr}`);
-}
-
-// Pagination : si une page intermédiaire échoue, on log et on retourne ce qu'on a.
-// Évite que toute la sync se bloque sur 1 page foireuse de Front.
-async function frontFetchAll(path: string, label: string = ''): Promise<any[]> {
-  const items: any[] = [];
-  let url: string | undefined = path;
-  let pageNum = 0;
-  while (url) {
-    pageNum++;
-    const t0 = Date.now();
-    process.stdout.write(`    [fetch p${pageNum}${label ? ' ' + label : ''}] start...\n`);
-    try {
-      const d = await frontFetch(url);
-      const got = (d._results || []).length;
-      items.push(...(d._results || []));
-      url = d._pagination?.next;
-      process.stdout.write(`    [fetch p${pageNum}${label ? ' ' + label : ''}] ok +${got} items in ${Date.now() - t0}ms${url ? ' (next page)' : ' (last)'}\n`);
-    } catch (err: any) {
-      process.stdout.write(`  ⚠️  pagination${label ? ' ' + label : ''} : page ${pageNum} a échoué après ${Date.now() - t0}ms (${err.message.slice(0, 150)}) — on continue avec ${items.length} items déjà récupérés\n`);
-      break;
-    }
-  }
-  return items;
-}
-
-// ─── DB helper ─────────────────────────────────────────────────
+// ─── DB client ─────────────────────────────────────────────────
 const db = new Client({
   connectionString: DB_URL,
   ssl: DB_URL!.includes('render.com') ? { rejectUnauthorized: false } : undefined,
 });
 
-async function q(sql: string, params: any[] = []): Promise<any[]> {
-  if (dryRun && /^(INSERT|UPDATE|DELETE)/i.test(sql.trim())) return [];
-  const r = await db.query(sql, params);
-  return r.rows;
+// ─── Front API helper ──────────────────────────────────────────
+const SLEEP = 250; // ms entre requêtes (anti-429)
+async function frontFetch(path: string, retries = 5): Promise<any> {
+  const url = path.startsWith('http') ? path : `${FRONT_API}${path}`;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${FRONT_TOKEN}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (res.status === 429 || res.status >= 500) {
+        if (attempt === retries) throw new Error(`HTTP ${res.status} après ${retries} retries`);
+        const wait = Math.min(30_000, 1000 * Math.pow(2, attempt));
+        console.warn(`  ⚠️  ${res.status} → retry ${attempt + 1}/${retries} dans ${wait}ms`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      return await res.json();
+    } catch (err: any) {
+      if (attempt === retries) throw err;
+      await new Promise(r => setTimeout(r, Math.min(30_000, 1000 * Math.pow(2, attempt))));
+    }
+  }
 }
 
-// ─── Helpers de transformation ─────────────────────────────────
+async function frontPaginate(path: string, label: string): Promise<any[]> {
+  const items: any[] = [];
+  let url: string | undefined = path;
+  let page = 0;
+  const t0 = Date.now();
+  while (url) {
+    page++;
+    try {
+      const d = await frontFetch(url);
+      items.push(...(d._results || []));
+      url = d._pagination?.next;
+    } catch (e: any) {
+      console.warn(`  ⚠️  ${label} page ${page} échec (${e.message.slice(0, 80)}) — on garde ${items.length}`);
+      break;
+    }
+    await new Promise(r => setTimeout(r, SLEEP));
+    if (page % 50 === 0) console.log(`    ... ${label} page ${page} | ${items.length} items | ${Math.round((Date.now() - t0) / 1000)}s`);
+  }
+  return items;
+}
+
+// ─── Helpers ───────────────────────────────────────────────────
 function tsToIso(unix: number | undefined | null): string | null {
   if (!unix) return null;
   return new Date(unix * 1000).toISOString();
 }
 
-function detectLanguage(text: string): string | null {
-  if (!text) return null;
-  const lower = text.toLowerCase().slice(0, 500);
-  // Mots-clés simples (suffisant pour démarrer, on raffinera avec Claude plus tard si besoin)
-  if (/\b(bonjour|merci|cordialement|filet|devis)\b/.test(lower)) return 'FR';
-  if (/\b(hallo|guten|danke|tarnnetz|bestellung)\b/.test(lower)) return 'DE';
-  if (/\b(goedendag|hartelijk|camouflagenet|bestelling)\b/.test(lower)) return 'NL';
-  if (/\b(hola|gracias|saludos|red de camuflaje|pedido)\b/.test(lower)) return 'ES';
-  if (/\b(buongiorno|grazie|saluti|rete mimetica|ordine)\b/.test(lower)) return 'IT';
-  if (/\b(hello|thanks|regards|order|please)\b/.test(lower)) return 'EN';
-  return null;
-}
-
-function detectCountry(language: string | null, customerEmail: string | null): string | null {
-  if (!language) return null;
-  const map: Record<string, string> = { FR: 'FR', DE: 'DE', NL: 'NL', ES: 'ES', IT: 'IT', EN: 'GB' };
-  return map[language] || null;
-}
-
-function isNoise(subject: string, body: string, senderEmail: string | null): boolean {
-  const text = `${subject || ''} ${body || ''}`.toLowerCase();
-  if (!text.trim()) return true;
-  if (/no-?reply|newsletter|notification|automated/i.test(senderEmail || '')) return true;
-  if (text.length < 30 && /^(test|ok|merci|thanks)$/i.test(text.trim())) return true;
-  return false;
-}
-
-function computeBusinessSeconds(fromIso: string, toIso: string, holidays: Set<string>): number {
-  // Heures ouvrées : 8h30 → 17h30, Lun-Ven, hors fériés (32 400 secondes/jour ouvré)
-  const start = new Date(fromIso);
-  const end   = new Date(toIso);
-  if (end <= start) return 0;
-  const businessSecondsPerDay = 9 * 3600;
-  const isBusinessDay = (d: Date) => {
-    const dow = d.getDay();
-    if (dow === 0 || dow === 6) return false;
-    const iso = d.toISOString().slice(0, 10);
-    return !holidays.has(iso);
-  };
-  const businessStartHour = 8.5;
-  const businessEndHour   = 17.5;
-  const secondsInDay = (d: Date) => {
-    if (!isBusinessDay(d)) return 0;
-    const dayStart = new Date(d); dayStart.setUTCHours(Math.floor(businessStartHour), (businessStartHour % 1) * 60, 0, 0);
-    const dayEnd   = new Date(d); dayEnd.setUTCHours(Math.floor(businessEndHour),   (businessEndHour % 1) * 60, 0, 0);
-    return Math.max(0, (dayEnd.getTime() - dayStart.getTime()) / 1000);
-  };
-  // Approximation : on compte les jours ouvrés entiers entre les bornes, + fragments aux bornes
-  let cur = new Date(start);
-  let total = 0;
-  while (cur < end) {
-    const nextDay = new Date(cur); nextDay.setUTCHours(24, 0, 0, 0);
-    const segEnd = nextDay < end ? nextDay : end;
-    if (isBusinessDay(cur)) {
-      const dayStart = new Date(cur); dayStart.setUTCHours(Math.floor(businessStartHour), (businessStartHour % 1) * 60, 0, 0);
-      const dayEnd   = new Date(cur); dayEnd.setUTCHours(Math.floor(businessEndHour),   (businessEndHour % 1) * 60, 0, 0);
-      const s = cur < dayStart ? dayStart : cur;
-      const e = segEnd > dayEnd ? dayEnd : segEnd;
-      if (e > s) total += (e.getTime() - s.getTime()) / 1000;
-    }
-    cur = nextDay;
-  }
-  return Math.round(total);
-}
-
-// ─── Sync principal ────────────────────────────────────────────
 let totals = {
-  conversations_seen: 0,
-  conversations_upserted: 0,
-  messages_upserted: 0,
-  comments_upserted: 0,
-  events_upserted: 0,
-  attachments_upserted: 0,
+  events_seen: 0, conversations_upserted: 0,
+  messages_upserted: 0, comments_upserted: 0,
+  events_upserted: 0, attachments_upserted: 0,
+  tags_links_upserted: 0, assignees_links_upserted: 0,
   errors: 0,
 };
 const errorDetails: any[] = [];
 
-async function syncConversation(conv: any, inboxId: string, storeCode: string, holidays: Set<string>) {
-  const convId = conv.id;
-  totals.conversations_seen++;
-
-  // Messages
-  let messages: any[] = [];
-  try {
-    messages = await frontFetchAll(`/conversations/${convId}/messages`);
-  } catch (e: any) {
-    errorDetails.push({ conv: convId, step: 'messages', err: e.message });
-    totals.errors++;
-    return;
-  }
-  messages.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
-
-  // Comments
-  let comments: any[] = [];
-  try {
-    comments = await frontFetchAll(`/conversations/${convId}/comments`);
-  } catch (e: any) {
-    errorDetails.push({ conv: convId, step: 'comments', err: e.message });
-    totals.errors++;
-  }
-
-  // Events
-  let events: any[] = [];
-  try {
-    events = await frontFetchAll(`/conversations/${convId}/events?limit=100`);
-  } catch (e: any) {
-    errorDetails.push({ conv: convId, step: 'events', err: e.message });
-    totals.errors++;
-  }
-
-  // Champs dérivés
-  const firstMsg = messages[0];
-  const firstInbound  = messages.find(m => m.is_inbound === true);
-  const firstOutbound = messages.find(m => m.is_inbound === false);
-  const lastInbound   = [...messages].reverse().find(m => m.is_inbound === true);
-  const lastOutbound  = [...messages].reverse().find(m => m.is_inbound === false);
-
-  const createdAt        = tsToIso(firstMsg?.created_at);
-  const firstInboundAt   = tsToIso(firstInbound?.created_at);
-  const firstOutboundAt  = tsToIso(firstOutbound?.created_at);
-  const lastInboundAt    = tsToIso(lastInbound?.created_at);
-  const lastOutboundAt   = tsToIso(lastOutbound?.created_at);
-  const lastEventAt      = events.length > 0
-    ? tsToIso(events[events.length - 1].emitted_at || events[events.length - 1].created_at)
-    : null;
-
-  const archiveEvent = events.find(e => e.type === 'archive');
-  const archivedAt   = archiveEvent ? tsToIso(archiveEvent.emitted_at || archiveEvent.created_at) : null;
-  const archivedBy   = archiveEvent?.source?.data?.id || null;
-
-  let responseTimeSec: number | null = null;
-  let responseTimeBusSec: number | null = null;
-  if (firstInboundAt && firstOutboundAt && firstOutboundAt > firstInboundAt) {
-    responseTimeSec = Math.round((new Date(firstOutboundAt).getTime() - new Date(firstInboundAt).getTime()) / 1000);
-    responseTimeBusSec = computeBusinessSeconds(firstInboundAt, firstOutboundAt, holidays);
-  }
-  const isWithinSla = responseTimeBusSec !== null ? responseTimeBusSec < 24 * 3600 : null;
-
-  // Détection langue + pays + bruit (depuis le 1er msg client)
-  const firstInboundBody = firstInbound?.text || firstInbound?.body || '';
-  const language = detectLanguage(firstInboundBody);
-  const customerEmail = firstInbound?.recipients?.find((r: any) => r.role === 'from')?.handle
-                    || (typeof firstInbound?.from === 'string' ? firstInbound.from : null);
-  const customerName  = firstInbound?.recipients?.find((r: any) => r.role === 'from')?.name || null;
-  const customerCountry = detectCountry(language, customerEmail);
-  const noise = isNoise(conv.subject || '', firstInboundBody, customerEmail);
-
-  const assigneeId = conv.assignee?.id || null;
-
-  // Upsert conversation
-  const inboundCount  = messages.filter(m => m.is_inbound === true).length;
-  const outboundCount = messages.filter(m => m.is_inbound === false).length;
-
-  await q(`
-    INSERT INTO sav_conversations (
-      id, inbox_id, store_code, subject, status, assignee_id, language,
-      customer_email, customer_name, customer_country,
-      created_at, first_inbound_at, first_outbound_at,
-      last_inbound_at, last_outbound_at, last_event_at,
-      archived_at, archived_by_teammate_id,
-      response_time_seconds, response_time_business_seconds, is_within_sla, is_noise,
-      total_inbound_messages, total_outbound_messages, total_comments, total_events,
-      synced_at
-    ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,NOW()
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      inbox_id=EXCLUDED.inbox_id, store_code=EXCLUDED.store_code, subject=EXCLUDED.subject,
-      status=EXCLUDED.status, assignee_id=EXCLUDED.assignee_id, language=EXCLUDED.language,
-      customer_email=EXCLUDED.customer_email, customer_name=EXCLUDED.customer_name, customer_country=EXCLUDED.customer_country,
-      created_at=EXCLUDED.created_at, first_inbound_at=EXCLUDED.first_inbound_at, first_outbound_at=EXCLUDED.first_outbound_at,
-      last_inbound_at=EXCLUDED.last_inbound_at, last_outbound_at=EXCLUDED.last_outbound_at, last_event_at=EXCLUDED.last_event_at,
-      archived_at=EXCLUDED.archived_at, archived_by_teammate_id=EXCLUDED.archived_by_teammate_id,
-      response_time_seconds=EXCLUDED.response_time_seconds, response_time_business_seconds=EXCLUDED.response_time_business_seconds,
-      is_within_sla=EXCLUDED.is_within_sla, is_noise=EXCLUDED.is_noise,
-      total_inbound_messages=EXCLUDED.total_inbound_messages, total_outbound_messages=EXCLUDED.total_outbound_messages,
-      total_comments=EXCLUDED.total_comments, total_events=EXCLUDED.total_events,
-      synced_at=NOW()
-  `, [
-    convId, inboxId, storeCode, conv.subject || '', conv.status || 'unassigned', assigneeId, language,
-    customerEmail, customerName, customerCountry,
-    createdAt, firstInboundAt, firstOutboundAt,
-    lastInboundAt, lastOutboundAt, lastEventAt,
-    archivedAt, archivedBy,
-    responseTimeSec, responseTimeBusSec, isWithinSla, noise,
-    inboundCount, outboundCount, comments.length, events.length
-  ]);
-  totals.conversations_upserted++;
-
-  // Upsert messages
-  for (const m of messages) {
-    const authorTeammate = m.is_inbound ? null : (m.author?.id || null);
-    const authorEmail    = m.recipients?.find((r: any) => r.role === 'from')?.handle
-                        || (typeof m.author?.email === 'string' ? m.author.email : null);
-    const body = m.text || '';
-    const html = m.body || '';
-    const hasAtt = (m.attachments || []).length > 0;
-    await q(`
-      INSERT INTO sav_messages (id, conversation_id, direction, author_email, author_teammate_id,
-        created_at, body_text, body_html, text_length, has_attachments, attachment_count, is_draft)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-      ON CONFLICT (id) DO UPDATE SET
-        direction=EXCLUDED.direction, author_email=EXCLUDED.author_email,
-        author_teammate_id=EXCLUDED.author_teammate_id, created_at=EXCLUDED.created_at,
-        body_text=EXCLUDED.body_text, body_html=EXCLUDED.body_html,
-        text_length=EXCLUDED.text_length, has_attachments=EXCLUDED.has_attachments,
-        attachment_count=EXCLUDED.attachment_count, is_draft=EXCLUDED.is_draft
-    `, [
-      m.id, convId, m.is_inbound ? 'in' : 'out', authorEmail, authorTeammate,
-      tsToIso(m.created_at), body, html, body.length, hasAtt, (m.attachments || []).length, !!m.is_draft
-    ]);
-    totals.messages_upserted++;
-
-    // Attachments
-    for (const a of (m.attachments || [])) {
-      await q(`
-        INSERT INTO sav_attachments (id, message_id, filename, content_type, size_bytes, is_inline, metadata)
-        VALUES ($1,$2,$3,$4,$5,$6,$7)
-        ON CONFLICT (id) DO UPDATE SET
-          filename=EXCLUDED.filename, content_type=EXCLUDED.content_type,
-          size_bytes=EXCLUDED.size_bytes, is_inline=EXCLUDED.is_inline, metadata=EXCLUDED.metadata
-      `, [
-        a.id, m.id, a.filename || '', a.content_type || '', a.size || 0,
-        !!(a.metadata?.is_inline), JSON.stringify(a.metadata || {})
-      ]);
-      totals.attachments_upserted++;
-    }
-  }
-
-  // Upsert comments
-  for (const c of comments) {
-    await q(`
-      INSERT INTO sav_comments (id, conversation_id, author_teammate_id, body_text, created_at)
-      VALUES ($1,$2,$3,$4,$5)
-      ON CONFLICT (id) DO UPDATE SET
-        author_teammate_id=EXCLUDED.author_teammate_id, body_text=EXCLUDED.body_text, created_at=EXCLUDED.created_at
-    `, [
-      c.id, convId, c.author?.id || null, c.body || '', tsToIso(c.posted_at || c.created_at)
-    ]);
-    totals.comments_upserted++;
-  }
-
-  // Upsert events
-  for (const e of events) {
-    const actor = e.source?.data?.id && e.source?._meta?.type === 'teammate' ? e.source.data.id : null;
-    let target: string | null = null;
-    let tagId: string | null = null;
-    if (e.type === 'assign' || e.type === 'unassign') {
-      target = e.target?.data?.id || null;
-    } else if (e.type === 'tag' || e.type === 'untag') {
-      tagId = e.target?.data?.id || null;
-    }
-    await q(`
-      INSERT INTO sav_events (id, conversation_id, type, actor_teammate_id, target_teammate_id, tag_id, created_at, meta)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      ON CONFLICT (id) DO UPDATE SET
-        type=EXCLUDED.type, actor_teammate_id=EXCLUDED.actor_teammate_id,
-        target_teammate_id=EXCLUDED.target_teammate_id, tag_id=EXCLUDED.tag_id,
-        created_at=EXCLUDED.created_at, meta=EXCLUDED.meta
-    `, [
-      e.id, convId, e.type, actor, target, tagId,
-      tsToIso(e.emitted_at || e.created_at), JSON.stringify(e._meta || {})
-    ]);
-    totals.events_upserted++;
-  }
-}
-
+// ─── Main ──────────────────────────────────────────────────────
 async function main() {
   await db.connect();
 
   // Sync log start
-  let syncLogId: number | null = null;
-  if (!dryRun) {
-    const r = await db.query(
-      `INSERT INTO sav_sync_log (started_at, status) VALUES (NOW(), 'in_progress') RETURNING id`
-    );
-    syncLogId = r.rows[0].id;
+  const r = await db.query(`INSERT INTO sav_sync_log (started_at, status) VALUES (NOW(), 'in_progress') RETURNING id`);
+  const syncLogId = r.rows[0].id;
+  const startMs = Date.now();
+
+  // Référentiels en cache
+  const activeInboxIds = new Set<string>(
+    (await db.query(`SELECT id FROM sav_inboxes WHERE is_active = true`)).rows.map(r => r.id)
+  );
+  console.log(`  ${activeInboxIds.size} inboxes actives`);
+
+  // ─── Phase 1 : fetch events ────────────────────────────────
+  console.log('\n━━━ Phase 1 : fetch /events ━━━');
+  const allEvents = await frontPaginate(
+    `/events?q[after]=${fromUnix}&q[before]=${toUnix}&limit=100`,
+    'events'
+  );
+  totals.events_seen = allEvents.length;
+  console.log(`  ✓ ${allEvents.length} events fetched`);
+
+  // Filtre côté script par inbox active (les events sans inbox = on garde par défaut, ex: comment/tag)
+  function eventInboxOk(e: any): boolean {
+    const src = e.source || {};
+    const data = src.data;
+    let eventInboxes: string[] = [];
+    if (Array.isArray(data)) {
+      eventInboxes = data.filter(it => it?.id?.startsWith?.('inb_')).map(it => it.id);
+    } else if (data && typeof data === 'object' && data.id?.startsWith?.('inb_')) {
+      eventInboxes = [data.id];
+    }
+    if (eventInboxes.length === 0) return true; // event sans inbox explicite → on garde
+    return eventInboxes.some(id => activeInboxIds.has(id));
   }
-  const startTime = Date.now();
+  const filteredEvents = allEvents.filter(eventInboxOk);
+  console.log(`  ${filteredEvents.length} events après filtre inbox actives`);
 
-  // Holidays en mémoire
-  const hRows = (await db.query(`SELECT date FROM sav_holidays`)).rows;
-  const holidays = new Set<string>(hRows.map(r => r.date.toISOString().slice(0, 10)));
-  console.log(`  ${holidays.size} jours fériés chargés`);
+  // ─── Phase 2 : extraire conv_ids + msg_ids ────────────────
+  console.log('\n━━━ Phase 2 : extraction conv_ids + msg_ids ━━━');
+  const convIds = new Set<string>();
+  const msgIds = new Set<string>(); // out_reply ET inbound
+  for (const e of filteredEvents) {
+    const cid = e.conversation?.id;
+    if (cid) convIds.add(cid);
+    if (e.type === 'out_reply' || e.type === 'inbound') {
+      const mid = e.target?.data?.id;
+      if (mid) msgIds.add(mid);
+    }
+  }
+  console.log(`  ${convIds.size} conversations distinctes, ${msgIds.size} messages à fetcher`);
 
-  // Inboxes actives
-  const where = onlyInbox
-    ? `WHERE store_code = $1 AND is_active = true`
-    : `WHERE is_active = true`;
-  const ibxs = (await db.query(
-    `SELECT id, store_code, name FROM sav_inboxes ${where} ORDER BY store_code`,
-    onlyInbox ? [onlyInbox] : []
-  )).rows;
-  console.log(`  ${ibxs.length} inboxes actives à traiter\n`);
-
-  const fromUnix = Math.floor(fromDate.getTime() / 1000);
-  const toUnix   = Math.floor(toDate.getTime() / 1000);
-
-  for (const ibx of ibxs) {
-    console.log(`━━━ ${ibx.store_code} (${ibx.name}) ━━━`);
-    const ibxStart = Date.now();
-
-    // STRATÉGIE : on liste les EVENTS de la fenêtre (filtre date qui marche
-    // vraiment côté Front), on extrait les conversation.id uniques, et on
-    // sync UNIQUEMENT ces convs ciblées. Évite de fetcher 4000+ convs
-    // historiques inutiles (cas vu sur LFC avec /inboxes/{id}/conversations).
-    const eventsQuery = `q[after]=${fromUnix}&q[before]=${toUnix}&q[source_id]=${ibx.id}&limit=100`;
-    let events: any[] = [];
+  // ─── Phase 3 : fetch détails messages (pour author + body + attachments) ──
+  console.log('\n━━━ Phase 3 : fetch /messages ━━━');
+  const msgDetail = new Map<string, any>();
+  const msgArray = Array.from(msgIds);
+  for (let i = 0; i < msgArray.length; i++) {
+    const mid = msgArray[i];
     try {
-      events = await frontFetchAll(`/events?${eventsQuery}`, `events ${ibx.store_code}`);
+      const m = await frontFetch(`/messages/${mid}`);
+      msgDetail.set(mid, m);
     } catch (e: any) {
-      console.error(`  ❌ liste events : ${e.message}`);
-      errorDetails.push({ inbox: ibx.store_code, step: 'list-events', err: e.message });
+      errorDetails.push({ msg_id: mid, step: 'fetch_msg', err: e.message });
       totals.errors++;
-      continue;
     }
-    console.log(`  ${events.length} events récupérés sur la fenêtre`);
+    await new Promise(r => setTimeout(r, SLEEP));
+    if ((i + 1) % 100 === 0) console.log(`    ... ${i + 1}/${msgArray.length}`);
+  }
+  console.log(`  ✓ ${msgDetail.size}/${msgArray.length} messages récupérés`);
 
-    // Extraire les conv_id uniques. On filtre aussi par source_id côté script
-    // au cas où le filtre Front q[source_id] ne soit pas fiable.
-    const convIds = new Set<string>();
-    for (const e of events) {
-      const convId = e.conversation?.id;
-      if (!convId) continue;
-      // Sécurité : ne garder que les events dont la source est bien notre inbox
-      const sourceId = e.source?.data?.id;
-      if (sourceId && sourceId !== ibx.id) continue;
-      convIds.add(convId);
-    }
-    console.log(`  ${convIds.size} conversations uniques à synchroniser`);
+  // ─── Phase 4 : upsert dans BDD ─────────────────────────────
+  console.log('\n━━━ Phase 4 : upsert BDD ━━━');
 
-    let done = 0;
-    for (const convId of convIds) {
-      // Fetch les détails de la conversation
-      let conv: any;
-      try {
-        conv = await frontFetch(`/conversations/${convId}`);
-      } catch (e: any) {
-        console.error(`    ❌ ${convId} (fetch conv) : ${e.message}`);
-        errorDetails.push({ conv: convId, step: 'fetch', err: e.message });
-        totals.errors++;
-        done++;
-        continue;
+  // 4.a Upsert conversations (depuis les events qui les référencent)
+  // On garde la "dernière" version vue de chaque conv (info dans event.conversation)
+  const convData = new Map<string, any>();
+  for (const e of filteredEvents) {
+    const cid = e.conversation?.id;
+    if (cid) convData.set(cid, e.conversation); // dernière vue gagne
+  }
+  console.log(`  Upsert ${convData.size} conversations...`);
+  let i = 0;
+  for (const [cid, conv] of convData.entries()) {
+    i++;
+    const recipient = conv.recipient || {};
+    // Trouver inbox de la conv (depuis events liés)
+    let convInboxId: string | null = null;
+    for (const e of filteredEvents) {
+      if (e.conversation?.id !== cid) continue;
+      const data = e.source?.data;
+      if (Array.isArray(data)) {
+        const ibx = data.find((it: any) => it?.id?.startsWith?.('inb_'));
+        if (ibx) { convInboxId = ibx.id; break; }
+      } else if (data?.id?.startsWith?.('inb_')) {
+        convInboxId = data.id; break;
       }
-      try {
-        await syncConversation(conv, ibx.id, ibx.store_code, holidays);
-      } catch (e: any) {
-        console.error(`    ❌ ${convId} (sync) : ${e.message}`);
-        errorDetails.push({ conv: convId, step: 'sync', err: e.message });
-        totals.errors++;
-      }
-      done++;
-      if (done % 20 === 0) process.stdout.write(`    ... ${done}/${convIds.size}\n`);
     }
-    const dur = Math.round((Date.now() - ibxStart) / 1000);
-    console.log(`  ✅ ${ibx.store_code} terminé en ${dur}s\n`);
+    try {
+      await db.query(`
+        INSERT INTO sav_conversations (
+          id, inbox_id, subject, status, customer_email, customer_name, synced_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          inbox_id = COALESCE(EXCLUDED.inbox_id, sav_conversations.inbox_id),
+          subject = EXCLUDED.subject,
+          status = EXCLUDED.status,
+          customer_email = COALESCE(EXCLUDED.customer_email, sav_conversations.customer_email),
+          customer_name = COALESCE(EXCLUDED.customer_name, sav_conversations.customer_name),
+          synced_at = NOW()
+      `, [
+        cid, convInboxId, conv.subject || '', conv.status || null,
+        recipient.handle || null, recipient.name || null,
+      ]);
+      totals.conversations_upserted++;
+    } catch (e: any) {
+      errorDetails.push({ conv_id: cid, step: 'upsert_conv', err: e.message });
+      totals.errors++;
+    }
+    if (i % 500 === 0) console.log(`    ... conversations ${i}/${convData.size}`);
   }
 
-  const duration = Math.round((Date.now() - startTime) / 1000);
+  // 4.b Upsert messages (depuis msgDetail) + attachments
+  console.log(`  Upsert ${msgDetail.size} messages + attachments...`);
+  i = 0;
+  for (const [mid, m] of msgDetail.entries()) {
+    i++;
+    const cid = m.conversation?.id || m._links?.related?.conversation?.split('/').pop();
+    if (!cid) continue;
+    const isInbound = m.is_inbound === true;
+    const authorId = isInbound ? null : (m.author?.id || null);
+    const authorEmail = (m.recipients || []).find((r: any) => r.role === 'from')?.handle
+                     || m.author?.email || null;
+    try {
+      await db.query(`
+        INSERT INTO sav_messages (
+          id, conversation_id, direction, author_email, author_teammate_id,
+          created_at, body_text, body_html, text_length, has_attachments, attachment_count, is_draft
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        ON CONFLICT (id) DO UPDATE SET
+          direction = EXCLUDED.direction, author_email = EXCLUDED.author_email,
+          author_teammate_id = EXCLUDED.author_teammate_id, created_at = EXCLUDED.created_at,
+          body_text = EXCLUDED.body_text, body_html = EXCLUDED.body_html,
+          text_length = EXCLUDED.text_length, has_attachments = EXCLUDED.has_attachments,
+          attachment_count = EXCLUDED.attachment_count, is_draft = EXCLUDED.is_draft
+      `, [
+        mid, cid, isInbound ? 'in' : 'out', authorEmail, authorId,
+        tsToIso(m.created_at), m.text || '', m.body || '',
+        (m.text || '').length, (m.attachments || []).length > 0, (m.attachments || []).length, !!m.is_draft,
+      ]);
+      totals.messages_upserted++;
 
-  // Sync log end
-  if (syncLogId && !dryRun) {
-    await db.query(
-      `UPDATE sav_sync_log SET finished_at=NOW(), status=$1, duration_seconds=$2,
-         conversations_seen=$3, conversations_upserted=$4, messages_upserted=$5,
-         comments_upserted=$6, events_upserted=$7, errors_count=$8, error_details=$9
-       WHERE id=$10`,
-      [
-        totals.errors === 0 ? 'success' : 'partial',
-        duration,
-        totals.conversations_seen,
-        totals.conversations_upserted,
-        totals.messages_upserted,
-        totals.comments_upserted,
-        totals.events_upserted,
-        totals.errors,
-        JSON.stringify(errorDetails.slice(0, 50)),
-        syncLogId,
-      ]
-    );
+      for (const a of (m.attachments || [])) {
+        try {
+          await db.query(`
+            INSERT INTO sav_attachments (id, message_id, filename, content_type, size_bytes, is_inline, metadata)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
+            ON CONFLICT (id) DO UPDATE SET
+              filename = EXCLUDED.filename, content_type = EXCLUDED.content_type,
+              size_bytes = EXCLUDED.size_bytes, is_inline = EXCLUDED.is_inline,
+              metadata = EXCLUDED.metadata
+          `, [
+            a.id, mid, a.filename || '', a.content_type || '', a.size || 0,
+            !!(a.metadata?.is_inline), JSON.stringify(a.metadata || {}),
+          ]);
+          totals.attachments_upserted++;
+        } catch (e: any) {
+          errorDetails.push({ att_id: a.id, step: 'upsert_att', err: e.message });
+          totals.errors++;
+        }
+      }
+    } catch (e: any) {
+      errorDetails.push({ msg_id: mid, step: 'upsert_msg', err: e.message });
+      totals.errors++;
+    }
+    if (i % 500 === 0) console.log(`    ... messages ${i}/${msgDetail.size}`);
   }
+
+  // 4.c Upsert events
+  console.log(`  Upsert ${filteredEvents.length} events...`);
+  i = 0;
+  for (const e of filteredEvents) {
+    i++;
+    const cid = e.conversation?.id;
+    if (!cid) continue;
+    const src = e.source || {};
+    const srcType = src._meta?.type;
+    const actorId = srcType === 'teammate' ? src.data?.id : null;
+    let targetTeammateId: string | null = null;
+    let tagId: string | null = null;
+    if ((e.type === 'assign' || e.type === 'unassign') && e.target?.data?.id?.startsWith('tea_')) {
+      targetTeammateId = e.target.data.id;
+    }
+    if ((e.type === 'tag' || e.type === 'untag') && e.target?.data?.id?.startsWith('tag_')) {
+      tagId = e.target.data.id;
+    }
+    try {
+      // Events généraux (archive/assign/tag/etc.) — out_reply et inbound et comment ont leur table dédiée
+      if (e.type !== 'inbound' && e.type !== 'out_reply' && e.type !== 'comment') {
+        await db.query(`
+          INSERT INTO sav_events (id, conversation_id, type, actor_teammate_id, target_teammate_id, tag_id, created_at, meta)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+          ON CONFLICT (id) DO UPDATE SET
+            type = EXCLUDED.type, actor_teammate_id = EXCLUDED.actor_teammate_id,
+            target_teammate_id = EXCLUDED.target_teammate_id, tag_id = EXCLUDED.tag_id,
+            created_at = EXCLUDED.created_at, meta = EXCLUDED.meta
+        `, [
+          e.id, cid, e.type, actorId, targetTeammateId, tagId,
+          tsToIso(e.emitted_at || e.created_at), JSON.stringify(src._meta || {}),
+        ]);
+        totals.events_upserted++;
+      }
+
+      // Comments inline (Front les expose dans /events type=comment)
+      if (e.type === 'comment' && actorId) {
+        // body du comment n'est pas dans l'event… on devrait fetch /comments/{id} mais c'est lourd.
+        // Pour V1 : on stocke quand même l'event avec body vide (l'event a un id distinct du comment)
+        // Le comment_id réel est dans target.data.id
+        const cmtId = e.target?.data?.id || `cmt-from-evt-${e.id}`;
+        await db.query(`
+          INSERT INTO sav_comments (id, conversation_id, author_teammate_id, body_text, created_at)
+          VALUES ($1,$2,$3,$4,$5)
+          ON CONFLICT (id) DO UPDATE SET
+            author_teammate_id = EXCLUDED.author_teammate_id,
+            body_text = EXCLUDED.body_text,
+            created_at = EXCLUDED.created_at
+        `, [
+          cmtId, cid, actorId, '', tsToIso(e.emitted_at || e.created_at),
+        ]);
+        totals.comments_upserted++;
+      }
+
+      // Lien conversation_tags
+      if (e.type === 'tag' && tagId) {
+        await db.query(`
+          INSERT INTO sav_conversation_tags (conversation_id, tag_id, applied_at, applied_by_teammate_id)
+          VALUES ($1,$2,$3,$4)
+          ON CONFLICT (conversation_id, tag_id, applied_at) DO NOTHING
+        `, [cid, tagId, tsToIso(e.emitted_at || e.created_at), actorId]);
+        totals.tags_links_upserted++;
+      }
+
+      // Lien assignees_history
+      if (e.type === 'assign' && targetTeammateId) {
+        await db.query(`
+          INSERT INTO sav_conversation_assignees_history (conversation_id, teammate_id, assigned_at)
+          VALUES ($1,$2,$3)
+          ON CONFLICT (conversation_id, teammate_id, assigned_at) DO NOTHING
+        `, [cid, targetTeammateId, tsToIso(e.emitted_at || e.created_at)]);
+        totals.assignees_links_upserted++;
+      }
+    } catch (e2: any) {
+      errorDetails.push({ event_id: e.id, step: 'upsert_event', err: e2.message });
+      totals.errors++;
+    }
+    if (i % 1000 === 0) console.log(`    ... events ${i}/${filteredEvents.length}`);
+  }
+
+  // ─── Phase 5 : log sav_sync_log ───────────────────────────
+  const duration = Math.round((Date.now() - startMs) / 1000);
+  await db.query(`
+    UPDATE sav_sync_log SET finished_at=NOW(), status=$1, duration_seconds=$2,
+      conversations_seen=$3, conversations_upserted=$4, messages_upserted=$5,
+      comments_upserted=$6, events_upserted=$7, errors_count=$8, error_details=$9
+    WHERE id=$10
+  `, [
+    totals.errors === 0 ? 'success' : 'partial',
+    duration,
+    convData.size,
+    totals.conversations_upserted,
+    totals.messages_upserted,
+    totals.comments_upserted,
+    totals.events_upserted,
+    totals.errors,
+    JSON.stringify(errorDetails.slice(0, 100)),
+    syncLogId,
+  ]);
 
   console.log(`\n═══ TERMINÉ en ${duration}s ═══`);
-  console.log(`  Conversations vues       : ${totals.conversations_seen}`);
+  console.log(`  Events vus               : ${totals.events_seen}`);
   console.log(`  Conversations upsertées  : ${totals.conversations_upserted}`);
   console.log(`  Messages upsertés        : ${totals.messages_upserted}`);
   console.log(`  Comments upsertés        : ${totals.comments_upserted}`);
   console.log(`  Events upsertés          : ${totals.events_upserted}`);
   console.log(`  Attachments upsertés     : ${totals.attachments_upserted}`);
+  console.log(`  Tags-links upsertés      : ${totals.tags_links_upserted}`);
+  console.log(`  Assignees-links upsertés : ${totals.assignees_links_upserted}`);
   console.log(`  Erreurs                  : ${totals.errors}`);
 
   await db.end();
@@ -531,6 +427,9 @@ async function main() {
 
 main().catch(async (e) => {
   console.error('FATAL:', e);
+  try {
+    await db.query(`UPDATE sav_sync_log SET status='failed', finished_at=NOW(), error_details=$1 WHERE finished_at IS NULL`, [JSON.stringify([{ fatal: String(e) }])]);
+  } catch {}
   await db.end().catch(() => {});
   process.exit(1);
 });

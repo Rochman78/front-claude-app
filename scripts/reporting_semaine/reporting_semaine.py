@@ -26,6 +26,7 @@ Sortie :
 """
 import argparse, os, sys, json, time, re, random, datetime, subprocess
 import urllib.request, urllib.parse, urllib.error
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from zoneinfo import ZoneInfo
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -219,6 +220,22 @@ def paginate(url, token):
         yield from data.get('_results', [])
         url = (data.get('_pagination') or {}).get('next')
 
+def fetch_conv_pair(cid, token):
+    """Récupère messages + comments d'une conv. À appeler en parallèle (thread-safe :
+    urllib + retry sont sans état partagé)."""
+    try:
+        msgs = list(paginate(f'{BASE}/conversations/{cid}/messages?limit=50', token))
+    except Exception as e:
+        msgs = None  # signal erreur, on log côté main
+        msgs_err = str(e)[:80]
+    else:
+        msgs_err = None
+    try:
+        coms = list(paginate(f'{BASE}/conversations/{cid}/comments?limit=50', token))
+    except Exception:
+        coms = []
+    return cid, msgs, coms, msgs_err
+
 def is_noise(msg):
     if not msg.get('is_inbound'):
         return False
@@ -238,7 +255,7 @@ def is_noise(msg):
 # ──────────────────────────────────────────────────────────────────────────
 # FETCH
 # ──────────────────────────────────────────────────────────────────────────
-def fetch_data(days, token):
+def fetch_data(days, token, workers=4):
     start_dt = datetime.datetime.fromisoformat(days[0] + 'T00:00:00').replace(tzinfo=TZ)
     end_dt = datetime.datetime.fromisoformat(days[-1] + 'T00:00:00').replace(tzinfo=TZ) + datetime.timedelta(days=1)
     start_ts = start_dt.timestamp()
@@ -270,53 +287,64 @@ def fetch_data(days, token):
     inbound_msgs: list = []        # liste de {'conv_id', 'ts', 'is_noise'}
     outbound_by_conv: dict = {}    # {conv_id: [ts, ts, …] sorted}
 
-    print(f'[2/2] Fetch messages × {len(convs)} convs (single-thread, peut prendre 30-90 min selon le rate limit)…', flush=True)
+    # Pool de threads pour le fetch (4-6 workers = compromis vitesse/rate-limit Front).
+    # Les counters sont mis à jour côté main thread, donc pas de race condition.
+    # Estimation : 30-90 min single-thread → 8-20 min avec 4 workers.
+    print(f'[2/2] Fetch messages × {len(convs)} convs ({workers} workers parallèles)…', flush=True)
     t0 = time.time()
-    for idx, conv in enumerate(convs):
-        cid = conv['id']
-        try:
-            msgs = list(paginate(f'{BASE}/conversations/{cid}/messages?limit=50', token))
-        except Exception as e:
-            print(f'  ✗ {cid}: {e}', file=sys.stderr); continue
-        for m in msgs:
-            ts = m.get('created_at') or 0
-            if ts < start_ts or ts >= end_ts: continue
-            day = datetime.datetime.fromtimestamp(ts, TZ).strftime('%Y-%m-%d')
-            if day not in rec_total: continue
-            if m.get('is_inbound'):
-                noise = is_noise(m)
-                rec_total[day] += 1
-                if noise: rec_noise[day] += 1
-                inbound_msgs.append({'conv_id': cid, 'ts': ts, 'is_noise': noise})
-            else:
-                author = (m.get('author') or {}).get('id')
-                # outbound pour SLA — même si auteur != teammate (mails Front auto-reply
-                # par ex), on les compte comme "réponse"
-                outbound_by_conv.setdefault(cid, []).append(ts)
-                if author in TEAMMATES:
-                    sent_tm[author][day] += 1
-                    samples[author].append({
-                        'msg_id': m['id'], 'conv_id': cid, 'ts': ts,
-                        'subject': m.get('subject') or conv.get('subject') or '',
-                        'recipient': next((r.get('handle','') for r in (m.get('recipients') or [])
-                                           if r.get('role')=='to'), ''),
-                        'body': (m.get('text') or '')[:400],
-                    })
-        try:
-            for c in paginate(f'{BASE}/conversations/{cid}/comments?limit=50', token):
-                ts = c.get('posted_at') or 0
+    convs_by_id = {c['id']: c for c in convs}
+
+    def process_conv_result(cid, msgs, coms):
+        """Traitement séquentiel (main thread) des résultats fetch d'une conv."""
+        conv = convs_by_id.get(cid, {})
+        if msgs is not None:
+            for m in msgs:
+                ts = m.get('created_at') or 0
                 if ts < start_ts or ts >= end_ts: continue
                 day = datetime.datetime.fromtimestamp(ts, TZ).strftime('%Y-%m-%d')
                 if day not in rec_total: continue
-                author = (c.get('author') or {}).get('id')
-                if author in TEAMMATES:
-                    comm_tm[author][day] += 1
-        except Exception:
-            pass
-        if (idx + 1) % 100 == 0:
-            el = time.time() - t0
-            eta = el / (idx+1) * (len(convs) - idx - 1)
-            print(f'  · {idx+1}/{len(convs)} ({el:.0f}s, ETA {eta:.0f}s)', file=sys.stderr, flush=True)
+                if m.get('is_inbound'):
+                    noise = is_noise(m)
+                    rec_total[day] += 1
+                    if noise: rec_noise[day] += 1
+                    inbound_msgs.append({'conv_id': cid, 'ts': ts, 'is_noise': noise})
+                else:
+                    author = (m.get('author') or {}).get('id')
+                    outbound_by_conv.setdefault(cid, []).append(ts)
+                    if author in TEAMMATES:
+                        sent_tm[author][day] += 1
+                        samples[author].append({
+                            'msg_id': m['id'], 'conv_id': cid, 'ts': ts,
+                            'subject': m.get('subject') or conv.get('subject') or '',
+                            'recipient': next((r.get('handle','') for r in (m.get('recipients') or [])
+                                               if r.get('role')=='to'), ''),
+                            'body': (m.get('text') or '')[:400],
+                        })
+        for c in coms or []:
+            ts = c.get('posted_at') or 0
+            if ts < start_ts or ts >= end_ts: continue
+            day = datetime.datetime.fromtimestamp(ts, TZ).strftime('%Y-%m-%d')
+            if day not in rec_total: continue
+            author = (c.get('author') or {}).get('id')
+            if author in TEAMMATES:
+                comm_tm[author][day] += 1
+
+    done = 0
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = [ex.submit(fetch_conv_pair, conv['id'], token) for conv in convs]
+        for fut in as_completed(futures):
+            try:
+                cid, msgs, coms, err = fut.result()
+            except Exception as e:
+                print(f'  ✗ future failed: {e}', file=sys.stderr); done += 1; continue
+            if msgs is None and err:
+                print(f'  ✗ {cid}: {err}', file=sys.stderr)
+            process_conv_result(cid, msgs, coms)
+            done += 1
+            if done % 100 == 0:
+                el = time.time() - t0
+                eta = el / done * (len(convs) - done)
+                print(f'  · {done}/{len(convs)} ({el:.0f}s, ETA {eta:.0f}s)', file=sys.stderr, flush=True)
 
     print(f'  ✓ done in {time.time()-t0:.0f}s\n')
 
@@ -582,6 +610,7 @@ def main():
     p.add_argument('--start', help="Date de début (YYYY-MM-DD) du lundi de la semaine cible")
     p.add_argument('--end', help="Date de fin (YYYY-MM-DD) du vendredi de la semaine cible")
     p.add_argument('--rebuild-only', action='store_true', help="Rebuild depuis raw JSON existant, sans retaper l'API")
+    p.add_argument('--workers', type=int, default=4, help="Nombre de workers parallèles pour le fetch (défaut 4, max raisonnable 6)")
     args = p.parse_args()
 
     if args.start and args.end:
@@ -617,7 +646,7 @@ def main():
             raw = json.load(f)
     else:
         token = load_token()
-        raw = fetch_data(days, token)
+        raw = fetch_data(days, token, workers=args.workers)
         with open(raw_path, 'w') as f:
             json.dump(raw, f, indent=2, default=str)
         print(f'  raw → {raw_path}')

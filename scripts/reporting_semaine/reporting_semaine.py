@@ -120,16 +120,26 @@ def effective_received(ts: float) -> float:
 
 def compute_sla_metrics(raw: dict, work_days: list[str]) -> dict:
     """Calcule :
-      - avg_response_h : moyenne (heures) entre effective_received et 1re réponse.
-        Seulement les mails NON-bruit qui ont reçu une réponse.
-      - vendredi_backlog : nombre de mails reçus Lun-Jeu (non-bruit) qui n'ont
-        toujours PAS de réponse outbound à Ven 23:59 FR.
+      - avg_response_h : moyenne (heures) entre effective_received et 1re réponse
+        outbound. Seulement les mails NON-bruit qui ont reçu une réponse.
+      - vendredi_backlog : nombre de CONVS dont la dernière action humaine
+        (outbound | comment | archive) avant Ven 23:59 FR est AVANT le dernier
+        inbound client Lun-Jeu (non-bruit), ou qui n'ont AUCUNE action.
+      - backlog_no_action : sous-catégorie du backlog (aucune action du tout).
+      - backlog_action_before : sous-catégorie (au moins 1 action mais avant le
+        dernier inbound — = client a recontacté après notre réponse).
       - response_count : nombre de paires utilisées dans la moyenne (pour info).
-      - target_h : 24 (cible Charles)."""
+      - target_h : 24 (cible Charles).
+
+    Définition backlog actée par Charles 2026-06-10 (= 1 conv = 1 backlog au lieu
+    de compter par mail, et archive + comment comptent comme 'action humaine')."""
     import bisect
     inbounds = raw.get('inbound_msgs') or []
     outbound_by_conv = raw.get('outbound_by_conv') or {}
+    comments_by_conv = raw.get('comments_by_conv') or {}
+    archives_by_conv = raw.get('archives_by_conv') or {}
 
+    # ─── Temps de réponse moyen (inchangé : 1re réponse outbound) ─────────
     response_times_h = []
     for inb in inbounds:
         if inb.get('is_noise'):
@@ -147,41 +157,54 @@ def compute_sla_metrics(raw: dict, work_days: list[str]) -> dict:
         response_times_h.append(delta_h)
     avg_h = sum(response_times_h) / len(response_times_h) if response_times_h else 0.0
 
-    # Backlog Ven soir : cutoff = Ven 23:59:59 du jour ouvré le plus tardif
+    # ─── Backlog par CONV (déf 2026-06-10) ────────────────────────────────
+    # Cutoff = Ven 23:59:59 du dernier jour ouvré
     if work_days:
         last_work_day = work_days[-1]
-        dt = datetime.datetime.fromisoformat(last_work_day + 'T23:59:59').replace(tzinfo=TZ)
-        cutoff_ts = dt.timestamp()
-        thursday_eod = dt.replace(hour=0, minute=0, second=0, microsecond=0) - datetime.timedelta(hours=0)
-        # Plage des mails à examiner : reçus pendant les jours ouvrés SAUF le dernier
-        early_work = [d for d in work_days[:-1] if d not in HOLIDAYS_FR
+        cutoff_ts = datetime.datetime.fromisoformat(last_work_day + 'T23:59:59').replace(tzinfo=TZ).timestamp()
+        # Plage des inbounds Lun-Jeu (non incl. Ven)
+        early_work = [d for d in work_days[:-1]
+                      if d not in HOLIDAYS_FR
                       and datetime.date.fromisoformat(d).weekday() < 5]
         if early_work:
             early_start = datetime.datetime.fromisoformat(early_work[0] + 'T00:00:00').replace(tzinfo=TZ).timestamp()
-            # Fin "jeudi soir" = début vendredi 00:00
             early_end = datetime.datetime.fromisoformat(work_days[-1] + 'T00:00:00').replace(tzinfo=TZ).timestamp()
         else:
             early_start = early_end = cutoff_ts
     else:
         cutoff_ts = early_start = early_end = 0
 
-    backlog_count = 0
+    # Groupe les inbounds Lun-Jeu (non-bruit) par conv pour identifier les candidates
+    inbounds_by_conv: dict = {}
     for inb in inbounds:
         if inb.get('is_noise'):
             continue
         ts = inb['ts']
-        if ts < early_start or ts >= early_end:
-            continue
-        outs = outbound_by_conv.get(inb['conv_id']) or []
-        idx = bisect.bisect_right(outs, ts)
-        responded_before_cutoff = idx < len(outs) and outs[idx] <= cutoff_ts
-        if not responded_before_cutoff:
-            backlog_count += 1
+        if early_start <= ts < early_end:
+            inbounds_by_conv.setdefault(inb['conv_id'], []).append(ts)
+
+    backlog_no_action = 0
+    backlog_action_before = 0
+    for cid, inbs in inbounds_by_conv.items():
+        last_inbound = max(inbs)
+        # Actions humaines AVANT cutoff Ven 23:59
+        actions = []
+        actions.extend(t for t in outbound_by_conv.get(cid, []) if t < cutoff_ts)
+        actions.extend(t for t in comments_by_conv.get(cid, []) if t < cutoff_ts)
+        actions.extend(t for t in archives_by_conv.get(cid, []) if t < cutoff_ts)
+        if not actions:
+            backlog_no_action += 1
+        elif max(actions) < last_inbound:
+            backlog_action_before += 1
+
+    total_backlog = backlog_no_action + backlog_action_before
 
     return {
         'avg_response_h': round(avg_h, 1),
         'response_count': len(response_times_h),
-        'vendredi_backlog': backlog_count,
+        'vendredi_backlog': total_backlog,
+        'backlog_no_action': backlog_no_action,
+        'backlog_action_before': backlog_action_before,
         'target_h': 24,
     }
 
@@ -221,8 +244,10 @@ def paginate(url, token):
         url = (data.get('_pagination') or {}).get('next')
 
 def fetch_conv_pair(cid, token):
-    """Récupère messages + comments d'une conv. À appeler en parallèle (thread-safe :
-    urllib + retry sont sans état partagé)."""
+    """Récupère messages + comments + events (pour archives) d'une conv. À appeler
+    en parallèle (thread-safe : urllib + retry sont sans état partagé).
+    Les events sont filtrés côté client pour ne garder que 'archive' (les comments
+    sont déjà récupérés via /comments avec les bons timestamps + auteur)."""
     try:
         msgs = list(paginate(f'{BASE}/conversations/{cid}/messages?limit=50', token))
     except Exception as e:
@@ -234,7 +259,14 @@ def fetch_conv_pair(cid, token):
         coms = list(paginate(f'{BASE}/conversations/{cid}/comments?limit=50', token))
     except Exception:
         coms = []
-    return cid, msgs, coms, msgs_err
+    try:
+        events = list(paginate(f'{BASE}/conversations/{cid}/events?limit=50', token))
+        archive_ts = [e.get('emitted_at') or e.get('created_at')
+                      for e in events if e.get('type') == 'archive']
+        archive_ts = [t for t in archive_ts if t]
+    except Exception:
+        archive_ts = []
+    return cid, msgs, coms, archive_ts, msgs_err
 
 def is_noise(msg):
     if not msg.get('is_inbound'):
@@ -286,6 +318,10 @@ def fetch_data(days, token, workers=4):
     # chaque mail reçu avec sa 1re réponse → temps de réponse moyen + backlog Ven soir.
     inbound_msgs: list = []        # liste de {'conv_id', 'ts', 'is_noise'}
     outbound_by_conv: dict = {}    # {conv_id: [ts, ts, …] sorted}
+    # Pour le backlog par CONV (déf 2026-06-10) : on garde les actions humaines
+    # par conv tous timestamps confondus (comments + archives, en plus des outbounds).
+    comments_by_conv: dict = {}    # {conv_id: [ts, ts, …]}
+    archives_by_conv: dict = {}    # {conv_id: [ts, ts, …]}
 
     # Pool de threads pour le fetch (4-6 workers = compromis vitesse/rate-limit Front).
     # Les counters sont mis à jour côté main thread, donc pas de race condition.
@@ -294,7 +330,7 @@ def fetch_data(days, token, workers=4):
     t0 = time.time()
     convs_by_id = {c['id']: c for c in convs}
 
-    def process_conv_result(cid, msgs, coms):
+    def process_conv_result(cid, msgs, coms, archive_ts):
         """Traitement séquentiel (main thread) des résultats fetch d'une conv."""
         conv = convs_by_id.get(cid, {})
         if msgs is not None:
@@ -322,24 +358,31 @@ def fetch_data(days, token, workers=4):
                         })
         for c in coms or []:
             ts = c.get('posted_at') or 0
-            if ts < start_ts or ts >= end_ts: continue
-            day = datetime.datetime.fromtimestamp(ts, TZ).strftime('%Y-%m-%d')
-            if day not in rec_total: continue
-            author = (c.get('author') or {}).get('id')
-            if author in TEAMMATES:
-                comm_tm[author][day] += 1
+            if not ts: continue
+            # 1. Compteur par teammate par jour (pour le débit équipe — inchangé)
+            if start_ts <= ts < end_ts:
+                day = datetime.datetime.fromtimestamp(ts, TZ).strftime('%Y-%m-%d')
+                if day in rec_total:
+                    author = (c.get('author') or {}).get('id')
+                    if author in TEAMMATES:
+                        comm_tm[author][day] += 1
+            # 2. Stockage par conv (TOUS timestamps confondus) pour le backlog par CONV
+            comments_by_conv.setdefault(cid, []).append(ts)
+        # Archives par conv (déf backlog 2026-06-10 : archive = action humaine = traité)
+        for at in archive_ts or []:
+            archives_by_conv.setdefault(cid, []).append(at)
 
     done = 0
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = [ex.submit(fetch_conv_pair, conv['id'], token) for conv in convs]
         for fut in as_completed(futures):
             try:
-                cid, msgs, coms, err = fut.result()
+                cid, msgs, coms, archive_ts, err = fut.result()
             except Exception as e:
                 print(f'  ✗ future failed: {e}', file=sys.stderr); done += 1; continue
             if msgs is None and err:
                 print(f'  ✗ {cid}: {err}', file=sys.stderr)
-            process_conv_result(cid, msgs, coms)
+            process_conv_result(cid, msgs, coms, archive_ts)
             done += 1
             if done % 100 == 0:
                 el = time.time() - t0
@@ -351,10 +394,15 @@ def fetch_data(days, token, workers=4):
     # Tri des outbounds par conv (pour bisect dans le calcul du temps de réponse)
     for cid in outbound_by_conv:
         outbound_by_conv[cid].sort()
+    for cid in comments_by_conv:
+        comments_by_conv[cid].sort()
+    for cid in archives_by_conv:
+        archives_by_conv[cid].sort()
 
     return {'days': days, 'rec_total': rec_total, 'rec_noise': rec_noise,
             'sent_tm': sent_tm, 'comm_tm': comm_tm, 'samples': samples,
-            'inbound_msgs': inbound_msgs, 'outbound_by_conv': outbound_by_conv}
+            'inbound_msgs': inbound_msgs, 'outbound_by_conv': outbound_by_conv,
+            'comments_by_conv': comments_by_conv, 'archives_by_conv': archives_by_conv}
 
 # ──────────────────────────────────────────────────────────────────────────
 # BUILD XLSX
@@ -526,9 +574,11 @@ def build_xlsx(raw, week_num, ctx_day, work_days, out_path):
         ('Temps de réponse moyen', f'{avg_h} h (sur {sla["response_count"]} mails répondus)'),
         ('Cible', f'{target} h (calendrier depuis effective_received — assimilation Sam/Dim/férié au prochain jour ouvré 00:00)'),
         ('Écart vs cible', f'{sign}{delta} h — {sla_status}'),
-        ('Backlog vendredi soir (cible 0)', f'{sla["vendredi_backlog"]} mails reçus Lun-Jeu sans réponse à Ven 23:59 FR'),
+        ('Backlog vendredi soir (cible 0)', f'{sla["vendredi_backlog"]} convs avec mail client Lun-Jeu non traité (action humaine = outbound | comment | archive)'),
+        ('  ↳ aucune action du tout', f'{sla["backlog_no_action"]} convs'),
+        ('  ↳ au moins 1 action mais AVANT le dernier inbound', f'{sla["backlog_action_before"]} convs (le client a recontacté après notre réponse)'),
         ('Note', 'Temps de réponse : moyenne calendaire des (1ère réponse − effective_received) pour les mails NON-bruit ayant reçu une réponse dans la fenêtre.'),
-        ('Note', 'Backlog : un mail reçu Lun-Jeu compte 1 si AUCUN outbound n\'est posté avant Ven 23:59 FR (peu importe l\'auteur).'),
+        ('Note', '1 conv = 1 backlog si la dernière action humaine (outbound, comment, archive) est AVANT le dernier inbound client Lun-Jeu de la semaine, ou si aucune action du tout. Compte les CONVS et inclut archives + comments comme actions.'),
     ]
     for lbl, val in sla_rows:
         v = str(val); v = ' '+v if v.startswith('=') else v

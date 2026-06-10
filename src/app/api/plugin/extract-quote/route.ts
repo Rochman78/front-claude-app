@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
 === RÈGLE N°3 : LABEL (TOUJOURS dans la langue de la boutique) ===
 - Le brouillon est en français mais le label du devis PDF DOIT être dans la LANGUE DE LA BOUTIQUE.
-- Boutique RED → espagnol. TAR → allemand. HET → néerlandais. RETE → italien. LFC/LVO/MON/UNI/COCO → français.
+- Boutique RED → espagnol. REDE → portugais. TAR → allemand. HET → néerlandais. RETE → italien. LFC/LVO/MON/UNI/COCO → français.
 - Si plusieurs filets identiques, préfixer : "10 x Red de camuflaje..."
 - Pour un seul filet, pas de préfixe.
 - STANDARD : traduire le nom du produit dans la langue de la boutique.

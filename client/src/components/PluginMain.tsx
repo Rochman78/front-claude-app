@@ -446,7 +446,7 @@ export default function PluginMain({ context }: PluginMainProps) {
     if (!store) return;
     const storeLangMap: Record<string, string> = {
       LFC: 'fr', LVO: 'fr', COCO: 'fr', MON: 'fr', UNI: 'fr',
-      TAR: 'de', HET: 'nl', RED: 'es', RETE: 'it',
+      TAR: 'de', HET: 'nl', RED: 'es', REDE: 'pt', RETE: 'it',
     };
     const shopLang = storeLangMap[store.code] || 'fr';
     setPushLang(shopLang);

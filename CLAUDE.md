@@ -179,6 +179,7 @@ front-claude-app/
 | TAR | Tarnnetz | DE | 257174 |
 | HET | Het Camouflagenet | NL | 257162 |
 | RED | Red de Camuflaje | ES | 257168 |
+| REDE | Rede Camuflagem | PT | 257168 (temp, partagé avec RED en attendant template Pennylane dédié) |
 | RETE | Rete Mimetica | IT | 861190 |
 
 ## Commandes utiles

@@ -35,8 +35,8 @@ INBOX_STORE_CODE = {
 # Données métier teammates (horaires, contrat, admin)
 TEAMMATE_OVERRIDES = {
     # Salariées Madagascar — 7h/j sauf mardi 6h = 27h sur Lun-Ven (lun férié → 27 - 7 = 20h cette semaine)
-    "tea_hmfvb": {"name": "Murella Z.",   "role": "Service Client",         "is_admin": False, "weekly_hours": 33, "contract_type": "salarié"},
-    "tea_mxhsn": {"name": "Roniah R.",    "role": "Service Client",         "is_admin": False, "weekly_hours": 33, "contract_type": "salarié"},
+    "tea_hmfvb": {"name": "Murella Z.",   "role": "Service Client",         "is_admin": False, "weekly_hours": 34, "contract_type": "salarié"},
+    "tea_mxhsn": {"name": "Roniah R.",    "role": "Service Client",         "is_admin": False, "weekly_hours": 34, "contract_type": "salarié"},
     "tea_mxqqf": {"name": "Jérémy LERAT", "role": "Responsable Service Client", "is_admin": True,  "weekly_hours": 0,  "contract_type": "admin"},
     "tea_gnazb": {"name": "Charles BAMY", "role": "Fondateur Zephyr OSC",   "is_admin": True,  "weekly_hours": 0,  "contract_type": "admin"},
 }

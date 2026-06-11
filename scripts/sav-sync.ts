@@ -143,11 +143,25 @@ async function main() {
   const syncLogId = r.rows[0].id;
   const startMs = Date.now();
 
+  // Sync les inboxes Front en premier (peuple les non-boutiques avec is_active=false)
+  // Évite les erreurs de clé étrangère FK quand un event référence une inbox interne
+  // (ex: inb_ftot3 Zephyr O.S.C, inboxes de routing/admin).
+  console.log('\n━━━ Phase 0 : sync inboxes Front ━━━');
+  const inboxesData = await frontFetch('/inboxes?limit=100');
+  for (const ibx of (inboxesData._results || [])) {
+    await db.query(`
+      INSERT INTO sav_inboxes (id, name, type, is_active)
+      VALUES ($1, $2, $3, false)
+      ON CONFLICT (id) DO NOTHING
+    `, [ibx.id, ibx.name || '', ibx.type || '']);
+  }
+  console.log(`  ${(inboxesData._results || []).length} inboxes syncs (nouvelles=is_active false)`);
+
   // Référentiels en cache
   const activeInboxIds = new Set<string>(
     (await db.query(`SELECT id FROM sav_inboxes WHERE is_active = true`)).rows.map(r => r.id)
   );
-  console.log(`  ${activeInboxIds.size} inboxes actives`);
+  console.log(`  ${activeInboxIds.size} inboxes actives (boutiques)`);
 
   // ─── Phase 1 : fetch events ────────────────────────────────
   console.log('\n━━━ Phase 1 : fetch /events ━━━');

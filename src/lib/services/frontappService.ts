@@ -115,20 +115,23 @@ export async function getConversationImages(conversationId: string): Promise<{ d
         const contentType = att.content_type || att.contentType || '';
         const isPdf = contentType === pdfType || (att.filename || '').toLowerCase().endsWith('.pdf');
         if (!imageTypes.includes(contentType) && !isPdf) continue;
-        // Exclure les petites images inline (logos de signature dans le HTML)
-        // Les grosses images inline (> 100KB) sont probablement des photos/plans collés dans le mail
+        // Exclure les petites images inline = quasi certainement des logos de
+        // signature mail. Seuil baissé de 100 KB à 20 KB après cas Olivier Buhl
+        // (cnv_1lidzetz, 09/06/2026) : les schémas dessinés par les clients via
+        // Outlook/Gmail font typiquement 25-80 KB et étaient à tort éjectés.
+        // Les VRAIES signatures logos font 5-20 KB (PNG 200×80 px), on les filtre.
         const attSize = att.size || 0;
-        if (att.metadata?.is_inline && attSize > 0 && attSize < 100 * 1024) {
+        if (att.metadata?.is_inline && attSize > 0 && attSize < 20 * 1024) {
           console.log(`[frontapp] skipping small inline image ${att.filename} (${attSize} bytes, cid:${att.metadata.cid})`);
           continue;
         }
         const filename = (att.filename || '').toLowerCase();
-        // Exclure les logos, signatures, icônes par nom de fichier
-        // Pattern `imageNNN.png/jpg` = signature Outlook (cid:image001.png@…) —
-        // toujours filtrer (cas observé : image001.png 763 KB répétée 4× dans
-        // un fil, ralentit l'analyse Claude inutilement).
-        if (/^(logo|signature|banner|bannière|icon)/i.test(filename) ||
-            /^image\d{3,}\.(png|jpe?g|gif)$/i.test(filename)) {
+        // Exclure les logos/signatures/bannières par nom explicite. Le pattern
+        // `imageNNN.png` (Outlook) n'est PLUS filtré : trop large, il éjectait
+        // aussi les schémas légitimes nommés image003.png par le client. Le
+        // dedup nom+taille un peu plus bas suffit pour éviter de re-télécharger
+        // une signature répétée dans le fil (cas original du 763 KB ×4).
+        if (/^(logo|signature|banner|bannière|icon)/i.test(filename)) {
           console.log(`[frontapp] skipping logo/signature image: ${att.filename}`);
           continue;
         }

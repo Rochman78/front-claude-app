@@ -25,12 +25,16 @@ async function run(req: NextRequest) {
     const inboxes: Record<string, unknown>[] = (await inbRes.json())._results || [];
     const shopInboxes = inboxes.filter((i) => getStoreByInboxName(String(i.name || '')));
 
-    // 2. Pour chaque inbox boutique, repérer les conversations Devis récentes
+    // 2. Pour chaque inbox boutique, repérer les conversations Devis récentes.
+    // Limite=100 (max Front) pour couvrir les heures creuses : entre la fin du
+    // cron à 17h30 et sa reprise à 8h, une inbox active (ex: LFC) peut accumuler
+    // 50+ convs → avec limit=30 les plus anciennes du créneau de nuit tombent
+    // hors fenêtre et ne sont jamais scannées (cas cnv_1lm78tp3 du 10/06/2026).
     const results = [];
     let scanned = 0;
     let candidates = 0;
     for (const inb of shopInboxes) {
-      const convRes = await frontFetch(`/inboxes/${inb.id}/conversations?limit=30`);
+      const convRes = await frontFetch(`/inboxes/${inb.id}/conversations?limit=100`);
       if (!convRes.ok) continue;
       const convs: Record<string, unknown>[] = (await convRes.json())._results || [];
       scanned += convs.length;

@@ -129,6 +129,7 @@ export async function GET(req: NextRequest) {
     const storeCode = sp.get('store_code') || '';
     const customerName = sp.get('customer_name') || '';
     const expectedAmountRaw = sp.get('expected_amount') || '';
+    const customQuoteNumber = (sp.get('quote_number') || '').trim();
 
     if (!frontConvId || !storeCode) {
       return NextResponse.json({ error: 'front_conversation_id et store_code requis' }, { status: 400 });
@@ -136,18 +137,23 @@ export async function GET(req: NextRequest) {
 
     const expectedAmount = expectedAmountRaw ? parseFloat(expectedAmountRaw) : NaN;
 
-    // 1. Récupérer le devis en BDD
+    // 1. Récupérer le devis en BDD (optionnel : si custom quote_number fourni
+    //    par le collab, il prévaut sur la BDD, et la conv peut ne PAS avoir de
+    //    devis stocké — cas devis créé hors plugin).
     const { rows } = await pool.query(
       'SELECT quote_number, amount, pdf_url, pennylane_url, created_at FROM conversation_quotes WHERE front_conversation_id = $1 AND store_code = $2',
       [frontConvId, storeCode]
     );
-    if (rows.length === 0) {
-      return NextResponse.json({ error: 'Aucun devis trouvé pour cette conversation' }, { status: 404 });
+    const bddQuote = rows[0] || null;
+
+    const quoteNumber: string = customQuoteNumber || bddQuote?.quote_number || '';
+    if (!quoteNumber) {
+      return NextResponse.json({
+        error: 'Aucun devis associé à cette conversation. Saisis le numéro de devis dans le panel pour lancer la recherche.',
+      }, { status: 400 });
     }
-    const quote = rows[0];
-    const quoteNumber: string = quote.quote_number || '';
-    const quoteDate: string | null = quote.created_at ? String(quote.created_at).substring(0, 10) : null;
-    const bddAmount = parseFloat(quote.amount || '');
+    const quoteDate: string | null = bddQuote?.created_at ? String(bddQuote.created_at).substring(0, 10) : null;
+    const bddAmount = parseFloat(bddQuote?.amount || '');
     const finalExpectedAmount = !Number.isNaN(expectedAmount) ? expectedAmount : (!Number.isNaN(bddAmount) ? bddAmount : null);
 
     // 2. Confirmations déjà enregistrées pour cette conv (pour les marquer côté UI)
@@ -210,9 +216,9 @@ export async function GET(req: NextRequest) {
       quote: {
         quoteNumber,
         expectedAmount: finalExpectedAmount,
-        pdfUrl: quote.pdf_url || '',
-        pennylaneUrl: quote.pennylane_url || '',
-        createdAt: quote.created_at || '',
+        pdfUrl: bddQuote?.pdf_url || '',
+        pennylaneUrl: bddQuote?.pennylane_url || '',
+        createdAt: bddQuote?.created_at || '',
       },
       bankAccountId,
       searchWindowDays: SEARCH_WINDOW_DAYS,

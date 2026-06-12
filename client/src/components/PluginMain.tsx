@@ -609,18 +609,16 @@ export default function PluginMain({ context }: PluginMainProps) {
             Analyser avec Claude
           </button>
 
-          {/* Bouton "Vérifier virement reçu" — visible en page d'accueil dès
-              qu'un devis existe pour cette conv, pour pouvoir vérifier un
-              virement sans avoir à analyser la conv au préalable. */}
-          {quoteNumber && (
-            <button
-              className="btn-outline"
-              style={{ fontSize: '13px', fontWeight: 600, color: '#000', marginTop: '6px', width: '100%' }}
-              onClick={() => setShowPaymentCheck(true)}
-            >
-              💳 Vérifier virement reçu
-            </button>
-          )}
+          {/* Bouton "Vérifier virement reçu" — toujours visible en page
+              d'accueil. Le panel propose la saisie manuelle du n° de devis
+              si la conv n'en a pas en BDD (cas devis créé hors plugin). */}
+          <button
+            className="btn-outline"
+            style={{ fontSize: '13px', fontWeight: 600, color: '#000', marginTop: '6px', width: '100%' }}
+            onClick={() => setShowPaymentCheck(true)}
+          >
+            💳 Vérifier virement reçu
+          </button>
         </div>
       )}
 
@@ -1008,16 +1006,16 @@ export default function PluginMain({ context }: PluginMainProps) {
             </button>
           )}
 
-          {/* Vérifier virement reçu : visible si un devis existe déjà sur la conv */}
-          {quoteNumber && (
-            <button
-              className="btn-outline"
-              style={{ fontSize: '13px', fontWeight: 600, color: '#000' }}
-              onClick={() => setShowPaymentCheck(true)}
-            >
-              💳 Vérifier virement reçu
-            </button>
-          )}
+          {/* Vérifier virement reçu — toujours visible. Le panel gère le cas
+              "pas de devis en BDD" en proposant la saisie manuelle du n° de
+              devis (utile pour les devis créés hors plugin). */}
+          <button
+            className="btn-outline"
+            style={{ fontSize: '13px', fontWeight: 600, color: '#000' }}
+            onClick={() => setShowPaymentCheck(true)}
+          >
+            💳 Vérifier virement reçu
+          </button>
 
           {/* Boutons secondaires : Reprendre avec Claude + Reprendre à 0 */}
           <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
@@ -1051,13 +1049,14 @@ export default function PluginMain({ context }: PluginMainProps) {
         </div>
       )}
 
-      {/* Panel "Vérifier virement reçu" */}
-      {showPaymentCheck && quoteNumber && (
+      {/* Panel "Vérifier virement reçu" — accepte quoteNumber=null si la conv
+          n'a pas de devis en BDD (le panel propose la saisie manuelle). */}
+      {showPaymentCheck && (
         <PaymentCheckPanel
           frontConversationId={frontConvId}
           storeCode={store.code}
           customerName={resolvedName || recipient?.name || ''}
-          quoteNumber={quoteNumber}
+          quoteNumber={quoteNumber || ''}
           onClose={() => setShowPaymentCheck(false)}
           onPreviewReady={(text) => {
             // Injecte le brouillon préparé dans le bloc DraftFinal habituel

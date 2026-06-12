@@ -14,6 +14,10 @@ interface PostBody {
   frontConversationId: string;
   storeCode: string;
   customerFirstName?: string;
+  /** N° de devis fourni par le collab — prévaut sur celui de la BDD. Permet
+   *  de gérer les devis créés hors plugin (Pennylane direct, ancienne Flask,
+   *  etc.) qui n'ont pas d'entrée dans conversation_quotes. */
+  quoteNumber?: string;
 }
 
 /**
@@ -30,7 +34,7 @@ interface PostBody {
 export async function POST(req: NextRequest) {
   try {
     await initDB();
-    const { frontConversationId, storeCode, customerFirstName = '' }: PostBody = await req.json();
+    const { frontConversationId, storeCode, customerFirstName = '', quoteNumber: customQuoteNumber }: PostBody = await req.json();
 
     if (!frontConversationId || !storeCode) {
       return NextResponse.json(
@@ -39,15 +43,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Devis associé
-    const { rows: quoteRows } = await pool.query(
-      'SELECT quote_number FROM conversation_quotes WHERE front_conversation_id = $1 AND store_code = $2',
-      [frontConversationId, storeCode]
-    );
-    if (quoteRows.length === 0) {
-      return NextResponse.json({ error: 'Aucun devis trouvé pour cette conversation' }, { status: 404 });
+    // 1. Numéro de devis : custom (saisi par le collab) prévaut, sinon BDD.
+    let quoteNumber = (customQuoteNumber || '').trim();
+    if (!quoteNumber) {
+      const { rows: quoteRows } = await pool.query(
+        'SELECT quote_number FROM conversation_quotes WHERE front_conversation_id = $1 AND store_code = $2',
+        [frontConversationId, storeCode]
+      );
+      quoteNumber = quoteRows[0]?.quote_number || '';
     }
-    const quoteNumber = quoteRows[0].quote_number;
+    if (!quoteNumber) {
+      return NextResponse.json({
+        error: 'Aucun n° de devis fourni ni associé à la conversation. Saisis le numéro dans le panel.',
+      }, { status: 400 });
+    }
 
     // 2. Template FR
     const { rows: tplRows } = await pool.query(

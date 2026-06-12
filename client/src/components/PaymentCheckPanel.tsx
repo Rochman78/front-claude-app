@@ -123,20 +123,24 @@ export default function PaymentCheckPanel({
     if (!selected) return;
     setConfirming(true);
     setConfirmResult(null);
+    const url = `${API_BASE}/api/plugin/payment-confirmed`;
+    const payload = {
+      frontConversationId,
+      storeCode,
+      transactionId: selected.id,
+      transactionLabel: selected.label,
+      transactionAmount: selected.amount,
+      customerFirstName: (editName || customerName || '').split(' ')[0] || '',
+    };
+    console.log('[PaymentCheckPanel] POST payment-confirmed:', payload);
     try {
-      const res = await fetch(`${API_BASE}/api/plugin/payment-confirmed`, {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          frontConversationId,
-          storeCode,
-          transactionId: selected.id,
-          transactionLabel: selected.label,
-          transactionAmount: selected.amount,
-          customerFirstName: (editName || customerName || '').split(' ')[0] || '',
-        }),
+        body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => null);
+      console.log('[PaymentCheckPanel] payment-confirmed response:', res.status, body);
       if (!res.ok) {
         setConfirmResult({ ok: false, message: body?.error || `Erreur ${res.status}` });
         setConfirming(false);
@@ -151,7 +155,9 @@ export default function PaymentCheckPanel({
         setConfirmResult({ ok: false, message: body?.pushError || 'Confirmation enregistrée mais push KO.' });
       }
     } catch (err) {
-      setConfirmResult({ ok: false, message: err instanceof Error ? err.message : 'erreur' });
+      const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      console.error('[PaymentCheckPanel] payment-confirmed exception:', err);
+      setConfirmResult({ ok: false, message: `Réseau / serveur indisponible (${msg}). Vois la console pour la stack.` });
     } finally {
       setConfirming(false);
     }
@@ -168,12 +174,13 @@ export default function PaymentCheckPanel({
       <div
         style={{
           background: 'white', borderRadius: '12px', padding: '20px',
-          maxWidth: '520px', width: '95%', maxHeight: '85vh', overflow: 'auto',
+          maxWidth: '520px', width: '95%', maxHeight: '85vh',
+          display: 'flex', flexDirection: 'column',
           boxShadow: '0 4px 20px rgba(0,0,0,0.15)', color: '#000',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', flex: '0 0 auto' }}>
           <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>💳 Vérifier virement reçu</h3>
           <button
             onClick={onClose}
@@ -183,9 +190,8 @@ export default function PaymentCheckPanel({
           </button>
         </div>
 
-        {/* Bloc infos devis — éditable (utile pour les anciens devis sans amount BDD
-            ou si le nom remonté par Front est incomplet) */}
-        <div style={{ background: '#f0f7ff', border: '1px solid #cfe2ff', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px', fontSize: '12px', lineHeight: 1.5 }}>
+        {/* Bloc infos devis — éditable, fixe au-dessus de la zone scrollable */}
+        <div style={{ background: '#f0f7ff', border: '1px solid #cfe2ff', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px', fontSize: '12px', lineHeight: 1.5, flex: '0 0 auto' }}>
           <div style={{ marginBottom: '6px' }}>
             <strong>Devis :</strong> {quoteNumber}
           </div>
@@ -229,119 +235,125 @@ export default function PaymentCheckPanel({
           </div>
         </div>
 
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '24px', color: '#666', fontSize: '13px' }}>
-            Recherche des virements correspondants sur le compte DEVIS…
-          </div>
-        )}
-
-        {error && (
-          <div style={{ background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px', padding: '10px', color: '#9b2c2c', fontSize: '12px' }}>
-            ⚠️ {error}
-          </div>
-        )}
-
-        {!loading && !error && data && (
-          <>
-            <div style={{ fontSize: '11px', color: '#666', marginBottom: '8px' }}>
-              {data.scanned} transactions scannées sur {data.searchWindowDays} jours
-              {data.alreadyConfirmedCount > 0 && ` — ${data.alreadyConfirmedCount} déjà confirmée(s) pour cette conv`}
+        {/* Zone scrollable : compteur + liste des résultats. Le footer reste sticky en bas. */}
+        <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', marginBottom: '10px' }}>
+          {loading && (
+            <div style={{ textAlign: 'center', padding: '24px', color: '#666', fontSize: '13px' }}>
+              Recherche des virements correspondants sur le compte DEVIS…
             </div>
+          )}
 
-            {data.results.length === 0 && (
-              <div style={{ background: '#fffbf0', border: '1px solid #f6e05e', borderRadius: '6px', padding: '12px', fontSize: '12px', color: '#744210' }}>
-                Aucune transaction candidate trouvée. Le virement n'est peut-être pas encore arrivé,
-                ou le libellé ne contient ni le numéro de devis ni le nom du client.
+          {error && (
+            <div style={{ background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px', padding: '10px', color: '#9b2c2c', fontSize: '12px' }}>
+              ⚠️ {error}
+            </div>
+          )}
+
+          {!loading && !error && data && (
+            <>
+              <div style={{ fontSize: '11px', color: '#666', marginBottom: '8px' }}>
+                {data.scanned} transactions scannées sur {data.searchWindowDays} jours
+                {data.alreadyConfirmedCount > 0 && ` — ${data.alreadyConfirmedCount} déjà confirmée(s) pour cette conv`}
               </div>
-            )}
 
-            {data.results.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-                {data.results.map((tx) => {
-                  const isSelected = tx.id === selectedTxId;
-                  const isHighConfidence = tx.score >= 100;
-                  return (
-                    <div
-                      key={tx.id}
-                      onClick={() => !tx.alreadyConfirmed && setSelectedTxId(tx.id)}
-                      style={{
-                        border: isSelected ? '2px solid #4a90d9' : '1px solid #ddd',
-                        background: tx.alreadyConfirmed ? '#f0f0f0' : (isSelected ? '#f0f7ff' : 'white'),
-                        borderRadius: '8px',
-                        padding: '10px 12px',
-                        cursor: tx.alreadyConfirmed ? 'not-allowed' : 'pointer',
-                        opacity: tx.alreadyConfirmed ? 0.6 : 1,
-                        fontSize: '12px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
-                        <div style={{ fontWeight: 700, fontSize: '13px' }}>
-                          {parseFloat(tx.amount).toFixed(2)} {tx.currency || 'EUR'}
+              {data.results.length === 0 && (
+                <div style={{ background: '#fffbf0', border: '1px solid #f6e05e', borderRadius: '6px', padding: '12px', fontSize: '12px', color: '#744210' }}>
+                  Aucune transaction candidate trouvée. Le virement n'est peut-être pas encore arrivé,
+                  ou le libellé ne contient ni le numéro de devis ni le nom du client.
+                </div>
+              )}
+
+              {data.results.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {data.results.map((tx) => {
+                    const isSelected = tx.id === selectedTxId;
+                    const isHighConfidence = tx.score >= 100;
+                    return (
+                      <div
+                        key={tx.id}
+                        onClick={() => !tx.alreadyConfirmed && setSelectedTxId(tx.id)}
+                        style={{
+                          border: isSelected ? '2px solid #4a90d9' : '1px solid #ddd',
+                          background: tx.alreadyConfirmed ? '#f0f0f0' : (isSelected ? '#f0f7ff' : 'white'),
+                          borderRadius: '8px',
+                          padding: '10px 12px',
+                          cursor: tx.alreadyConfirmed ? 'not-allowed' : 'pointer',
+                          opacity: tx.alreadyConfirmed ? 0.6 : 1,
+                          fontSize: '12px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+                          <div style={{ fontWeight: 700, fontSize: '13px' }}>
+                            {parseFloat(tx.amount).toFixed(2)} {tx.currency || 'EUR'}
+                          </div>
+                          <div style={{ color: '#666', fontSize: '11px' }}>{tx.date}</div>
                         </div>
-                        <div style={{ color: '#666', fontSize: '11px' }}>{tx.date}</div>
+                        <div style={{ color: '#333', wordBreak: 'break-word', marginBottom: '4px' }}>
+                          {tx.label}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {tx.matchReasons.map((r, i) => (
+                            <span key={i} style={{
+                              fontSize: '10px', padding: '2px 6px', borderRadius: '4px',
+                              background: isHighConfidence ? '#c6f6d5' : '#fefcbf',
+                              color: isHighConfidence ? '#22543d' : '#744210',
+                            }}>
+                              {r}
+                            </span>
+                          ))}
+                          {tx.alreadyConfirmed && (
+                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: '#e9d8fd', color: '#553c9a' }}>
+                              déjà confirmée
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div style={{ color: '#333', wordBreak: 'break-word', marginBottom: '4px' }}>
-                        {tx.label}
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {tx.matchReasons.map((r, i) => (
-                          <span key={i} style={{
-                            fontSize: '10px', padding: '2px 6px', borderRadius: '4px',
-                            background: isHighConfidence ? '#c6f6d5' : '#fefcbf',
-                            color: isHighConfidence ? '#22543d' : '#744210',
-                          }}>
-                            {r}
-                          </span>
-                        ))}
-                        {tx.alreadyConfirmed && (
-                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: '#e9d8fd', color: '#553c9a' }}>
-                            déjà confirmée
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
-            {confirmResult && (
-              <div style={{
-                marginBottom: '10px', padding: '10px', borderRadius: '6px', fontSize: '12px',
-                background: confirmResult.ok ? '#f0fdf4' : '#fff5f5',
-                color: confirmResult.ok ? '#22543d' : '#9b2c2c',
-                border: `1px solid ${confirmResult.ok ? '#9ae6b4' : '#feb2b2'}`,
-              }}>
-                {confirmResult.ok ? '✅ ' : '⚠️ '}{confirmResult.message}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={onClose}
-                style={{
-                  flex: '0 0 auto', padding: '10px 16px', fontSize: '13px',
-                  border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#000',
-                }}
-              >
-                Fermer
-              </button>
-              <button
-                onClick={handleConfirm}
-                disabled={!selected || confirming || selected.alreadyConfirmed || confirmResult?.ok}
-                style={{
-                  flex: 1, padding: '10px 16px', fontSize: '13px', fontWeight: 600,
-                  border: 'none', borderRadius: '6px',
-                  background: (!selected || confirming || selected?.alreadyConfirmed || confirmResult?.ok) ? '#cbd5e0' : '#38a169',
-                  color: 'white',
-                  cursor: (!selected || confirming || selected?.alreadyConfirmed || confirmResult?.ok) ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {confirming ? 'Envoi…' : confirmResult?.ok ? 'Brouillon poussé' : 'Confirmer & pousser brouillon'}
-              </button>
-            </div>
-          </>
+        {/* Bloc résultat de confirmation — fixe au-dessus du footer (visible sans scroll) */}
+        {confirmResult && (
+          <div style={{
+            marginBottom: '10px', padding: '10px', borderRadius: '6px', fontSize: '12px',
+            background: confirmResult.ok ? '#f0fdf4' : '#fff5f5',
+            color: confirmResult.ok ? '#22543d' : '#9b2c2c',
+            border: `1px solid ${confirmResult.ok ? '#9ae6b4' : '#feb2b2'}`,
+            flex: '0 0 auto',
+          }}>
+            {confirmResult.ok ? '✅ ' : '⚠️ '}{confirmResult.message}
+          </div>
         )}
+
+        {/* Footer boutons — toujours sticky en bas du modal */}
+        <div style={{ display: 'flex', gap: '8px', flex: '0 0 auto' }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: '0 0 auto', padding: '10px 16px', fontSize: '13px',
+              border: '1px solid #ddd', borderRadius: '6px', background: 'white', cursor: 'pointer', color: '#000',
+            }}
+          >
+            Fermer
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!selected || confirming || selected?.alreadyConfirmed || confirmResult?.ok}
+            style={{
+              flex: 1, padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+              border: 'none', borderRadius: '6px',
+              background: (!selected || confirming || selected?.alreadyConfirmed || confirmResult?.ok) ? '#cbd5e0' : '#38a169',
+              color: 'white',
+              cursor: (!selected || confirming || selected?.alreadyConfirmed || confirmResult?.ok) ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {confirming ? 'Envoi…' : confirmResult?.ok ? 'Virement confirmé' : 'Confirmer virement reçu par mail'}
+          </button>
+        </div>
       </div>
     </div>
   );

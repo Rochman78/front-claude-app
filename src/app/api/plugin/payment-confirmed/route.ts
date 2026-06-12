@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool, { initDB } from '@/lib/db';
 import { getStoreByCode } from '@/lib/stores';
+import { resolveChannelAndAuthor } from '@/app/api/plugin/push-draft/route';
+
+const FRONT_API_URL = 'https://api2.frontapp.com';
 
 const TEMPLATE_ID = 'tpl_virement_recu';
 
@@ -110,26 +113,57 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Push brouillon dans Front
+    // 6. Push brouillon dans Front — appel DIRECT à Front API.
+    //    Précédemment on faisait un self-fetch HTTP vers /api/plugin/push-draft.
+    //    Sur Render, ce self-fetch passait par le load balancer (HTTPS public)
+    //    → latence variable + timeouts qui remontaient côté UI en "fetch failed"
+    //    sans status. On contourne en appelant Front API en direct.
     let pushSuccess = false;
     let pushError: string | null = null;
     try {
-      const pushRes = await fetch(`${req.nextUrl.origin}/api/plugin/push-draft`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId: frontConversationId,
-          body: finalText.replace(/\n/g, '<br>'),
-        }),
-      });
+      if (!process.env.FRONT_API_TOKEN) {
+        throw new Error('FRONT_API_TOKEN non configuré');
+      }
+      const { channelId, authorId, convType } = await resolveChannelAndAuthor(frontConversationId);
+      console.log(`[payment-confirmed] push direct Front convType=${convType} channelId=${channelId || '(none)'}`);
+
+      const body = finalText.replace(/\n/g, '<br>');
+      const payload: Record<string, unknown> = { body, mode: 'shared', should_add_default_signature: true };
+      if (channelId) payload.channel_id = channelId;
+      if (authorId) payload.author_id = authorId;
+
+      const doPost = (withChannel: boolean) => {
+        const p: Record<string, unknown> = { body, mode: 'shared', should_add_default_signature: true };
+        if (withChannel && channelId) p.channel_id = channelId;
+        if (authorId) p.author_id = authorId;
+        return fetch(`${FRONT_API_URL}/conversations/${frontConversationId}/drafts`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.FRONT_API_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(p),
+        });
+      };
+
+      let pushRes = await doPost(true);
+      let pushBody = await pushRes.text();
+      // Retry sans channel_id si 403 "channel type mismatch"
+      if (pushRes.status === 403 && channelId) {
+        console.log('[payment-confirmed] 403 with channel_id → retry without');
+        pushRes = await doPost(false);
+        pushBody = await pushRes.text();
+      }
       pushSuccess = pushRes.ok;
       if (!pushRes.ok) {
-        pushError = `push-draft ${pushRes.status}`;
-        console.error(`[payment-confirmed] push-draft failed: ${pushError}`);
+        pushError = `Front ${pushRes.status} ${pushBody.substring(0, 200)}`;
+        console.error(`[payment-confirmed] Front draft create failed: ${pushError}`);
+      } else {
+        console.log(`[payment-confirmed] Front draft créé pour ${frontConversationId} (payload size ${JSON.stringify(payload).length})`);
       }
     } catch (err) {
-      pushError = err instanceof Error ? err.message : 'erreur push-draft';
-      console.error('[payment-confirmed] push-draft exception:', pushError);
+      pushError = err instanceof Error ? err.message : 'erreur push direct Front';
+      console.error('[payment-confirmed] push direct Front exception:', pushError);
     }
 
     // 7. Log BDD (anti-double envoi) — on l'enregistre même si push KO

@@ -66,6 +66,12 @@ front-claude-app/
 
 **Backup pré-refacto** : `backups/agent_files_backup_20260603-120752.json` (1,3 MB, restaurable en INSERT SQL).
 
+### Réassort produit en rupture — le client s'inscrit lui-même sur le site (12/06/2026)
+- Plus de "on note ton email côté SAV" : on **redirige vers la fiche produit du site**, où un bouton intégré permet au client de saisir son email et d'être notifié automatiquement dès le retour en stock (feature Shopify, déjà en place côté site).
+- L'agent ne promet plus de l'enregistrer manuellement — il indique au client comment faire : aller sur le site, sélectionner la référence souhaitée (la fiche reste accessible même hors stock), cliquer sur le bouton qui apparait.
+- 9 boutiques (LFC, LVO, MON, UNI, TAR, HET, RED, REDE, RETE) : 2 options brouillon = (1) site + (2) sur-mesure. COCO : 1 seule option = site (pas de sur-mesure en coco).
+- Encodé × 10 agents en BDD (remplace l'ancienne formulation "nous pouvons vous prévenir par email dès que le réassort sera disponible").
+
 ### TVA — toujours le pays de livraison (12/06/2026)
 - TVA par défaut = TVA du **pays de livraison** du client (pas du pays de facturation).
 - Si AUCUNE adresse de livraison fournie → TVA du **pays de la boutique** (règle B2C OSS par défaut).

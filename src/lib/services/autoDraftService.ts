@@ -224,6 +224,32 @@ ${fullBody}`;
       return { conversationId, status: 'error', reason: why };
     }
 
+    // 6a-bis. Garde-fou anti-prix-vides : si le brouillon contient une ligne
+    // type "Precio unitario sin IVA: " (label prix suivi de ':' puis rien),
+    // c'est que Claude a généré un tableau de prix sans avoir les infos pour
+    // chiffrer. On bloque le push : mieux vaut pas de brouillon qu'un devis
+    // avec prix vides envoyé au client.
+    // Cas réel cnv_1lmrvoev (RED, 12/06/2026) : envoi d'un brouillon avec
+    // tableau ES sans valeurs → mauvaise impression.
+    const PRICE_KEYWORD_RE = /\b(total|prix|precio|prezzo|preço|preis|prijs|iva|tva|tax|vat|mwst|btw|importe|importo|gesamt|netto|brutto|subtotal|sous[\s-]?total)\b/i;
+    const emptyPriceLines = emailText.split('\n').filter((line) => {
+      const t = line.trim();
+      // « label: » (où label fait ≤80 chars), suivi de rien
+      if (!/^[^:\n]{1,80}:\s*$/.test(t)) return false;
+      return PRICE_KEYWORD_RE.test(t);
+    });
+    if (emptyPriceLines.length > 0) {
+      const sample = emptyPriceLines.slice(0, 3).map((l) => `« ${l.trim()} »`).join(', ');
+      const why = `prix vides détectés dans le brouillon : ${sample}`;
+      console.warn(`[auto-draft] ${conversationId} ${why} — pas de pose`);
+      await record(conversationId, store.code, 'error', why);
+      await postComment(
+        conversationId,
+        `⚠️ Auto-draft Claude : le brouillon contient un tableau de prix avec des champs VIDES (${sample}). Aucun brouillon posé — à traiter via le plugin pour compléter les infos manquantes (couleur, finition, etc.) avant chiffrage.`
+      );
+      return { conversationId, status: 'error', reason: 'empty prices in draft' };
+    }
+
     // 6b. Traduction pour les boutiques non francophones (Claude rédige toujours en FR).
     // Si la traduction échoue, on NE poste PAS : mieux vaut pas de brouillon qu'un
     // brouillon en français envoyé à un client étranger.

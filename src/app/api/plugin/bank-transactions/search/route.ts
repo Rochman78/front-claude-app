@@ -167,7 +167,11 @@ export async function GET(req: NextRequest) {
       { field: 'bank_account_id', operator: 'eq', value: parseInt(bankAccountId, 10) },
       { field: 'date', operator: 'gteq', value: sinceStr },
     ]);
-    const url = `${PENNYLANE_API_URL}/transactions?limit=100&filter=${encodeURIComponent(filter)}&sort=date:desc`;
+    // Pas de `sort=…` : Pennylane v2 rejette toutes les syntaxes courantes
+    // (`sort=date:desc`, `sort=-date`, `sort=date`) avec 400 "Invalid sort
+    // format". On trie côté serveur par score après réception — le tri
+    // Pennylane par date n'apporte rien au scoring final.
+    const url = `${PENNYLANE_API_URL}/transactions?limit=100&filter=${encodeURIComponent(filter)}`;
 
     const t0 = Date.now();
     const pnlnRes = await fetch(url, {

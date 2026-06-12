@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 import pool, { initDB } from '@/lib/db';
 import { getStoreByCode } from '@/lib/stores';
 import { resolveChannelAndAuthor } from '@/app/api/plugin/push-draft/route';
 
 const FRONT_API_URL = 'https://api2.frontapp.com';
+
+const LANG_NAMES: Record<string, string> = {
+  en: 'anglais', de: 'allemand', nl: 'néerlandais', es: 'espagnol',
+  it: 'italien', pt: 'portugais',
+};
 
 const TEMPLATE_ID = 'tpl_virement_recu';
 
@@ -89,27 +95,42 @@ export async function POST(req: NextRequest) {
     // Nettoyer "Bonjour ," si pas de prénom
     interpolated = interpolated.replace(/^Bonjour\s*,/m, 'Bonjour,');
 
-    // 5. Traduction si langue du store ≠ FR
+    // 5. Traduction si langue du store ≠ FR — appel DIRECT à Anthropic.
+    //    Avant on faisait un self-fetch /api/plugin/translate qui foirait
+    //    silencieusement sur Render (même cause que push-draft) → le brouillon
+    //    restait en français. Maintenant on appelle Anthropic en direct.
     const store = getStoreByCode(storeCode);
     const targetLang = store?.defaultLang || 'fr';
     let finalText = interpolated;
 
     if (targetLang !== 'fr') {
-      try {
-        const trRes = await fetch(`${req.nextUrl.origin}/api/plugin/translate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: interpolated, targetLanguage: targetLang }),
-        });
-        if (trRes.ok) {
-          const tr = await trRes.json();
-          if (tr.translatedText) finalText = tr.translatedText;
-          console.log(`[payment-confirmed] traduit fr→${targetLang} (${interpolated.length}→${finalText.length} chars)`);
-        } else {
-          console.warn(`[payment-confirmed] /translate ${trRes.status} — fallback FR`);
+      if (!process.env.ANTHROPIC_API_KEY) {
+        console.warn('[payment-confirmed] ANTHROPIC_API_KEY absent → fallback FR');
+      } else {
+        try {
+          const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+          const langName = LANG_NAMES[targetLang] || targetLang;
+          const t0 = Date.now();
+          const tr = await client.messages.create({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 1024,
+            messages: [
+              {
+                role: 'user',
+                content: `Traduis ce mail de service client du français vers le ${langName}. Garde exactement le même ton, la même structure et le même formatage.\n\nTraduis TOUT le contenu. Ne laisse AUCUNE phrase en français.\n\nGarde uniquement tels quels (NE traduis PAS) : les références/codes produit (ex : « D-2026-… »), les noms propres, les nombres et symboles.\n\nRetourne UNIQUEMENT le texte traduit, sans commentaire ni explication.\n\n${interpolated}`,
+              },
+            ],
+          });
+          const block = tr.content[0];
+          if (block && block.type === 'text' && block.text.trim()) {
+            finalText = block.text;
+            console.log(`[payment-confirmed] traduit fr→${targetLang} (${interpolated.length}→${finalText.length} chars, ${Date.now() - t0}ms)`);
+          } else {
+            console.warn('[payment-confirmed] traduction vide → fallback FR');
+          }
+        } catch (err) {
+          console.warn('[payment-confirmed] Anthropic translate erreur, fallback FR:', err);
         }
-      } catch (err) {
-        console.warn('[payment-confirmed] /translate erreur, fallback FR:', err);
       }
     }
 

@@ -36,7 +36,11 @@ interface PaymentCheckPanelProps {
   expectedAmount?: number;
   quoteNumber: string;
   onClose: () => void;
-  onPushed?: () => void;
+  /** Appelé après réception du brouillon préparé (interpolé + traduit) :
+   *  le parent injecte le texte dans le bloc DraftFinal classique pour
+   *  que le collab valide / édite / pousse via le flow habituel.
+   */
+  onPreviewReady?: (text: string) => void;
 }
 
 export default function PaymentCheckPanel({
@@ -46,7 +50,7 @@ export default function PaymentCheckPanel({
   expectedAmount,
   quoteNumber,
   onClose,
-  onPushed,
+  onPreviewReady,
 }: PaymentCheckPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -123,16 +127,13 @@ export default function PaymentCheckPanel({
     if (!selected) return;
     setConfirming(true);
     setConfirmResult(null);
-    const url = `${API_BASE}/api/plugin/payment-confirmed`;
+    const url = `${API_BASE}/api/plugin/payment-confirmed-preview`;
     const payload = {
       frontConversationId,
       storeCode,
-      transactionId: selected.id,
-      transactionLabel: selected.label,
-      transactionAmount: selected.amount,
       customerFirstName: (editName || customerName || '').split(' ')[0] || '',
     };
-    console.log('[PaymentCheckPanel] POST payment-confirmed:', payload);
+    console.log('[PaymentCheckPanel] POST payment-confirmed-preview:', payload);
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -140,27 +141,20 @@ export default function PaymentCheckPanel({
         body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => null);
-      console.log('[PaymentCheckPanel] payment-confirmed response:', res.status, body);
-      if (!res.ok) {
+      console.log('[PaymentCheckPanel] preview response:', res.status, body);
+      if (!res.ok || !body?.text) {
         setConfirmResult({ ok: false, message: body?.error || `Erreur ${res.status}` });
         setConfirming(false);
         return;
       }
-      if (body?.status === 'already_confirmed') {
-        setConfirmResult({ ok: true, message: 'Ce virement avait déjà été confirmé. Pas de nouveau brouillon.' });
-      } else if (body?.pushSuccess) {
-        setConfirmResult({ ok: true, message: 'Brouillon de confirmation poussé dans Front App.' });
-        onPushed?.();
-      } else {
-        // status = 'push_failed' → BDD pas touchée, retry possible (bouton reste actif)
-        setConfirmResult({
-          ok: false,
-          message: `Le push du brouillon a échoué — tu peux retenter. Détail : ${body?.pushError || 'cause inconnue'}`,
-        });
-      }
+      // OK : on transmet le texte au parent, qui l'injectera dans DraftFinal,
+      // puis on ferme le panel. Le collab valide / édite / pousse via le
+      // flow habituel.
+      onPreviewReady?.(body.text);
+      onClose();
     } catch (err) {
       const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-      console.error('[PaymentCheckPanel] payment-confirmed exception:', err);
+      console.error('[PaymentCheckPanel] preview exception:', err);
       setConfirmResult({ ok: false, message: `Réseau / serveur indisponible (${msg}). Vois la console pour la stack.` });
     } finally {
       setConfirming(false);
@@ -346,16 +340,16 @@ export default function PaymentCheckPanel({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!selected || confirming || selected?.alreadyConfirmed || confirmResult?.ok}
+            disabled={!selected || confirming || selected?.alreadyConfirmed}
             style={{
               flex: 1, padding: '10px 16px', fontSize: '13px', fontWeight: 600,
               border: 'none', borderRadius: '6px',
-              background: (!selected || confirming || selected?.alreadyConfirmed || confirmResult?.ok) ? '#cbd5e0' : '#38a169',
+              background: (!selected || confirming || selected?.alreadyConfirmed) ? '#cbd5e0' : '#38a169',
               color: 'white',
-              cursor: (!selected || confirming || selected?.alreadyConfirmed || confirmResult?.ok) ? 'not-allowed' : 'pointer',
+              cursor: (!selected || confirming || selected?.alreadyConfirmed) ? 'not-allowed' : 'pointer',
             }}
           >
-            {confirming ? 'Envoi…' : confirmResult?.ok ? 'Virement confirmé' : 'Confirmer virement reçu par mail'}
+            {confirming ? 'Préparation du brouillon…' : 'Confirmer virement reçu par mail'}
           </button>
         </div>
       </div>

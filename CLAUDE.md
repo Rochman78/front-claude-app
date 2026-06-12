@@ -66,6 +66,12 @@ front-claude-app/
 
 **Backup pré-refacto** : `backups/agent_files_backup_20260603-120752.json` (1,3 MB, restaurable en INSERT SQL).
 
+### Anti-fantaisie factuelle — l'agent ne sait RIEN au-delà de ses sources (11/06/2026)
+- Toute question factuelle sur l'entreprise (présence marketplace externe Leroy Merlin / Amazon / Cdiscount / ManoMano, partenariats, magasin physique, certifications M1/M2, capacités de prod hors devis, etc.) est par défaut **INCONNUE** sauf si écrite noir sur blanc dans les instructions ou les fichiers de référence.
+- Comportement attendu si la réponse n'est pas dans les sources : BROUILLON court d'accusé de réception (« nous revenons vers vous rapidement ») + flagger en QUESTIONS pour que le gérant tranche. **JAMAIS de OUI/NON inventé.**
+- INTERDIT : déduire un OUI sur indices circonstanciels (« les images ressemblent → c'est nous », « le nom est proche → c'est notre marque »). Les images de notre site peuvent être reprises ailleurs sans notre accord.
+- Cas Langlais 09/06/2026 (`cnv_1llucrrr`, LFC) : client demande « Est-ce vous qui vendez sur Leroy Merlin ? » avec un lien Leroy Merlin. Claude a inventé « Oui, nous sommes bien présents sur la marketplace Leroy Merlin » + « Pas de question, valide le brouillon ». 100 % halluciné. Encodé dans `agents.instructions` (10 boutiques, bloc dédié placé après la RÈGLE MÉTA et avant le PROCESS DEVIS).
+
 ### Frais de retour — JAMAIS « à nos frais » par défaut
 - Règle par défaut : frais de retour à la charge du **client** (art. L.221-23). Formulations comme *« le retour est pris en charge à nos frais »*, *« vous n'avez rien à régler pour l'expédition »*, *« retour à nos frais »* sont **INTERDITES** sauf instruction explicite du gérant.
 - Exception légale automatique : produit défectueux / défaut de conformité / erreur de notre part → frais à notre charge (art. L.217-11), mais à VÉRIFIER avant.

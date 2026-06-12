@@ -163,6 +163,13 @@ async function main() {
   );
   console.log(`  ${activeInboxIds.size} inboxes actives (boutiques)`);
 
+  // Map inbox_id → store_code (uniquement pour les boutiques)
+  const inboxStoreCode = new Map<string, string>(
+    (await db.query(`SELECT id, store_code FROM sav_inboxes WHERE store_code IS NOT NULL AND is_active = true`))
+      .rows.map(r => [r.id, r.store_code])
+  );
+  console.log(`  ${inboxStoreCode.size} inboxes boutique mappées sur store_code`);
+
   // ─── Phase 1 : fetch events ────────────────────────────────
   console.log('\n━━━ Phase 1 : fetch /events ━━━');
   const allEvents = await frontPaginate(
@@ -183,16 +190,77 @@ async function main() {
   // ─── Phase 2 : extraire conv_ids + msg_ids ────────────────
   console.log('\n━━━ Phase 2 : extraction conv_ids + msg_ids ━━━');
   const convIds = new Set<string>();
-  const msgIds = new Set<string>(); // out_reply ET inbound
+  const msgIds = new Set<string>();
   for (const e of filteredEvents) {
     const cid = e.conversation?.id;
     if (cid) convIds.add(cid);
-    if (e.type === 'out_reply' || e.type === 'inbound') {
-      const mid = e.target?.data?.id;
-      if (mid) msgIds.add(mid);
+    // Robuste : tout event qui pointe sur un message → on le fetch
+    // (couvre inbound, out_reply, outbound, message_imported, message_bounce_error…)
+    const mid = e.target?.data?.id;
+    if (typeof mid === 'string' && mid.startsWith('msg_')) {
+      msgIds.add(mid);
     }
   }
-  console.log(`  ${convIds.size} conversations distinctes, ${msgIds.size} messages à fetcher`);
+  console.log(`  ${convIds.size} conversations distinctes, ${msgIds.size} messages à fetcher (via events)`);
+
+  // ─── Phase 2.5 : résolution boutique par conversation ─────
+  // On résout la VRAIE inbox boutique de chaque conv :
+  //  1) D'abord via events.source.data
+  //  2) Fallback /conversations/{id}/inboxes pour avoir la liste complète
+  // Les convs sans inbox boutique sont skippées (= hors-périmètre SAV).
+  console.log('\n━━━ Phase 2.5 : résolution store_code par conv ━━━');
+  const convResolution = new Map<string, { inboxId: string; storeCode: string }>();
+  const convIdsArr = Array.from(convIds);
+  let resolvedFromEvents = 0;
+  let resolvedFromAPI = 0;
+  let unresolved = 0;
+  for (let idx = 0; idx < convIdsArr.length; idx++) {
+    const cid = convIdsArr[idx];
+    // 1) Scan events pour une inbox boutique
+    let found: { inboxId: string; storeCode: string } | null = null;
+    for (const e of filteredEvents) {
+      if (e.conversation?.id !== cid) continue;
+      const data = e.source?.data;
+      const candidates: string[] = [];
+      if (Array.isArray(data)) {
+        for (const it of data) if (it?.id?.startsWith?.('inb_')) candidates.push(it.id);
+      } else if (data?.id?.startsWith?.('inb_')) {
+        candidates.push(data.id);
+      }
+      for (const ibxId of candidates) {
+        if (inboxStoreCode.has(ibxId)) {
+          found = { inboxId: ibxId, storeCode: inboxStoreCode.get(ibxId)! };
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (found) { convResolution.set(cid, found); resolvedFromEvents++; continue; }
+
+    // 2) Fallback API /conversations/{cid}/inboxes
+    try {
+      const res = await frontFetch(`/conversations/${cid}/inboxes`);
+      for (const ibx of (res._results || [])) {
+        if (inboxStoreCode.has(ibx.id)) {
+          found = { inboxId: ibx.id, storeCode: inboxStoreCode.get(ibx.id)! };
+          break;
+        }
+      }
+    } catch { /* ignore */ }
+    if (found) { convResolution.set(cid, found); resolvedFromAPI++; }
+    else { unresolved++; }
+    await new Promise(r => setTimeout(r, SLEEP));
+    if ((idx + 1) % 50 === 0) {
+      console.log(`    ... resolved ${idx + 1}/${convIdsArr.length} (events=${resolvedFromEvents} api=${resolvedFromAPI} unresolved=${unresolved})`);
+    }
+  }
+  console.log(`  ✓ ${convResolution.size}/${convIdsArr.length} convs boutique gardées (events=${resolvedFromEvents} api=${resolvedFromAPI})`);
+  console.log(`  ✗ ${unresolved} convs hors-boutique skippées`);
+
+  // Filtrer les events : ne garder que ceux des convs boutique
+  const validConvIds = new Set(convResolution.keys());
+  const eventsBoutique = filteredEvents.filter(e => e.conversation?.id && validConvIds.has(e.conversation.id));
+  console.log(`  ${eventsBoutique.length}/${filteredEvents.length} events conservés (convs boutique)`);
 
   // ─── Phase 3 : fetch détails messages (pour author + body + attachments) ──
   console.log('\n━━━ Phase 3 : fetch /messages ━━━');
@@ -212,13 +280,50 @@ async function main() {
   }
   console.log(`  ✓ ${msgDetail.size}/${msgArray.length} messages récupérés`);
 
+  // ─── Phase 3.5 : complétude via /conversations/{id}/messages ──
+  // Filet de sécurité : pour CHAQUE conv boutique, on fetch tous ses messages
+  // dans la fenêtre temporelle. Cela rattrape les messages dont l'event aurait
+  // été raté (out_reply manqué par /events, page perdue, etc.).
+  // Idempotent : msgDetail.has(id) → on skip ; sinon on ajoute.
+  console.log('\n━━━ Phase 3.5 : complétude /conversations/{id}/messages ━━━');
+  let addedFromConv = 0;
+  let convsScanned = 0;
+  const validConvIdsArr = Array.from(validConvIds);
+  for (let idx = 0; idx < validConvIdsArr.length; idx++) {
+    const cid = validConvIdsArr[idx];
+    try {
+      let nextUrl: string | null = `/conversations/${cid}/messages?limit=100`;
+      while (nextUrl) {
+        const res: any = await frontFetch(nextUrl);
+        for (const m of (res._results || [])) {
+          const mtSec = m.created_at || 0;
+          if (mtSec < fromUnix || mtSec > toUnix) continue;
+          if (msgDetail.has(m.id)) continue;
+          msgDetail.set(m.id, m);
+          addedFromConv++;
+        }
+        nextUrl = res._pagination?.next ? res._pagination.next.replace(FRONT_API, '') : null;
+      }
+      convsScanned++;
+      await new Promise(r => setTimeout(r, SLEEP));
+    } catch (e: any) {
+      errorDetails.push({ conv_id: cid, step: 'fetch_conv_messages', err: e.message });
+      totals.errors++;
+    }
+    if ((idx + 1) % 50 === 0) {
+      console.log(`    ... scanned ${idx + 1}/${validConvIdsArr.length} (added=${addedFromConv})`);
+    }
+  }
+  console.log(`  ✓ ${convsScanned}/${validConvIdsArr.length} convs scannées · +${addedFromConv} messages rattrapés`);
+  console.log(`  ✓ TOTAL ${msgDetail.size} messages prêts à upsert`);
+
   // ─── Phase 4 : upsert dans BDD ─────────────────────────────
   console.log('\n━━━ Phase 4 : upsert BDD ━━━');
 
   // 4.a Upsert conversations (depuis les events qui les référencent)
   // On garde la "dernière" version vue de chaque conv (info dans event.conversation)
   const convData = new Map<string, any>();
-  for (const e of filteredEvents) {
+  for (const e of eventsBoutique) {
     const cid = e.conversation?.id;
     if (cid) convData.set(cid, e.conversation); // dernière vue gagne
   }
@@ -227,32 +332,23 @@ async function main() {
   for (const [cid, conv] of convData.entries()) {
     i++;
     const recipient = conv.recipient || {};
-    // Trouver inbox de la conv (depuis events liés)
-    let convInboxId: string | null = null;
-    for (const e of filteredEvents) {
-      if (e.conversation?.id !== cid) continue;
-      const data = e.source?.data;
-      if (Array.isArray(data)) {
-        const ibx = data.find((it: any) => it?.id?.startsWith?.('inb_'));
-        if (ibx) { convInboxId = ibx.id; break; }
-      } else if (data?.id?.startsWith?.('inb_')) {
-        convInboxId = data.id; break;
-      }
-    }
+    // Inbox boutique résolue en phase 2.5
+    const res = convResolution.get(cid)!;
     try {
       await db.query(`
         INSERT INTO sav_conversations (
-          id, inbox_id, subject, status, customer_email, customer_name, synced_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+          id, inbox_id, store_code, subject, status, customer_email, customer_name, synced_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
         ON CONFLICT (id) DO UPDATE SET
-          inbox_id = COALESCE(EXCLUDED.inbox_id, sav_conversations.inbox_id),
+          inbox_id = EXCLUDED.inbox_id,
+          store_code = EXCLUDED.store_code,
           subject = EXCLUDED.subject,
           status = EXCLUDED.status,
           customer_email = COALESCE(EXCLUDED.customer_email, sav_conversations.customer_email),
           customer_name = COALESCE(EXCLUDED.customer_name, sav_conversations.customer_name),
           synced_at = NOW()
       `, [
-        cid, convInboxId, conv.subject || '', conv.status || null,
+        cid, res.inboxId, res.storeCode, conv.subject || '', conv.status || null,
         recipient.handle || null, recipient.name || null,
       ]);
       totals.conversations_upserted++;
@@ -270,6 +366,7 @@ async function main() {
     i++;
     const cid = m.conversation?.id || m._links?.related?.conversation?.split('/').pop();
     if (!cid) continue;
+    if (!validConvIds.has(cid)) continue; // skip messages des convs hors-boutique
     const isInbound = m.is_inbound === true;
     const authorId = isInbound ? null : (m.author?.id || null);
     const authorEmail = (m.recipients || []).find((r: any) => r.role === 'from')?.handle
@@ -320,9 +417,9 @@ async function main() {
   }
 
   // 4.c Upsert events
-  console.log(`  Upsert ${filteredEvents.length} events...`);
+  console.log(`  Upsert ${eventsBoutique.length} events...`);
   i = 0;
-  for (const e of filteredEvents) {
+  for (const e of eventsBoutique) {
     i++;
     const cid = e.conversation?.id;
     if (!cid) continue;
@@ -396,7 +493,7 @@ async function main() {
       errorDetails.push({ event_id: e.id, step: 'upsert_event', err: e2.message });
       totals.errors++;
     }
-    if (i % 1000 === 0) console.log(`    ... events ${i}/${filteredEvents.length}`);
+    if (i % 1000 === 0) console.log(`    ... events ${i}/${eventsBoutique.length}`);
   }
 
   // ─── Phase 5 : post-traitement (timestamps + compteurs sur sav_conversations) ──

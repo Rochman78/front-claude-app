@@ -648,7 +648,7 @@ export default function PluginMain({ context }: PluginMainProps) {
             onSendMessage={claude.sendMessage}
             onListMessages={() => context.listMessages()}
             onRegisterClick={(fn) => { quoteClickRef.current = fn; }}
-            onQuoteCreated={(pdfUrl, qNumber, pennylaneUrl) => {
+            onQuoteCreated={(pdfUrl, qNumber, pennylaneUrl, totalTTC) => {
               setQuotePdfUrl(pdfUrl);
               setQuoteNumber(qNumber);
               setQuotePennylaneUrl(pennylaneUrl);
@@ -656,11 +656,19 @@ export default function PluginMain({ context }: PluginMainProps) {
               setDraftInvalidated(false);
               // Sauvegarder dans le cache pour persistance
               conversationCache.setQuoteInCache(frontConvId, { pdfUrl, quoteNumber: qNumber, pennylaneUrl });
-              // Persister en BDD pour retrouver le devis plus tard
+              // Persister en BDD pour retrouver le devis plus tard.
+              // `amount` (TTC) sert au scoring "montant exact" dans le panel virement.
               fetch(`${window.location.origin}/api/plugin/quote-history`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ frontConversationId: frontConvId, storeCode: store?.code, quoteNumber: qNumber, pennylaneUrl, pdfUrl }),
+                body: JSON.stringify({
+                  frontConversationId: frontConvId,
+                  storeCode: store?.code,
+                  quoteNumber: qNumber,
+                  pennylaneUrl,
+                  pdfUrl,
+                  amount: totalTTC.toFixed(2),
+                }),
               }).catch(() => {});
               // Demander si on remplace le brouillon par le mail générique devis
               setQuoteMailMode('choose');

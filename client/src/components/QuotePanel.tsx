@@ -27,7 +27,7 @@ interface QuotePanelProps {
   inboxName: string;
   frontConversationId: string;
   onSendMessage: (message: string) => void;
-  onQuoteCreated?: (pdfUrl: string, quoteNumber: string, pennylaneUrl: string) => void;
+  onQuoteCreated?: (pdfUrl: string, quoteNumber: string, pennylaneUrl: string, totalTTC: number) => void;
   onRegisterClick?: (fn: () => void) => void;
   onListMessages?: () => Promise<{ results: unknown[] }>;
 }
@@ -496,6 +496,15 @@ export default function QuotePanel({
       // PAS de conversion ici — le prix est envoyé tel quel à Pennylane
       const vatPercent = parseFloat(f.vatPercent) || 0;
 
+      // Total TTC calculé localement (même formule que le bloc d'aperçu l. 270-294)
+      // pour persistance en BDD → scoring panel "Vérifier virement reçu".
+      const _p = (v: string) => parseFloat((v || '0').replace(',', '.'));
+      const _r2 = (n: number) => Math.round(n * 100) / 100;
+      const _totalHTBrut = f.lines.reduce((s, l) => s + _r2(_p(l.quantity) * _p(l.unitPrice)), 0);
+      const _discountAmount = _r2(_totalHTBrut * (parseFloat(f.discountPercent || '0')) / 100);
+      const _totalHT = _r2(_totalHTBrut - _discountAmount);
+      const totalTTC = _r2(_totalHT * (1 + vatPercent / 100));
+
       const allLines: { type: string; label: string; description?: string; quantity: number; unitPrice: number; unit: string; vatRate: string }[] = f.lines.map(l => ({
         type: l.type || 'product',
         label: l.label,
@@ -654,7 +663,7 @@ export default function QuotePanel({
 
       setResult(quoteResult);
       setState('done');
-      onQuoteCreated?.(quoteResult.pdfUrl, quoteResult.quoteNumber, quoteResult.pennylaneUrl);
+      onQuoteCreated?.(quoteResult.pdfUrl, quoteResult.quoteNumber, quoteResult.pennylaneUrl, totalTTC);
     } catch (err) {
       console.error('[plugin] create-quote error:', err);
       setError(err instanceof Error ? err.message : 'Erreur inconnue');

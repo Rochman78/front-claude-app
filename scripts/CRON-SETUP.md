@@ -1,56 +1,44 @@
 # Setup cron SAV sync sur Render
 
-Deux Cron Jobs à créer sur Render pour garantir zéro perte d'event Front App.
+**Un seul Cron Job** (1 facturation) qui s'adapte au jour de la semaine.
 
-## 1. Sync quotidienne (06h00 Paris)
-
-**Pourquoi** : couvre le quotidien avec 24h de marge de sécurité (fenêtre 48h glissantes par défaut).
+## Configuration Render Cron Job
 
 | Champ | Valeur |
 |---|---|
-| Name | `sav-sync-daily` |
+| Name | `sav-sync` |
+| Repo | `Rochman78/front-claude-app`, branche `main` |
 | Schedule (UTC) | `0 4 * * *` |
 | Build Command | `npm install` |
-| Command | `bash scripts/cron-sav-sync-daily.sh` |
-| Environment | Same as web service (FRONT_API_TOKEN, DATABASE_URL) |
+| Command | `bash scripts/cron-sav-sync.sh` |
+| Environment | `FRONT_API_TOKEN`, `DATABASE_URL` (copier depuis le service web existant) |
 
-> Le `0 4 * * *` UTC = 06h00 Paris en été, 05h00 en hiver (DST). Si tu veux strictement 06h00 toute l'année, change manuellement à `0 5 * * *` en hiver.
+> Note DST : `0 4 * * *` UTC = 06h Paris en été (avr→oct), 05h Paris en hiver. Si tu veux pile 06h toute l'année, ajuste manuellement à `0 5 * * *` en hiver.
 
-## 2. Sync hebdo "filet de sécurité" (Dimanche 22h00 Paris)
+## Comportement du script
 
-**Pourquoi** : rattrape les events Front qui auraient été publiés en retard (rare mais possible). Fenêtre 14 jours glissants. Idempotent, zéro doublon.
+```
+Lun–Sam : sync 48h glissantes      ← couvre quotidien + marge de sécurité 24h
+Dimanche : sync 14 jours glissants  ← filet hebdo (rattrape events Front en retard)
+```
 
-| Champ | Valeur |
-|---|---|
-| Name | `sav-sync-weekly-filet` |
-| Schedule (UTC) | `0 20 * * 0` |
-| Build Command | `npm install` |
-| Command | `bash scripts/cron-sav-sync-weekly.sh` |
-| Environment | Same as web service (FRONT_API_TOKEN, DATABASE_URL) |
-
-## Variables d'environnement requises
-
-- `FRONT_API_TOKEN` : token API Front App (lecture)
-- `DATABASE_URL` : connection string PostgreSQL Render
+C'est idempotent (ON CONFLICT DO UPDATE partout) : aucun doublon, juste du compute.
 
 ## Monitoring
 
-Chaque run enregistre des stats dans la table `sav_sync_log` (events vus, conversations upsertées, messages, erreurs, durée).
-
-Pour surveiller :
+Chaque run logue dans `sav_sync_log` :
 ```sql
-SELECT started_at, ended_at, events_seen, conversations_upserted,
-       messages_upserted, errors,
-       EXTRACT(EPOCH FROM (ended_at - started_at))::int AS duree_sec
+SELECT started_at, events_seen, conversations_upserted, messages_upserted,
+       errors, EXTRACT(EPOCH FROM (ended_at - started_at))::int AS duree_sec
 FROM sav_sync_log
-ORDER BY started_at DESC LIMIT 20;
+ORDER BY started_at DESC LIMIT 10;
 ```
 
-Alerte recommandée : si `MAX(started_at) < NOW() - INTERVAL '25 hours'` → la sync n'a pas tourné depuis hier.
+Alerte recommandée : si `MAX(started_at) < NOW() - INTERVAL '25 hours'` → la sync n'a pas tourné.
 
 ## Backfill manuel
 
-Pour rejouer une période en cas de besoin :
+Pour rejouer une période :
 ```bash
 npx tsx scripts/sav-sync.ts --from 2026-XX-XX --to 2026-XX-XX
 ```

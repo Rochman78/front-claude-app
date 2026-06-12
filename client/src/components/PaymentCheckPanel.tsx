@@ -152,7 +152,11 @@ export default function PaymentCheckPanel({
         setConfirmResult({ ok: true, message: 'Brouillon de confirmation poussé dans Front App.' });
         onPushed?.();
       } else {
-        setConfirmResult({ ok: false, message: body?.pushError || 'Confirmation enregistrée mais push KO.' });
+        // status = 'push_failed' → BDD pas touchée, retry possible (bouton reste actif)
+        setConfirmResult({
+          ok: false,
+          message: `Le push du brouillon a échoué — tu peux retenter. Détail : ${body?.pushError || 'cause inconnue'}`,
+        });
       }
     } catch (err) {
       const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);

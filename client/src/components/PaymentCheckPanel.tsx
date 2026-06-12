@@ -55,7 +55,20 @@ export default function PaymentCheckPanel({
   const [confirming, setConfirming] = useState(false);
   const [confirmResult, setConfirmResult] = useState<{ ok: boolean; message: string } | null>(null);
 
-  // 1ère recherche au montage
+  // Champs éditables — pré-remplis depuis les props, modifiables par le collab.
+  // Utile si la BDD n'a pas le montant TTC (cas des 327 anciens devis) ou si
+  // le nom remonté par le contexte Front est incomplet.
+  const [editName, setEditName] = useState<string>(customerName || '');
+  const [editAmount, setEditAmount] = useState<string>(
+    expectedAmount !== undefined && !Number.isNaN(expectedAmount)
+      ? expectedAmount.toFixed(2)
+      : ''
+  );
+
+  // Trigger qui force un re-run de la recherche quand on clique sur "Relancer".
+  const [searchTrigger, setSearchTrigger] = useState(0);
+
+  // (Re)cherche les transactions candidates avec les valeurs courantes des champs.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -67,9 +80,10 @@ export default function PaymentCheckPanel({
     const url = new URL(`${API_BASE}/api/plugin/bank-transactions/search`);
     url.searchParams.set('front_conversation_id', frontConversationId);
     url.searchParams.set('store_code', storeCode);
-    if (customerName) url.searchParams.set('customer_name', customerName);
-    if (expectedAmount !== undefined && !Number.isNaN(expectedAmount)) {
-      url.searchParams.set('expected_amount', String(expectedAmount));
+    if (editName.trim()) url.searchParams.set('customer_name', editName.trim());
+    const amountNum = parseFloat((editAmount || '').replace(',', '.'));
+    if (!Number.isNaN(amountNum) && amountNum > 0) {
+      url.searchParams.set('expected_amount', String(amountNum));
     }
 
     fetch(url.toString())
@@ -82,7 +96,7 @@ export default function PaymentCheckPanel({
           return;
         }
         setData(body as SearchResponse);
-        // Auto-sélectionner la 1ère ligne si score > 100 (montant exact + autre critère)
+        // Auto-sélectionner la 1ère ligne si score ≥ 100 (montant exact + autre critère)
         if (body?.results?.length > 0 && body.results[0].score >= 100) {
           setSelectedTxId(body.results[0].id);
         }
@@ -97,7 +111,11 @@ export default function PaymentCheckPanel({
     return () => {
       cancelled = true;
     };
-  }, [frontConversationId, storeCode, customerName, expectedAmount]);
+    // searchTrigger volontaire dans deps → relance via le bouton.
+    // editName/editAmount NE sont PAS dans deps → on évite un refetch à chaque
+    // frappe clavier (le collab modifie puis clique "Relancer").
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frontConversationId, storeCode, searchTrigger]);
 
   const selected = data?.results.find((tx) => tx.id === selectedTxId) || null;
 
@@ -115,7 +133,7 @@ export default function PaymentCheckPanel({
           transactionId: selected.id,
           transactionLabel: selected.label,
           transactionAmount: selected.amount,
-          customerFirstName: (customerName || '').split(' ')[0] || '',
+          customerFirstName: (editName || customerName || '').split(' ')[0] || '',
         }),
       });
       const body = await res.json().catch(() => null);
@@ -165,15 +183,49 @@ export default function PaymentCheckPanel({
           </button>
         </div>
 
-        {/* Bloc infos devis */}
+        {/* Bloc infos devis — éditable (utile pour les anciens devis sans amount BDD
+            ou si le nom remonté par Front est incomplet) */}
         <div style={{ background: '#f0f7ff', border: '1px solid #cfe2ff', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px', fontSize: '12px', lineHeight: 1.5 }}>
-          <div><strong>Devis :</strong> {quoteNumber}</div>
-          <div><strong>Client :</strong> {customerName || <em style={{ color: '#999' }}>inconnu</em>}</div>
-          <div>
-            <strong>Montant attendu :</strong>{' '}
-            {expectedAmount !== undefined && !Number.isNaN(expectedAmount)
-              ? `${expectedAmount.toFixed(2)} €`
-              : <em style={{ color: '#999' }}>non communiqué — on score sur n° devis + nom</em>}
+          <div style={{ marginBottom: '6px' }}>
+            <strong>Devis :</strong> {quoteNumber}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', alignItems: 'center', gap: '6px 8px', marginBottom: '6px' }}>
+            <label htmlFor="pcp-name" style={{ fontWeight: 600 }}>Client :</label>
+            <input
+              id="pcp-name"
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="Prénom Nom"
+              style={{ padding: '5px 8px', fontSize: '12px', border: '1px solid #cbd5e0', borderRadius: '4px', color: '#000', background: 'white' }}
+            />
+            <label htmlFor="pcp-amount" style={{ fontWeight: 600 }}>Montant TTC :</label>
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <input
+                id="pcp-amount"
+                type="text"
+                inputMode="decimal"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                placeholder="ex : 1247.80"
+                style={{ flex: 1, padding: '5px 8px', fontSize: '12px', border: '1px solid #cbd5e0', borderRadius: '4px', color: '#000', background: 'white' }}
+              />
+              <span style={{ color: '#666' }}>€</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => setSearchTrigger((t) => t + 1)}
+              disabled={loading}
+              style={{
+                fontSize: '11px', padding: '4px 10px',
+                border: '1px solid #4a90d9', borderRadius: '4px',
+                background: loading ? '#cbd5e0' : 'white', color: loading ? '#666' : '#2c5282',
+                cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 600,
+              }}
+            >
+              {loading ? 'Recherche…' : '🔄 Relancer la recherche'}
+            </button>
           </div>
         </div>
 

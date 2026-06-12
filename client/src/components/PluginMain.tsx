@@ -608,6 +608,19 @@ export default function PluginMain({ context }: PluginMainProps) {
           <button className="btn-primary" onClick={() => handleAnalyzeWithTemplate()}>
             Analyser avec Claude
           </button>
+
+          {/* Bouton "Vérifier virement reçu" — visible en page d'accueil dès
+              qu'un devis existe pour cette conv, pour pouvoir vérifier un
+              virement sans avoir à analyser la conv au préalable. */}
+          {quoteNumber && (
+            <button
+              className="btn-outline"
+              style={{ fontSize: '13px', fontWeight: 600, color: '#000', marginTop: '6px', width: '100%' }}
+              onClick={() => setShowPaymentCheck(true)}
+            >
+              💳 Vérifier virement reçu
+            </button>
+          )}
         </div>
       )}
 

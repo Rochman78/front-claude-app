@@ -135,17 +135,32 @@ export async function getConversationImages(conversationId: string): Promise<{ d
           console.log(`[frontapp] skipping logo/signature image: ${att.filename}`);
           continue;
         }
-        // Déduplication : même PJ déjà rencontrée (citation/signature répétée).
-        // Clé tolérante à 1 KB de différence : les signatures réinsérées dans les
-        // citations ont souvent quelques bytes EXIF/metadata qui varient
-        // (ex : image001.png 763798 vs 763796 bytes — même image, 2 bytes diff).
+        // Déduplication.
+        // (a) clé nom + bucket KB : tolérante à ~1 KB de différence pour les
+        //     signatures réinsérées dans les citations qui ont quelques bytes
+        //     EXIF/metadata qui varient (image001.png 763798 vs 763796 = même
+        //     image).
+        // (b) pour les PETITES images inline (< 100 KB) : clé taille EXACTE +
+        //     content-type, sans le nom. Évince les logos de signature qui se
+        //     déguisent en attachment-1.png / attachment-6.png / '' (cas réel
+        //     cnv_1liirz6f, 12/06/2026 : 3 copies du même logo 68559 bytes sous
+        //     3 noms différents prenaient des slots et polluaient l'analyse).
+        //     Risque négligeable de fausse collision : 2 PNG distincts du même
+        //     client à l'octet près = ~zéro.
         const sizeBucket = Math.round(attSize / 1024); // arrondi au KB
         const dedupKey = `${att.filename || ''}_${sizeBucket}`;
+        const isSmallInline = att.metadata?.is_inline && attSize > 0 && attSize < 100 * 1024;
+        const exactSizeKey = isSmallInline ? `__small_inline_${attSize}_${contentType}` : null;
         if (seenAttachments.has(dedupKey)) {
-          console.log(`[frontapp] skipping duplicate attachment: ${att.filename} (${attSize} bytes — déjà ajouté, bucket=${sizeBucket}KB)`);
+          console.log(`[frontapp] skipping duplicate attachment: ${att.filename} (${attSize} bytes — déjà vu, bucket=${sizeBucket}KB)`);
+          continue;
+        }
+        if (exactSizeKey && seenAttachments.has(exactSizeKey)) {
+          console.log(`[frontapp] skipping logo lookalike: ${att.filename} (${attSize} bytes exacts — même size+type qu'une image inline déjà gardée)`);
           continue;
         }
         seenAttachments.add(dedupKey);
+        if (exactSizeKey) seenAttachments.add(exactSizeKey);
         const size = att.size || 0;
         if (!isPdf && size > 0 && size < minSize) {
           console.log(`[frontapp] skipping small image ${att.filename} (${size} bytes)`);

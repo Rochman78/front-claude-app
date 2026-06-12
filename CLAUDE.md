@@ -66,6 +66,12 @@ front-claude-app/
 
 **Backup pré-refacto** : `backups/agent_files_backup_20260603-120752.json` (1,3 MB, restaurable en INSERT SQL).
 
+### Lecture des croquis client — méthode systématique (12/06/2026)
+- Quand un croquis (à main levée) est joint, l'agent doit faire un **inventaire des côtés** dans l'ordre haut → droite → bas → gauche, en marquant chaque côté soit avec sa cote exacte soit avec `NON COTÉ`. Les diagonales internes sont listées SÉPARÉMENT (jamais confondues avec un côté). Si plusieurs croquis ont des cotes contradictoires → flagger en QUESTIONS sans choisir.
+- INTERDIT : inventer une cote, mélanger les cotes de 2 croquis du même fil, lire un chiffre approximatif sans flag.
+- Cas Dominique Laino 12/06/2026 (`cnv_1liirz6f`) : croquis avec haut=2m, gauche=3m, bas=3m, droite NON COTÉ + diagonales 3,63/4,21/3,15. Claude a dit « côté bas non coté » (FAUX) et a lu « 1,21 » au lieu de « 4,21 ». Contamination probable avec les autres croquis du fil. Encodé dans `agents.instructions` (10 boutiques).
+- **Fix code parallèle** : `frontappService.ts` dédupe désormais les PNG inline < 100 KB par taille exacte (à l'octet) en plus du nom+bucket → élimine les logos de signature déguisés en `attachment-1.png` / `attachment-6.png` / `''` qui polluaient les slots d'images.
+
 ### Anti-fantaisie factuelle — l'agent ne sait RIEN au-delà de ses sources (11/06/2026)
 - Toute question factuelle sur l'entreprise (présence marketplace externe Leroy Merlin / Amazon / Cdiscount / ManoMano, partenariats, magasin physique, certifications M1/M2, capacités de prod hors devis, etc.) est par défaut **INCONNUE** sauf si écrite noir sur blanc dans les instructions ou les fichiers de référence.
 - Comportement attendu si la réponse n'est pas dans les sources : BROUILLON court d'accusé de réception (« nous revenons vers vous rapidement ») + flagger en QUESTIONS pour que le gérant tranche. **JAMAIS de OUI/NON inventé.**

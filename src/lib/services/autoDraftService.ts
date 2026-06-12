@@ -74,20 +74,39 @@ async function record(conversationId: string, storeCode: string, status: string,
  */
 export async function processAutoDraft(conversationId: string): Promise<AutoDraftResult> {
   await initDB();
-  const skip = (reason: string): AutoDraftResult => ({ conversationId, status: 'skipped', reason });
+
+  // 0a. Skip rapide si on a déjà tenté et échoué récemment sur cette conv.
+  //     Évite de re-brûler des appels Claude + Front API à chaque poll cron sur
+  //     des convs où Claude n'arrive pas à produire un brouillon valide (ex :
+  //     demandes ambiguës, SAV mal-tagués). Au-delà de 12 h on re-tente
+  //     (au cas où le contexte change).
+  const seen = await pool.query(
+    'SELECT status, created_at FROM auto_drafts WHERE conversation_id = $1',
+    [conversationId]
+  );
+  const seenRow: { status: string; created_at: string } | null = seen.rows[0] || null;
+
+  // `skip` log désormais TOUS les skip dans auto_drafts (sauf "erreur récente"
+  // pour ne pas écraser l'entrée error qui sert au cooldown 12 h, et sauf si on
+  // a déjà un succès historique 'drafted'/'sent' qu'on ne veut pas écraser).
+  // Permet de diagnostiquer après coup pourquoi une conv n'a pas été traitée
+  // (ex : classifier LLM a dit non à tort) sans avoir à rejouer le mail.
+  const skip = async (reason: string, storeCode = ''): Promise<AutoDraftResult> => {
+    const isCooldownSkip = reason.startsWith('erreur récente');
+    const isHistoricalSuccess = seenRow?.status === 'drafted' || seenRow?.status === 'sent';
+    if (!isCooldownSkip && !isHistoricalSuccess) {
+      try {
+        await record(conversationId, storeCode, 'skipped', reason);
+      } catch (e) {
+        console.warn('[auto-draft] record skip failed:', e);
+      }
+    }
+    return { conversationId, status: 'skipped', reason };
+  };
 
   try {
-    // 0a. Skip rapide si on a déjà tenté et échoué récemment sur cette conv.
-    //     Évite de re-brûler des appels Claude + Front API à chaque poll cron sur
-    //     des convs où Claude n'arrive pas à produire un brouillon valide (ex :
-    //     demandes ambiguës, SAV mal-tagués). Au-delà de 12 h on re-tente
-    //     (au cas où le contexte change).
-    const seen = await pool.query(
-      'SELECT status, created_at FROM auto_drafts WHERE conversation_id = $1',
-      [conversationId]
-    );
-    if (seen.rows.length > 0 && seen.rows[0].status === 'error') {
-      const ageMs = Date.now() - new Date(seen.rows[0].created_at).getTime();
+    if (seenRow && seenRow.status === 'error') {
+      const ageMs = Date.now() - new Date(seenRow.created_at).getTime();
       const ageH = ageMs / 3600000;
       if (ageH < 12) {
         return skip(`erreur récente il y a ${ageH.toFixed(1)} h — pas de retry avant 12 h`);
@@ -120,10 +139,10 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
     const msgsRes = await frontFetch(`/conversations/${conversationId}/messages`);
     if (!msgsRes.ok) return { conversationId, status: 'error', reason: `messages ${msgsRes.status}` };
     const msgs: Record<string, unknown>[] = (await msgsRes.json())._results || [];
-    if (msgs.length !== 1) return skip(`la conv contient ${msgs.length} messages (auto-draft = 1 seul mail attendu)`);
+    if (msgs.length !== 1) return skip(`la conv contient ${msgs.length} messages (auto-draft = 1 seul mail attendu)`, store.code);
     const sole = msgs[0];
-    if (sole.is_inbound !== true) return skip('l\'unique message n\'est pas entrant');
-    if (sole.is_draft === true) return skip('l\'unique message est un brouillon');
+    if (sole.is_inbound !== true) return skip('l\'unique message n\'est pas entrant', store.code);
+    if (sole.is_draft === true) return skip('l\'unique message est un brouillon', store.code);
     const inbound = [sole];
 
     // 3a. Vérifier que c'est une vraie demande de devis.
@@ -138,11 +157,29 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
     if (!isFromForm) {
       const fullBody = inboundBodies.join('\n\n').substring(0, 4000);
       try {
+        // Prompt élargi (12/06/2026) : auparavant on exigeait une demande
+        // EXPLICITE de prix → faux négatifs sur des mails type
+        // « je suis intéressé par un filet 3x4 sable renforcé, quelle taille
+        // dois-je commander ? » (cas Delmonthierry cnv_1lmu6qdz). On accepte
+        // désormais aussi les demandes implicites (description projet +
+        // dimensions + couleur/finition, question conseil taille, faisabilité).
         const classifyPrompt = `Tu reçois un mail client envoyé à une boutique qui vend des FILETS DE CAMOUFLAGE, VOILES D'OMBRAGE et accessoires de fixation.
 
-Réponds UNIQUEMENT par OUI ou NON :
-- OUI = le client demande EXPLICITEMENT un devis, un prix, un chiffrage, ou des informations tarifaires sur un produit (taille, finition, couleur, quantité).
-- NON = tout autre cas : complainte/SAV, suivi de commande, garantie, question générique sans demande de prix, mail de remerciement, spam, etc.
+Réponds UNIQUEMENT par OUI ou NON.
+
+Réponds OUI si le mail contient au moins UN de ces éléments — même implicitement :
+- demande explicite d'un devis, prix, chiffrage, tarif (« combien coûte… », « pouvez-vous me faire un prix… »)
+- description d'un projet avec dimensions précises ET au moins une caractéristique produit (couleur, finition, matière) → c'est une demande de devis sur-mesure implicite
+- question « quelle taille / quelle dimension dois-je commander pour [usage] » avec contexte produit identifié
+- demande de faisabilité d'un produit avec dimensions OU couleur OU finition précisées (« est-ce possible de faire un filet 3x4 sable… »)
+- intérêt explicite pour acheter un produit donné (« je suis intéressé par un filet… ») avec description du besoin
+
+Réponds NON si le mail est :
+- SAV / réclamation / défaut produit / retour / remboursement
+- suivi de commande, livraison, garantie
+- demande de coordonnées sans contexte produit
+- remerciement, spam, mail vide
+- question générique sans aucune mention de dimensions/couleur/finition/produit précis
 
 Mail :
 ${fullBody}`;
@@ -153,18 +190,18 @@ ${fullBody}`;
         const wantsQuote = verdict.startsWith('OUI');
         console.log(`[auto-draft] ${conversationId} classifier verdict="${verdict.slice(0, 30)}" → ${wantsQuote ? 'accept' : 'skip'}`);
         if (!wantsQuote) {
-          return skip(`classifier LLM: non-demande-de-devis (verdict="${verdict.slice(0, 20)}")`);
+          return skip(`classifier LLM: non-demande-de-devis (verdict="${verdict.slice(0, 20)}")`, store.code);
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'classifier err';
         console.warn(`[auto-draft] ${conversationId} classifier failed: ${msg} — skip par prudence`);
-        return skip(`classifier LLM error: ${msg.slice(0, 60)}`);
+        return skip(`classifier LLM error: ${msg.slice(0, 60)}`, store.code);
       }
     }
 
     // 4. Contexte pour analyze
     const mailContent = inboundBodies.filter(Boolean).join('\n\n---\n\n');
-    if (mailContent.length < 10) return skip('contenu client vide');
+    if (mailContent.length < 10) return skip('contenu client vide', store.code);
     const latest = inbound[inbound.length - 1];
     const fromRec = ((latest.recipients as Record<string, unknown>[]) || []).find((r) => r.role === 'from');
     const customerEmail = (fromRec?.handle as string) || '';

@@ -441,7 +441,10 @@ export default function PluginMain({ context }: PluginMainProps) {
   // le panel "Vérifier virement reçu" pour injecter un brouillon préparé sans
   // nouveau passage par Claude.
   const hasDraft = ((quoteDraftText?.includes('Bonjour')) || lastAssistantMsg?.content.includes('Bonjour')) ?? false;
-  const autoReady = lastAssistantMsg ? isDraftReady(lastAssistantMsg.content) : false;
+  // Un quoteDraftText injecté est considéré comme prêt d'office (passé par
+  // le flow QuotePanel ou PaymentCheckPanel — pas besoin de relire un msg
+  // Claude pour décider).
+  const autoReady = !!quoteDraftText || (lastAssistantMsg ? isDraftReady(lastAssistantMsg.content) : false);
   const showDraft = !claude.isStreaming && hasDraft && (autoReady || manualValidation) && !draftInvalidated;
 
   // QuotePanel visible dès qu'il y a au moins un message Claude
@@ -593,7 +596,9 @@ export default function PluginMain({ context }: PluginMainProps) {
         <LoadingState message="Analyse en cours sur ce mail..." />
       )}
 
-      {!hasMessages && !claude.isStreaming && !loadingHistory && !conversationCache.isPending(frontConvId) && (
+      {/* Page d'accueil : masquée aussi si un brouillon a été injecté via
+          PaymentCheckPanel (le bloc DraftFinal s'affiche à la place). */}
+      {!hasMessages && !claude.isStreaming && !loadingHistory && !conversationCache.isPending(frontConvId) && !quoteDraftText && (
         <div className="plugin-actions">
           <textarea
             value={preAnalyzeNote}
@@ -635,10 +640,15 @@ export default function PluginMain({ context }: PluginMainProps) {
         />
       )}
 
-      {/* Texte brouillon validé (fond vert) — dans la zone scrollable */}
-      {showDraft && lastAssistantMsg && (
+      {/* Texte brouillon validé (fond vert) — dans la zone scrollable.
+          Peut s'afficher avec OU sans message Claude existant : si on a
+          un quoteDraftText (injecté par QuotePanel ou PaymentCheckPanel),
+          on l'utilise directement même si Claude n'a jamais analysé la
+          conv (cas typique : clic "Vérifier virement reçu" depuis la
+          page d'accueil sans Analyser au préalable). */}
+      {showDraft && (quoteDraftText || lastAssistantMsg) && (
         <DraftFinal
-          rawContent={quoteDraftText || lastAssistantMsg.content}
+          rawContent={quoteDraftText || lastAssistantMsg!.content}
           context={context}
           pdfUrl={quotePdfUrl || undefined}
           quoteNumber={quoteNumber || undefined}
@@ -933,7 +943,9 @@ export default function PluginMain({ context }: PluginMainProps) {
 
       </div>
       {/* ═══ CONTAINER BOUTONS FIXE EN BAS ═══ */}
-      {hasMessages && !claude.isStreaming && (
+      {/* Visible aussi si on a un quoteDraftText (cas brouillon injecté par
+          PaymentCheckPanel sans passer par "Analyser avec Claude") */}
+      {(hasMessages || quoteDraftText) && !claude.isStreaming && (
         <div className="actions-container">
           {/* Brouillon validé */}
           {showDraft && (

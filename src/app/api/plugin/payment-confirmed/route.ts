@@ -166,32 +166,40 @@ export async function POST(req: NextRequest) {
       console.error('[payment-confirmed] push direct Front exception:', pushError);
     }
 
-    // 7. Log BDD (anti-double envoi) — on l'enregistre même si push KO
-    //    pour ne pas re-pousser à l'identique au prochain clic.
-    const confId = crypto.randomUUID();
+    // 7. Log BDD (anti-double envoi) UNIQUEMENT si le push a réussi.
+    //    Si push KO → on ne loggue PAS, pour permettre au collab de retenter
+    //    une fois le pb réseau / Front résolu. Précédemment on enregistrait
+    //    même en cas d'échec « pour ne pas re-pousser à l'identique », mais
+    //    ça bloquait toute reprise (Charles tombe sur "already_confirmed"
+    //    sans pouvoir relancer).
     const now = new Date().toISOString();
-    await pool.query(
-      `INSERT INTO payment_confirmations
-        (id, front_conversation_id, store_code, quote_number, transaction_id, transaction_label, amount, confirmed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        confId,
-        frontConversationId,
-        storeCode,
-        quoteNumber,
-        transactionId,
-        transactionLabel,
-        transactionAmount,
-        now,
-      ]
-    );
-    console.log(`[payment-confirmed] OK conv=${frontConversationId} quote=${quoteNumber} tx=${transactionId} push=${pushSuccess}`);
+    if (pushSuccess) {
+      const confId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO payment_confirmations
+          (id, front_conversation_id, store_code, quote_number, transaction_id, transaction_label, amount, confirmed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          confId,
+          frontConversationId,
+          storeCode,
+          quoteNumber,
+          transactionId,
+          transactionLabel,
+          transactionAmount,
+          now,
+        ]
+      );
+      console.log(`[payment-confirmed] OK enregistré conv=${frontConversationId} quote=${quoteNumber} tx=${transactionId}`);
+    } else {
+      console.log(`[payment-confirmed] push KO → BDD non touchée, retry possible (conv=${frontConversationId} tx=${transactionId})`);
+    }
 
     return NextResponse.json({
-      status: 'confirmed',
+      status: pushSuccess ? 'confirmed' : 'push_failed',
       pushSuccess,
       pushError,
-      confirmedAt: now,
+      confirmedAt: pushSuccess ? now : null,
       draftPreview: finalText,
     });
   } catch (err) {

@@ -8,6 +8,7 @@ import ClaudeChat from './ClaudeChat';
 import DraftFinal, { usePushDraft } from './DraftFinal';
 import { cleanDraft } from '../utils/cleanDraft';
 import QuotePanel from './QuotePanel';
+import PaymentCheckPanel from './PaymentCheckPanel';
 import ErrorBoundary from './ErrorBoundary';
 import LoadingState from './LoadingState';
 import { isDraftReady } from '../utils/cleanDraft';
@@ -158,6 +159,7 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [preAnalyzeNote, setPreAnalyzeNote] = useState<string>('');
   const [showResumePopup, setShowResumePopup] = useState(false);
   const [resumeNote, setResumeNote] = useState<string>('');
+  const [showPaymentCheck, setShowPaymentCheck] = useState(false);
   const [resolvedEmail, setResolvedEmail] = useState<string>('');
   const [resolvedName, setResolvedName] = useState<string>('');
   const [pushLang, setPushLang] = useState<string>('auto');
@@ -982,6 +984,17 @@ export default function PluginMain({ context }: PluginMainProps) {
             </button>
           )}
 
+          {/* Vérifier virement reçu : visible si un devis existe déjà sur la conv */}
+          {quoteNumber && (
+            <button
+              className="btn-outline"
+              style={{ fontSize: '13px', fontWeight: 600, color: '#000' }}
+              onClick={() => setShowPaymentCheck(true)}
+            >
+              💳 Vérifier virement reçu
+            </button>
+          )}
+
           {/* Boutons secondaires : Reprendre avec Claude + Reprendre à 0 */}
           <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
             <button
@@ -1012,6 +1025,17 @@ export default function PluginMain({ context }: PluginMainProps) {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Panel "Vérifier virement reçu" */}
+      {showPaymentCheck && quoteNumber && (
+        <PaymentCheckPanel
+          frontConversationId={frontConvId}
+          storeCode={store.code}
+          customerName={resolvedName || recipient?.name || ''}
+          quoteNumber={quoteNumber}
+          onClose={() => setShowPaymentCheck(false)}
+        />
       )}
 
       {/* Popup résumé template — z-index élevé, au-dessus de tout */}

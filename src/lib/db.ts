@@ -122,6 +122,22 @@ export async function initDB() {
     );
   `);
 
+  // Rapprochement virement reçu ↔ devis (anti-double envoi).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS payment_confirmations (
+      id TEXT PRIMARY KEY,
+      front_conversation_id TEXT NOT NULL,
+      store_code TEXT NOT NULL,
+      quote_number TEXT NOT NULL,
+      transaction_id TEXT NOT NULL,
+      transaction_label TEXT NOT NULL DEFAULT '',
+      amount TEXT NOT NULL DEFAULT '',
+      confirmed_at TEXT NOT NULL,
+      UNIQUE(front_conversation_id, transaction_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_payment_confirmations_conv ON payment_confirmations(front_conversation_id);
+  `);
+
   initialized = true;
 }
 

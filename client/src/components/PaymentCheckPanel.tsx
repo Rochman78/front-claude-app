@@ -68,6 +68,10 @@ export default function PaymentCheckPanel({
       ? expectedAmount.toFixed(2)
       : ''
   );
+  // N° de devis éditable : pré-rempli si la conv en a un en BDD, sinon vide.
+  // Cas devis créé hors plugin (Pennylane directement, ancienne Flask, etc.)
+  // → le collab saisit le numéro à la main.
+  const [editQuoteNumber, setEditQuoteNumber] = useState<string>(quoteNumber || '');
 
   // Trigger qui force un re-run de la recherche quand on clique sur "Relancer".
   const [searchTrigger, setSearchTrigger] = useState(0);
@@ -88,6 +92,9 @@ export default function PaymentCheckPanel({
     const amountNum = parseFloat((editAmount || '').replace(',', '.'));
     if (!Number.isNaN(amountNum) && amountNum > 0) {
       url.searchParams.set('expected_amount', String(amountNum));
+    }
+    if (editQuoteNumber.trim()) {
+      url.searchParams.set('quote_number', editQuoteNumber.trim());
     }
 
     fetch(url.toString())
@@ -119,7 +126,7 @@ export default function PaymentCheckPanel({
     // editName/editAmount NE sont PAS dans deps → on évite un refetch à chaque
     // frappe clavier (le collab modifie puis clique "Relancer").
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frontConversationId, storeCode, searchTrigger]);
+  }, [frontConversationId, storeCode, searchTrigger, quoteNumber]);
 
   const selected = data?.results.find((tx) => tx.id === selectedTxId) || null;
 
@@ -132,6 +139,9 @@ export default function PaymentCheckPanel({
       frontConversationId,
       storeCode,
       customerFirstName: (editName || customerName || '').split(' ')[0] || '',
+      // n° de devis custom : utilisé si la conv n'a pas de devis en BDD ou si
+      // le collab veut explicitement utiliser un autre numéro.
+      quoteNumber: editQuoteNumber.trim() || undefined,
     };
     console.log('[PaymentCheckPanel] POST payment-confirmed-preview:', payload);
     try {
@@ -188,12 +198,19 @@ export default function PaymentCheckPanel({
           </button>
         </div>
 
-        {/* Bloc infos devis — éditable, fixe au-dessus de la zone scrollable */}
+        {/* Bloc infos devis — tout est éditable. Si la conv n'a pas de devis
+            en BDD (cas hors plugin), le collab saisit le n° à la main. */}
         <div style={{ background: '#f0f7ff', border: '1px solid #cfe2ff', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px', fontSize: '12px', lineHeight: 1.5, flex: '0 0 auto' }}>
-          <div style={{ marginBottom: '6px' }}>
-            <strong>Devis :</strong> {quoteNumber}
-          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', alignItems: 'center', gap: '6px 8px', marginBottom: '6px' }}>
+            <label htmlFor="pcp-quote" style={{ fontWeight: 600 }}>Devis :</label>
+            <input
+              id="pcp-quote"
+              type="text"
+              value={editQuoteNumber}
+              onChange={(e) => setEditQuoteNumber(e.target.value)}
+              placeholder="ex : D-2026-06-121656"
+              style={{ padding: '5px 8px', fontSize: '12px', border: '1px solid #cbd5e0', borderRadius: '4px', color: '#000', background: 'white' }}
+            />
             <label htmlFor="pcp-name" style={{ fontWeight: 600 }}>Client :</label>
             <input
               id="pcp-name"
@@ -340,13 +357,14 @@ export default function PaymentCheckPanel({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!selected || confirming || selected?.alreadyConfirmed}
+            disabled={!selected || confirming || selected?.alreadyConfirmed || !editQuoteNumber.trim()}
+            title={!editQuoteNumber.trim() ? 'Saisis un n° de devis pour générer le brouillon' : undefined}
             style={{
               flex: 1, padding: '10px 16px', fontSize: '13px', fontWeight: 600,
               border: 'none', borderRadius: '6px',
-              background: (!selected || confirming || selected?.alreadyConfirmed) ? '#cbd5e0' : '#38a169',
+              background: (!selected || confirming || selected?.alreadyConfirmed || !editQuoteNumber.trim()) ? '#cbd5e0' : '#38a169',
               color: 'white',
-              cursor: (!selected || confirming || selected?.alreadyConfirmed) ? 'not-allowed' : 'pointer',
+              cursor: (!selected || confirming || selected?.alreadyConfirmed || !editQuoteNumber.trim()) ? 'not-allowed' : 'pointer',
             }}
           >
             {confirming ? 'Préparation du brouillon…' : 'Confirmer virement reçu par mail'}

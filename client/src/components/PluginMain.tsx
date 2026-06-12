@@ -437,7 +437,10 @@ export default function PluginMain({ context }: PluginMainProps) {
   // RÈGLE STRICTE : le bloc vert n'apparaît JAMAIS si Claude a des questions en attente
   // sauf si l'utilisateur clique manuellement "Valider le brouillon"
   const lastAssistantMsg = [...claude.messages].reverse().find((m) => m.role === 'assistant');
-  const hasDraft = lastAssistantMsg?.content.includes('Bonjour') ?? false;
+  // hasDraft accepte aussi quoteDraftText : utilisé par le mail devis ET par
+  // le panel "Vérifier virement reçu" pour injecter un brouillon préparé sans
+  // nouveau passage par Claude.
+  const hasDraft = ((quoteDraftText?.includes('Bonjour')) || lastAssistantMsg?.content.includes('Bonjour')) ?? false;
   const autoReady = lastAssistantMsg ? isDraftReady(lastAssistantMsg.content) : false;
   const showDraft = !claude.isStreaming && hasDraft && (autoReady || manualValidation) && !draftInvalidated;
 
@@ -1043,6 +1046,15 @@ export default function PluginMain({ context }: PluginMainProps) {
           customerName={resolvedName || recipient?.name || ''}
           quoteNumber={quoteNumber}
           onClose={() => setShowPaymentCheck(false)}
+          onPreviewReady={(text) => {
+            // Injecte le brouillon préparé dans le bloc DraftFinal habituel
+            // pour validation/édition/push par le flow classique.
+            setQuoteDraftText(text);
+            setManualValidation(true);
+            setDraftInvalidated(false);
+            // Le PDF du devis n'est PAS attaché à ce brouillon de confirmation
+            setQuotePdfUrl(null);
+          }}
         />
       )}
 

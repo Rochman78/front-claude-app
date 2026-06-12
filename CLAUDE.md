@@ -66,6 +66,20 @@ front-claude-app/
 
 **Backup pré-refacto** : `backups/agent_files_backup_20260603-120752.json` (1,3 MB, restaurable en INSERT SQL).
 
+### TVA — toujours le pays de livraison (12/06/2026)
+- TVA par défaut = TVA du **pays de livraison** du client (pas du pays de facturation).
+- Si AUCUNE adresse de livraison fournie → TVA du **pays de la boutique** (règle B2C OSS par défaut).
+- **JAMAIS demander au client** quelle TVA appliquer — c'est imposé par la loi.
+- Taux : FR 20 / DE 19 / NL 21 / BE 21 / ES 21 / PT 23 / IT 22 / LU 17 / AT 20 / GB 20 / hors UE 0 (à confirmer).
+- Exception B2B intra (n° TVA UE valide hors pays boutique) → 0 % + Article 138 (déjà géré côté code Pennylane).
+- Cas Saracco 12/06/2026 (`cnv_1lmrvoev`, RED) : cliente espagnole (Javea), agent a appliqué TVA 20 % (FR) au lieu de 21 % (ES). Encodé × 10 agents.
+
+### Jamais de prix vides dans un brouillon (12/06/2026)
+- Si une info essentielle manque pour chiffrer (couleur, finition, dimensions, taux TVA, etc.) → **NE PAS générer le tableau de prix**. Mail court qui pose les questions, sans tableau.
+- INTERDIT : « Total sin IVA : » suivi de rien, « XXX € », « à compléter », placeholders dans un tableau de prix envoyé au client.
+- Cas Saracco 12/06/2026 (`cnv_1lmrvoev`, RED) : brouillon avec `Precio unitario sin IVA :` / `Total sin IVA :` / `IVA (20 %) :` / `Importe con IVA incluido :` tous vides → push au client. Encodé × 10 agents.
+- **Garde-fou code** : `autoDraftService.ts` détecte une ligne « label-prix : » suivie de vide (multilingue) et bloque l'auto-push avec un commentaire de conv "à traiter via le plugin".
+
 ### Lecture des croquis client — méthode systématique (12/06/2026)
 - Quand un croquis (à main levée) est joint, l'agent doit faire un **inventaire des côtés** dans l'ordre haut → droite → bas → gauche, en marquant chaque côté soit avec sa cote exacte soit avec `NON COTÉ`. Les diagonales internes sont listées SÉPARÉMENT (jamais confondues avec un côté). Si plusieurs croquis ont des cotes contradictoires → flagger en QUESTIONS sans choisir.
 - INTERDIT : inventer une cote, mélanger les cotes de 2 croquis du même fil, lire un chiffre approximatif sans flag.

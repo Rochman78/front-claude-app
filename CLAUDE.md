@@ -66,6 +66,8 @@ front-claude-app/
 
 **Backup pré-refacto** : `backups/agent_files_backup_20260603-120752.json` (1,3 MB, restaurable en INSERT SQL).
 
+**Mise à jour future des prix** : voir `scripts/catalogue/README.md`. Le script `regen_prix_ht_standards.py` lit un CSV LFC (autorité TTC) et met à jour les `prix-ht-standards.txt` × 10 boutiques en recalculant le HT par taux TVA. SKU absent du CSV = ligne intacte. Stock géré séparément via Octopia, jamais dans les fichiers agents.
+
 ### Réassort produit en rupture — le client s'inscrit lui-même sur le site (12/06/2026)
 - Plus de "on note ton email côté SAV" : on **redirige vers la fiche produit du site**, où un bouton intégré permet au client de saisir son email et d'être notifié automatiquement dès le retour en stock (feature Shopify, déjà en place côté site).
 - L'agent ne promet plus de l'enregistrer manuellement — il indique au client comment faire : aller sur le site, sélectionner la référence souhaitée (la fiche reste accessible même hors stock), cliquer sur le bouton qui apparait.

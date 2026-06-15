@@ -89,6 +89,13 @@ front-claude-app/
 - Cas Saracco 12/06/2026 (`cnv_1lmrvoev`, RED) : brouillon avec `Precio unitario sin IVA :` / `Total sin IVA :` / `IVA (20 %) :` / `Importe con IVA incluido :` tous vides → push au client. Encodé × 10 agents.
 - **Garde-fou code** : `autoDraftService.ts` détecte une ligne « label-prix : » suivie de vide (multilingue) et bloque l'auto-push avec un commentaire de conv "à traiter via le plugin".
 
+### Tranche sur-mesure = SURFACE TOTALE du devis, jamais par filet (15/06/2026)
+- La tranche tarifaire de `prix-ht-sur-mesure.txt` se choisit sur la SURFACE TOTALE des filets sur-mesure du devis. Les filets standards catalogue ne se cumulent PAS dans ce total.
+- 4 tranches : `< 2 m²` | `2-5 m²` | `6-10 m²` | `> 10 m²` (et plus, sans limite).
+- Le même prix unitaire s'applique à TOUS les filets sur-mesure du devis (forme + finition correspondante).
+- **Avant d'écrire le prix** : annoncer en QUESTIONS la ligne ET la colonne retenues.
+- Cas Fabien SZCZODRY EHPAD Les Lauriers 19/05/2026 (`cnv_1lfxyqqf`, LFC) : 2 × câble acier 3×3 (18 m²) + 1 × câble acier 3×4 (12 m²) = **30 m²** total → tranche `> 10 m²` → `15,50 €/m²`. Claude a appliqué `23,50 €/m²` (tranche 6-10) à tout le devis → surfacturation **240 € HT / 288 € TTC**. Encodé × 10 agents.
+
 ### Lecture des croquis client — méthode systématique (12/06/2026)
 - Quand un croquis (à main levée) est joint, l'agent doit faire un **inventaire des côtés** dans l'ordre haut → droite → bas → gauche, en marquant chaque côté soit avec sa cote exacte soit avec `NON COTÉ`. Les diagonales internes sont listées SÉPARÉMENT (jamais confondues avec un côté). Si plusieurs croquis ont des cotes contradictoires → flagger en QUESTIONS sans choisir.
 - INTERDIT : inventer une cote, mélanger les cotes de 2 croquis du même fil, lire un chiffre approximatif sans flag.

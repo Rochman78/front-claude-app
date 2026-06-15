@@ -88,42 +88,69 @@ async function main() {
   const convs = r.rows as { id: string; inbox_id: string | null }[];
   console.log(`\n  ${convs.length} convs open à refresher${sinceArg ? ` (depuis ${sinceArg})` : ''}${dryRun ? ' [DRY-RUN]' : ''}\n`);
 
-  let changed = 0, unchanged = 0, notFound = 0, errors = 0, noInbox = 0;
+  // Fetch en BDD le status actuel pour comparer
+  const r2 = await db.query(`SELECT id, status, archived_at FROM sav_conversations WHERE id = ANY($1::text[])`, [convs.map(c => c.id)]);
+  const dbState = new Map<string, { status: string | null; archived_at: Date | null }>();
+  for (const row of r2.rows) dbState.set(row.id, { status: row.status, archived_at: row.archived_at });
+
+  let inboxChanged = 0, statusChanged = 0, archivedNow = 0, unchanged = 0, notFound = 0, errors = 0;
   const t0 = Date.now();
 
   for (let i = 0; i < convs.length; i++) {
     const conv = convs[i];
     try {
-      const res = await frontFetch(`/conversations/${conv.id}/inboxes`);
-      if (!res) { notFound++; continue; }
-      const inboxes = (res._results || []) as Array<{ id: string }>;
-      // On préfère une inbox boutique active, sinon n'importe quelle inbox active,
-      // sinon null. Une conv peut être dans plusieurs inboxes (rare) → on garde
-      // la première boutique trouvée.
-      let next: string | null = null;
-      for (const ibx of inboxes) {
-        if (boutiqueInboxes.has(ibx.id)) { next = ibx.id; break; }
+      // 1) inboxes
+      const inboxRes = await frontFetch(`/conversations/${conv.id}/inboxes`);
+      if (!inboxRes) { notFound++; continue; }
+      const inboxes = (inboxRes._results || []) as Array<{ id: string }>;
+      let nextInbox: string | null = null;
+      for (const ibx of inboxes) if (boutiqueInboxes.has(ibx.id)) { nextInbox = ibx.id; break; }
+      if (!nextInbox) for (const ibx of inboxes) if (activeInboxes.has(ibx.id)) { nextInbox = ibx.id; break; }
+      if (!nextInbox && inboxes.length > 0) nextInbox = inboxes[0].id;
+
+      await new Promise(r => setTimeout(r, SLEEP));
+
+      // 2) status (et archived_at déduit)
+      const convRes = await frontFetch(`/conversations/${conv.id}`);
+      if (!convRes) { notFound++; continue; }
+      const frontStatus: string = convRes.status; // open, archived, deleted, spam, unassigned, assigned…
+      const frontUpdatedAt: number | undefined = convRes.updated_at; // unix seconds
+      const isArchivedInFront = frontStatus === 'archived' || convRes.status_category === 'archived';
+
+      const cur = dbState.get(conv.id)!;
+      const updates: string[] = [];
+      const params: any[] = [];
+      let pidx = 1;
+
+      if (nextInbox && nextInbox !== conv.inbox_id) {
+        updates.push(`inbox_id = $${pidx++}`); params.push(nextInbox);
+        inboxChanged++;
       }
-      if (!next) {
-        for (const ibx of inboxes) {
-          if (activeInboxes.has(ibx.id)) { next = ibx.id; break; }
-        }
+      if (frontStatus && frontStatus !== cur.status) {
+        updates.push(`status = $${pidx++}`); params.push(frontStatus);
+        statusChanged++;
       }
-      if (!next && inboxes.length > 0) {
-        // Conv dans une inbox qu'on ne connait pas (ou plus active) → on garde la 1ère brute
-        next = inboxes[0].id;
+      // Si Front dit archivée et notre archived_at est null → poser l'archived_at (updated_at de Front sinon NOW)
+      if (isArchivedInFront && !cur.archived_at) {
+        const archAt = frontUpdatedAt ? new Date(frontUpdatedAt * 1000) : new Date();
+        updates.push(`archived_at = $${pidx++}`); params.push(archAt);
+        archivedNow++;
       }
-      if (!next) {
-        noInbox++;
-      } else if (next === conv.inbox_id) {
+      // Si Front dit pas archivée et on a un archived_at → reset (cas reopen)
+      if (!isArchivedInFront && cur.archived_at) {
+        updates.push(`archived_at = NULL`);
+      }
+
+      if (updates.length === 0) {
         unchanged++;
       } else {
         if (!dryRun) {
-          await db.query(`UPDATE sav_conversations SET inbox_id = $1, synced_at = NOW() WHERE id = $2`, [next, conv.id]);
+          updates.push(`synced_at = NOW()`);
+          params.push(conv.id);
+          await db.query(`UPDATE sav_conversations SET ${updates.join(', ')} WHERE id = $${pidx}`, params);
         }
-        changed++;
-        if (changed <= 30 || changed % 50 === 0) {
-          console.log(`    ↻ ${conv.id} : ${conv.inbox_id || '(null)'} → ${next}`);
+        if (inboxChanged + statusChanged + archivedNow <= 40) {
+          console.log(`    ↻ ${conv.id} :${nextInbox !== conv.inbox_id ? ` inbox→${nextInbox}` : ''}${frontStatus !== cur.status ? ` status→${frontStatus}` : ''}${isArchivedInFront && !cur.archived_at ? ` archived` : ''}`);
         }
       }
     } catch (err: any) {
@@ -131,19 +158,20 @@ async function main() {
       if (errors <= 5) console.warn(`    ⚠️  ${conv.id} : ${err.message}`);
     }
     await new Promise(r => setTimeout(r, SLEEP));
-    if ((i + 1) % 100 === 0) {
+    if ((i + 1) % 50 === 0) {
       const eta = Math.round((convs.length - i - 1) * (Date.now() - t0) / (i + 1) / 1000);
-      console.log(`    ... ${i + 1}/${convs.length} (changed=${changed} unchanged=${unchanged} notFound=${notFound} errors=${errors})  ETA ~${eta}s`);
+      console.log(`    ... ${i + 1}/${convs.length} (inbox=${inboxChanged} status=${statusChanged} archived=${archivedNow} errors=${errors})  ETA ~${eta}s`);
     }
   }
 
   console.log(`\n═══ FIN ═══`);
-  console.log(`  Changed   : ${changed}${dryRun ? ' (dry-run, BDD inchangée)' : ''}`);
-  console.log(`  Unchanged : ${unchanged}`);
-  console.log(`  Sans inbox: ${noInbox}`);
-  console.log(`  404       : ${notFound}`);
-  console.log(`  Errors    : ${errors}`);
-  console.log(`  Durée     : ${Math.round((Date.now() - t0) / 1000)}s`);
+  console.log(`  Inbox changés      : ${inboxChanged}${dryRun ? ' (dry-run)' : ''}`);
+  console.log(`  Status changés     : ${statusChanged}`);
+  console.log(`  Nouvellement archi.: ${archivedNow}`);
+  console.log(`  Unchanged          : ${unchanged}`);
+  console.log(`  404                : ${notFound}`);
+  console.log(`  Errors             : ${errors}`);
+  console.log(`  Durée              : ${Math.round((Date.now() - t0) / 1000)}s`);
 
   await db.end();
 }

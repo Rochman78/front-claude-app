@@ -560,16 +560,17 @@ async function main() {
   `, [Array.from(convData.keys())]);
   console.log(`  ✓ Post-traitement terminé`);
 
-  // ─── Phase 5.5 : refresh inbox_id des convs open récentes ──
-  // Pourquoi : Front laisse bouger une conv d'inbox (Move to...). Notre sync
-  // normal capte le move SEULEMENT si la conv a eu une activité dans la fenêtre
-  // 48h. Une conv endormie déplacée 5 jours plus tard garderait son ancien
-  // inbox_id en BDD → polluerait les rapports "Convs ouvertes Ven soir".
+  // ─── Phase 5.5 : refresh état des convs open récentes ──────
+  // Pourquoi : Front laisse bouger une conv d'inbox (Move to...) OU l'archiver
+  // sans qu'elle reçoive de mail. Notre sync normal capte ces changements
+  // SEULEMENT si la conv a eu une activité dans la fenêtre 48h. Une conv
+  // endormie déplacée ou archivée 5j plus tard garderait son inbox_id /
+  // status / archived_at périmés en BDD → polluerait les rapports.
   //
-  // Ici on refetch /conversations/{id}/inboxes pour TOUTES les convs open créées
-  // depuis 30j. Limite à 30j : au-delà ces convs deviennent du bruit (vieilles
-  // demandes oubliées) et le coût API serait disproportionné.
-  console.log('\n━━━ Phase 5.5 : refresh inbox_id des convs open récentes (< 30j) ━━━');
+  // Ici on refetch /conversations/{id} + /conversations/{id}/inboxes pour
+  // TOUTES les convs open créées depuis 30j (limite pour ne pas exploser le
+  // temps cron — au-delà c'est du bruit oublié).
+  console.log('\n━━━ Phase 5.5 : refresh inbox_id + status des convs open récentes (< 30j) ━━━');
   const refreshStart = Date.now();
   const activeInboxIdsSet = new Set<string>(
     (await db.query(`SELECT id FROM sav_inboxes WHERE is_active = true`)).rows.map(r => r.id)
@@ -578,44 +579,62 @@ async function main() {
     (await db.query(`SELECT id FROM sav_inboxes WHERE is_active = true AND store_code IS NOT NULL`)).rows.map(r => r.id)
   );
   const openConvs = (await db.query(`
-    SELECT id, inbox_id FROM sav_conversations
+    SELECT id, inbox_id, status, archived_at FROM sav_conversations
     WHERE status IS DISTINCT FROM 'archived' AND archived_at IS NULL
       AND is_noise = false
       AND created_at >= NOW() - INTERVAL '30 days'
     ORDER BY created_at DESC
-  `)).rows as { id: string; inbox_id: string | null }[];
+  `)).rows as { id: string; inbox_id: string | null; status: string | null; archived_at: Date | null }[];
   console.log(`  ${openConvs.length} convs open < 30j à vérifier`);
 
-  let refreshChanged = 0, refreshUnchanged = 0, refreshErrors = 0;
+  let inboxChanged = 0, statusChanged = 0, archivedNow = 0, refreshErrors = 0;
   for (let i = 0; i < openConvs.length; i++) {
     const conv = openConvs[i];
     try {
-      const res = await frontFetch(`/conversations/${conv.id}/inboxes`);
-      if (!res) continue;
-      const inboxes = (res._results || []) as Array<{ id: string }>;
-      let next: string | null = null;
-      for (const ibx of inboxes) {
-        if (boutiqueInboxIdsSet.has(ibx.id)) { next = ibx.id; break; }
+      const inboxRes = await frontFetch(`/conversations/${conv.id}/inboxes`);
+      const convRes = await frontFetch(`/conversations/${conv.id}`);
+      if (!inboxRes || !convRes) continue;
+
+      const inboxes = (inboxRes._results || []) as Array<{ id: string }>;
+      let nextInbox: string | null = null;
+      for (const ibx of inboxes) if (boutiqueInboxIdsSet.has(ibx.id)) { nextInbox = ibx.id; break; }
+      if (!nextInbox) for (const ibx of inboxes) if (activeInboxIdsSet.has(ibx.id)) { nextInbox = ibx.id; break; }
+      if (!nextInbox && inboxes.length > 0) nextInbox = inboxes[0].id;
+
+      const frontStatus: string = convRes.status;
+      const frontUpdatedAt: number | undefined = convRes.updated_at;
+      const isArchived = frontStatus === 'archived' || convRes.status_category === 'archived';
+
+      const updates: string[] = [];
+      const params: any[] = [];
+      let pidx = 1;
+      if (nextInbox && nextInbox !== conv.inbox_id) {
+        updates.push(`inbox_id = $${pidx++}`); params.push(nextInbox); inboxChanged++;
       }
-      if (!next) for (const ibx of inboxes) {
-        if (activeInboxIdsSet.has(ibx.id)) { next = ibx.id; break; }
+      if (frontStatus && frontStatus !== conv.status) {
+        updates.push(`status = $${pidx++}`); params.push(frontStatus); statusChanged++;
       }
-      if (!next && inboxes.length > 0) next = inboxes[0].id;
-      if (next && next !== conv.inbox_id) {
-        await db.query(`UPDATE sav_conversations SET inbox_id = $1, synced_at = NOW() WHERE id = $2`, [next, conv.id]);
-        refreshChanged++;
-      } else {
-        refreshUnchanged++;
+      if (isArchived && !conv.archived_at) {
+        const archAt = frontUpdatedAt ? new Date(frontUpdatedAt * 1000) : new Date();
+        updates.push(`archived_at = $${pidx++}`); params.push(archAt); archivedNow++;
+      }
+      if (!isArchived && conv.archived_at) {
+        updates.push(`archived_at = NULL`);
+      }
+      if (updates.length > 0) {
+        updates.push(`synced_at = NOW()`);
+        params.push(conv.id);
+        await db.query(`UPDATE sav_conversations SET ${updates.join(', ')} WHERE id = $${pidx}`, params);
       }
     } catch {
       refreshErrors++;
     }
     await new Promise(r => setTimeout(r, 200));
-    if ((i + 1) % 200 === 0) {
-      console.log(`    ... refresh ${i + 1}/${openConvs.length} (changed=${refreshChanged} errors=${refreshErrors})`);
+    if ((i + 1) % 100 === 0) {
+      console.log(`    ... refresh ${i + 1}/${openConvs.length} (inbox=${inboxChanged} status=${statusChanged} archived=${archivedNow})`);
     }
   }
-  console.log(`  ✓ Refresh inbox : ${refreshChanged} changed · ${refreshUnchanged} unchanged · ${refreshErrors} errors (${Math.round((Date.now() - refreshStart) / 1000)}s)`);
+  console.log(`  ✓ Refresh : inbox=${inboxChanged} status=${statusChanged} archived=${archivedNow} errors=${refreshErrors} (${Math.round((Date.now() - refreshStart) / 1000)}s)`);
 
   // ─── Phase 6 : log sav_sync_log ───────────────────────────
   const duration = Math.round((Date.now() - startMs) / 1000);

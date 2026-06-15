@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Numéro de devis : custom (saisi par le collab) prévaut, sinon BDD.
+    //    Désormais OPTIONNEL — si absent, le template tombe sur la formulation
+    //    « votre virement pour votre commande » au lieu de « pour le devis n° X ».
     let quoteNumber = (customQuoteNumber || '').trim();
     if (!quoteNumber) {
       const { rows: quoteRows } = await pool.query(
@@ -45,11 +47,6 @@ export async function POST(req: NextRequest) {
         [frontConversationId, storeCode]
       );
       quoteNumber = quoteRows[0]?.quote_number || '';
-    }
-    if (!quoteNumber) {
-      return NextResponse.json({
-        error: 'Aucun n° de devis fourni ni associé à la conversation. Saisis le numéro dans le panel.',
-      }, { status: 400 });
     }
 
     // 2. Template FR
@@ -64,9 +61,16 @@ export async function POST(req: NextRequest) {
 
     // 3. Interpolation [PRENOM] / [NUM_DEVIS]
     const firstName = (customerFirstName || '').trim();
-    let interpolated = templateFr
-      .replace(/\[PRENOM\]/g, firstName)
-      .replace(/\[NUM_DEVIS\]/g, quoteNumber);
+    let interpolated = templateFr.replace(/\[PRENOM\]/g, firstName);
+    if (quoteNumber) {
+      interpolated = interpolated.replace(/\[NUM_DEVIS\]/g, quoteNumber);
+    } else {
+      // Fallback : remplacer « pour le devis n°[NUM_DEVIS] » par « pour votre
+      // commande » pour ne pas laisser un placeholder brut dans le brouillon.
+      interpolated = interpolated
+        .replace(/pour le devis n°\[NUM_DEVIS\]/gi, 'pour votre commande')
+        .replace(/\[NUM_DEVIS\]/g, '');
+    }
     // Nettoyer "Bonjour ," si pas de prénom
     interpolated = interpolated.replace(/^Bonjour\s*,/m, 'Bonjour,');
 

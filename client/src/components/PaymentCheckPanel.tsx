@@ -79,23 +79,32 @@ export default function PaymentCheckPanel({
   // (Re)cherche les transactions candidates avec les valeurs courantes des champs.
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     setError(null);
     setData(null);
     setSelectedTxId(null);
     setConfirmResult(null);
 
+    // Skip l'auto-fetch initial si aucun critère discriminant n'est encore
+    // saisi (sinon on tape Pennylane pour rien et on affiche une erreur
+    // rouge "au moins un critère requis" alors que le panel vient à peine
+    // de s'ouvrir). Le collab saisit le montant / nom / n° devis puis
+    // clique "Relancer".
+    const amountNum = parseFloat((editAmount || '').replace(',', '.'));
+    const hasAmount = !Number.isNaN(amountNum) && amountNum > 0;
+    const hasName = editName.trim().length >= 3;
+    const hasQuote = editQuoteNumber.trim().length > 0;
+    if (!hasAmount && !hasName && !hasQuote) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     const url = new URL(`${API_BASE}/api/plugin/bank-transactions/search`);
     url.searchParams.set('front_conversation_id', frontConversationId);
     url.searchParams.set('store_code', storeCode);
-    if (editName.trim()) url.searchParams.set('customer_name', editName.trim());
-    const amountNum = parseFloat((editAmount || '').replace(',', '.'));
-    if (!Number.isNaN(amountNum) && amountNum > 0) {
-      url.searchParams.set('expected_amount', String(amountNum));
-    }
-    if (editQuoteNumber.trim()) {
-      url.searchParams.set('quote_number', editQuoteNumber.trim());
-    }
+    if (hasName) url.searchParams.set('customer_name', editName.trim());
+    if (hasAmount) url.searchParams.set('expected_amount', String(amountNum));
+    if (hasQuote) url.searchParams.set('quote_number', editQuoteNumber.trim());
 
     fetch(url.toString())
       .then(async (res) => {
@@ -258,6 +267,12 @@ export default function PaymentCheckPanel({
             </div>
           )}
 
+          {!loading && !data && !error && (
+            <div style={{ background: '#f7fafc', border: '1px dashed #cbd5e0', borderRadius: '6px', padding: '12px', fontSize: '12px', color: '#4a5568', lineHeight: 1.5 }}>
+              Saisis au moins le <strong>montant TTC</strong> (le nom et le n° de devis sont optionnels) puis clique <strong>« 🔄 Relancer la recherche »</strong>.
+            </div>
+          )}
+
           {error && (
             <div style={{ background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px', padding: '10px', color: '#9b2c2c', fontSize: '12px' }}>
               ⚠️ {error}
@@ -357,14 +372,14 @@ export default function PaymentCheckPanel({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!selected || confirming || selected?.alreadyConfirmed || !editQuoteNumber.trim()}
-            title={!editQuoteNumber.trim() ? 'Saisis un n° de devis pour générer le brouillon' : undefined}
+            disabled={!selected || confirming || selected?.alreadyConfirmed}
+            title={!editQuoteNumber.trim() ? 'Sans n° de devis, le brouillon dira « votre virement pour votre commande »' : undefined}
             style={{
               flex: 1, padding: '10px 16px', fontSize: '13px', fontWeight: 600,
               border: 'none', borderRadius: '6px',
-              background: (!selected || confirming || selected?.alreadyConfirmed || !editQuoteNumber.trim()) ? '#cbd5e0' : '#38a169',
+              background: (!selected || confirming || selected?.alreadyConfirmed) ? '#cbd5e0' : '#38a169',
               color: 'white',
-              cursor: (!selected || confirming || selected?.alreadyConfirmed || !editQuoteNumber.trim()) ? 'not-allowed' : 'pointer',
+              cursor: (!selected || confirming || selected?.alreadyConfirmed) ? 'not-allowed' : 'pointer',
             }}
           >
             {confirming ? 'Préparation du brouillon…' : 'Confirmer virement reçu par mail'}

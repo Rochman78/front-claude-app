@@ -146,15 +146,25 @@ export async function GET(req: NextRequest) {
     );
     const bddQuote = rows[0] || null;
 
+    // Le n° de devis est OPTIONNEL pour la recherche (Charles 15/06/2026 :
+    // "qu'il puisse chercher juste selon le montant"). Le scoring fonctionne
+    // toujours sans : montant exact +100, nom +30 si fourni, n° devis +80 si
+    // fourni. Au moins UN critère discriminant doit néanmoins être fourni
+    // (montant OU nom OU n° devis), sinon le top 10 serait juste les 10 plus
+    // grosses tx récentes du compte DEVIS, sans aucune pertinence métier.
     const quoteNumber: string = customQuoteNumber || bddQuote?.quote_number || '';
-    if (!quoteNumber) {
-      return NextResponse.json({
-        error: 'Aucun devis associé à cette conversation. Saisis le numéro de devis dans le panel pour lancer la recherche.',
-      }, { status: 400 });
-    }
     const quoteDate: string | null = bddQuote?.created_at ? String(bddQuote.created_at).substring(0, 10) : null;
     const bddAmount = parseFloat(bddQuote?.amount || '');
     const finalExpectedAmount = !Number.isNaN(expectedAmount) ? expectedAmount : (!Number.isNaN(bddAmount) ? bddAmount : null);
+
+    const hasAmount = finalExpectedAmount !== null && !Number.isNaN(finalExpectedAmount) && finalExpectedAmount > 0;
+    const hasName = customerName.trim().length >= 3;
+    const hasQuoteNumber = quoteNumber.length > 0;
+    if (!hasAmount && !hasName && !hasQuoteNumber) {
+      return NextResponse.json({
+        error: 'Au moins un critère est requis : montant TTC, nom client, ou n° de devis.',
+      }, { status: 400 });
+    }
 
     // 2. Confirmations déjà enregistrées pour cette conv (pour les marquer côté UI)
     const { rows: confRows } = await pool.query(

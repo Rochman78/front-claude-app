@@ -57,14 +57,15 @@ front-claude-app/
 |---|---|---|
 | `instructions-devis.txt` | Format JSON Pennylane, process, régimes TVA, templates texte, règle de routing prix | À chaque devis, en premier |
 | `prix-ht-sur-mesure.txt` | Grille HT/m² par forme + finition + ignifugé × tranche surface | Pour les filets sur-mesure |
-| `prix-ht-standards.txt` | Filets standards + accessoires + transport — HT pré-calculés par taux TVA | Pour les filets standards, accessoires, transport |
-| `catalogue-XXX.txt` | Liste SKU + TTC (pour vendeurs / site, **JAMAIS pour les devis**) | Référence non-devis |
+| `prix-ht-standards.txt` | Filets standards + accessoires + transport — TTC + HT pré-calculés par taux TVA (autorité unique) | Pour TOUTE référence produit standard (chiffrage devis ET réponse contexte) |
 
-**Règle absolue** : pour un devis, **JAMAIS recalculer le HT depuis le TTC catalogue** (cause de double TVA, cf cas Sylvaine SIMONET-BONNET 03/06/2026). Toujours lire le HT déjà pré-calculé dans `prix-ht-standards.txt` à la colonne du taux TVA du client.
+**Règle absolue** : pour un devis, lire le HT déjà pré-calculé dans `prix-ht-standards.txt` à la colonne du taux TVA du client. Ne jamais recalculer (double TVA risque, cf Sylvaine SIMONET-BONNET 03/06/2026).
 
-**Génération** : les `prix-ht-standards.txt` sont générés depuis le catalogue local. Pour RED/MON/RETE (catalogues en langue locale au format multi-lignes), on cross-référence les SKUs avec LFC (autorité TTC) — scripts dans `/tmp/migrate_agent_files.py` + `/tmp/fix_via_sku.py`.
+**Source unique** : LFC est l'autorité TTC. Toutes les boutiques reprennent les mêmes TTC, seul le HT change selon la TVA pays. Voir `scripts/catalogue/README.md` pour le pipeline de mise à jour (CSV LFC → `regen_prix_ht_standards.py`).
 
-**Backup pré-refacto** : `backups/agent_files_backup_20260603-120752.json` (1,3 MB, restaurable en INSERT SQL).
+**catalogue-XXX.txt SUPPRIMÉ (15/06/2026)** : redondant avec `prix-ht-standards.txt` qui contient déjà TTC + SKU + HT. Backup : `backups/catalogue-deleted-20260615-092625/` (10 fichiers + manifest JSON, restaurable en INSERT si besoin).
+
+**Backup pré-refacto historique** : `backups/agent_files_backup_20260603-120752.json` (1,3 MB).
 
 **Mise à jour future des prix** : voir `scripts/catalogue/README.md`. Le script `regen_prix_ht_standards.py` lit un CSV LFC (autorité TTC) et met à jour les `prix-ht-standards.txt` × 10 boutiques en recalculant le HT par taux TVA. SKU absent du CSV = ligne intacte. Stock géré séparément via Octopia, jamais dans les fichiers agents.
 

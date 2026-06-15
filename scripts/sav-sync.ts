@@ -560,6 +560,63 @@ async function main() {
   `, [Array.from(convData.keys())]);
   console.log(`  ✓ Post-traitement terminé`);
 
+  // ─── Phase 5.5 : refresh inbox_id des convs open récentes ──
+  // Pourquoi : Front laisse bouger une conv d'inbox (Move to...). Notre sync
+  // normal capte le move SEULEMENT si la conv a eu une activité dans la fenêtre
+  // 48h. Une conv endormie déplacée 5 jours plus tard garderait son ancien
+  // inbox_id en BDD → polluerait les rapports "Convs ouvertes Ven soir".
+  //
+  // Ici on refetch /conversations/{id}/inboxes pour TOUTES les convs open créées
+  // depuis 30j. Limite à 30j : au-delà ces convs deviennent du bruit (vieilles
+  // demandes oubliées) et le coût API serait disproportionné.
+  console.log('\n━━━ Phase 5.5 : refresh inbox_id des convs open récentes (< 30j) ━━━');
+  const refreshStart = Date.now();
+  const activeInboxIdsSet = new Set<string>(
+    (await db.query(`SELECT id FROM sav_inboxes WHERE is_active = true`)).rows.map(r => r.id)
+  );
+  const boutiqueInboxIdsSet = new Set<string>(
+    (await db.query(`SELECT id FROM sav_inboxes WHERE is_active = true AND store_code IS NOT NULL`)).rows.map(r => r.id)
+  );
+  const openConvs = (await db.query(`
+    SELECT id, inbox_id FROM sav_conversations
+    WHERE status IS DISTINCT FROM 'archived' AND archived_at IS NULL
+      AND is_noise = false
+      AND created_at >= NOW() - INTERVAL '30 days'
+    ORDER BY created_at DESC
+  `)).rows as { id: string; inbox_id: string | null }[];
+  console.log(`  ${openConvs.length} convs open < 30j à vérifier`);
+
+  let refreshChanged = 0, refreshUnchanged = 0, refreshErrors = 0;
+  for (let i = 0; i < openConvs.length; i++) {
+    const conv = openConvs[i];
+    try {
+      const res = await frontFetch(`/conversations/${conv.id}/inboxes`);
+      if (!res) continue;
+      const inboxes = (res._results || []) as Array<{ id: string }>;
+      let next: string | null = null;
+      for (const ibx of inboxes) {
+        if (boutiqueInboxIdsSet.has(ibx.id)) { next = ibx.id; break; }
+      }
+      if (!next) for (const ibx of inboxes) {
+        if (activeInboxIdsSet.has(ibx.id)) { next = ibx.id; break; }
+      }
+      if (!next && inboxes.length > 0) next = inboxes[0].id;
+      if (next && next !== conv.inbox_id) {
+        await db.query(`UPDATE sav_conversations SET inbox_id = $1, synced_at = NOW() WHERE id = $2`, [next, conv.id]);
+        refreshChanged++;
+      } else {
+        refreshUnchanged++;
+      }
+    } catch {
+      refreshErrors++;
+    }
+    await new Promise(r => setTimeout(r, 200));
+    if ((i + 1) % 200 === 0) {
+      console.log(`    ... refresh ${i + 1}/${openConvs.length} (changed=${refreshChanged} errors=${refreshErrors})`);
+    }
+  }
+  console.log(`  ✓ Refresh inbox : ${refreshChanged} changed · ${refreshUnchanged} unchanged · ${refreshErrors} errors (${Math.round((Date.now() - refreshStart) / 1000)}s)`);
+
   // ─── Phase 6 : log sav_sync_log ───────────────────────────
   const duration = Math.round((Date.now() - startMs) / 1000);
   await db.query(`

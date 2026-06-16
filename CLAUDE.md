@@ -89,6 +89,13 @@ front-claude-app/
 - Cas Saracco 12/06/2026 (`cnv_1lmrvoev`, RED) : brouillon avec `Precio unitario sin IVA :` / `Total sin IVA :` / `IVA (20 %) :` / `Importe con IVA incluido :` tous vides → push au client. Encodé × 10 agents.
 - **Garde-fou code** : `autoDraftService.ts` détecte une ligne « label-prix : » suivie de vide (multilingue) et bloque l'auto-push avec un commentaire de conv "à traiter via le plugin".
 
+### Taille filet — AUCUN conseil, sur-mesure d'abord puis standard (16/06/2026)
+- Quand un client donne ses dimensions de zone à couvrir, l'agent NE CONSEILLE JAMAIS de prendre « plus petit » ou « plus grand ». Aucune marge à ajouter, aucun retrait à appliquer — le client se débrouille avec son installation.
+- **Ordre obligatoire** dans le brouillon : (1) sur-mesure aux dimensions EXACTES du client, (2) ensuite standard catalogue à la taille la plus proche, (3) « à vous de nous indiquer la solution qui vous convient le mieux ».
+- INTERDIT : tension, drapé, effet tombant, strakgespannen, marge fixation poteaux (+40-50 cm), « léger débord », « pour faciliter la pose », « plus petit pour tendre », « plus grand pour le drapé », et toutes leurs traductions multilingues.
+- Si le client demande explicitement « lequel me conseillez-vous ? » : on ne tranche pas à sa place. Réponse type + flag QUESTIONS au gérant.
+- Cas Graciela Alarcon 26/05/2026 (`cnv_1lh9w3mf`, HET) : terrasse 5,2 × 3,3 m, Claude a recommandé tour à tour 6×4 ("plus grand pour fixation") puis 5×3 ("plus petit pour tendre") sur 4 messages successifs — cliente dans le flou total. Encodé × 10 agents (bloc dédié avant TRANCHE SUR-MESURE).
+
 ### Tranche sur-mesure = SURFACE TOTALE du devis, jamais par filet (15/06/2026)
 - La tranche tarifaire de `prix-ht-sur-mesure.txt` se choisit sur la SURFACE TOTALE des filets sur-mesure du devis. Les filets standards catalogue ne se cumulent PAS dans ce total.
 - 4 tranches : `< 2 m²` | `2-5 m²` | `6-10 m²` | `> 10 m²` (et plus, sans limite).

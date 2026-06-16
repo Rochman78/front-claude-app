@@ -77,6 +77,11 @@ export default function QuotePanel({
   const [expectedTTC, setExpectedTTC] = useState<number | null>(null);
   const [verifyForm, setVerifyForm] = useState<VerifyFormData | null>(null);
   const [availableImages, setAvailableImages] = useState<ImageSelection[]>([]);
+  // Trapèze : on n'utilise PAS l'extraction Claude pour les lignes produit
+  // (Claude se trompe trop souvent : 4 côtés différents → calcul Héron, choix
+  // de tranche, prix m²…). Identité client gardée, lignes vidées.
+  const [isTrapeze, setIsTrapeze] = useState(false);
+  const [showTrapezePopup, setShowTrapezePopup] = useState(false);
 
   // Exposer handleClick au parent
   useEffect(() => {
@@ -147,6 +152,59 @@ export default function QuotePanel({
     return (
       <div className="quote-panel" style={{ fontSize: '12px' }}>
         <div className="quote-panel-header">Vérification du devis</div>
+
+        {/* Popup bloquant pour les trapèzes : saisie manuelle obligatoire */}
+        {showTrapezePopup && (
+          <div
+            style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2500,
+            }}
+          >
+            <div style={{
+              background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '460px', width: '92%',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.2)', color: '#000',
+            }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 700, color: '#9b2c2c' }}>
+                ⚠ Trapèze détecté — saisie manuelle des lignes produit
+              </h3>
+              <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '10px' }}>
+                Pour les filets trapèzes, Claude se trompe régulièrement sur :
+              </p>
+              <ul style={{ fontSize: '12.5px', lineHeight: 1.55, paddingLeft: '20px', marginBottom: '12px' }}>
+                <li>les dimensions (4 côtés différents, calcul de surface via Héron)</li>
+                <li>la tranche tarifaire (surface totale du devis)</li>
+                <li>le prix HT/m² applicable</li>
+              </ul>
+              <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '14px' }}>
+                Le formulaire ouvre les lignes produit <strong>vides</strong> — à toi de saisir les dimensions,
+                la surface et le prix unitaire HT en croisant avec la grille <code>prix-ht-sur-mesure.txt</code>.
+                L'identité client (nom, email, adresse) reste pré-remplie.
+              </p>
+              <button
+                onClick={() => setShowTrapezePopup(false)}
+                style={{
+                  width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                  border: 'none', borderRadius: '6px', background: '#e53e3e', color: 'white', cursor: 'pointer',
+                }}
+              >
+                J'ai compris
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Bandeau permanent rappel trapèze, visible tant que le formulaire est ouvert */}
+        {isTrapeze && (
+          <div style={{
+            background: '#fffbf0', border: '1px solid #f6e05e', borderRadius: '6px',
+            padding: '8px 10px', margin: '6px 0 10px 0', fontSize: '11.5px', color: '#744210',
+          }}>
+            ⚠ <strong>Trapèze</strong> — lignes produit à saisir manuellement (Claude ne pré-remplit pas).
+            Vérifie surface (Héron pour 3 côtés), tranche tarifaire (sur le TOTAL des m² sur-mesure du devis),
+            et prix HT/m² dans <code>prix-ht-sur-mesure.txt</code>.
+          </div>
+        )}
 
         {/* Client */}
         <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
@@ -355,6 +413,18 @@ export default function QuotePanel({
     setError(null);
     setState('extracting');
 
+    // Détection trapèze sur le brouillon Claude. Si match, on affiche le popup
+    // ET on vide les lignes produit après l'extract-quote (l'identité client
+    // pré-remplie reste utile au collab). Regex large multi-langue :
+    // trapèze, trapézoïdal (FR), trapezoid/trapezium (EN), trapezio (IT),
+    // trapézio (PT), trapezförmig (DE), trapeziumvormig (NL), trapecio (ES).
+    const trapezeDetected = /\btrap[eéè]?[zc]/i.test(claudeText || '');
+    setIsTrapeze(trapezeDetected);
+    if (trapezeDetected) {
+      setShowTrapezePopup(true);
+      console.log('[QuotePanel] TRAPÈZE détecté → lignes produit forcées à vide, saisie manuelle');
+    }
+
     try {
       // Toujours récupérer le fil de mails depuis le SDK Front (plus fiable que le cache)
       let resolvedMailThread = mailThread;
@@ -427,7 +497,12 @@ export default function QuotePanel({
         postalCode: String((customer?.address as Record<string, unknown>)?.postalCode || ''),
         city: String((customer?.address as Record<string, unknown>)?.city || ''),
         country: String((customer?.address as Record<string, unknown>)?.country || ''),
-        lines: displayLines.length > 0
+        lines: trapezeDetected
+          // Trapèze : on FORCE une seule ligne vide pour saisie manuelle,
+          // même si Claude avait produit des lignes (qui seraient probablement
+          // fausses sur les dimensions / tranche / prix m²).
+          ? [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }]
+          : displayLines.length > 0
           ? displayLines.map(l => ({
               label: String(l.label || ''),
               quantity: String(l.quantity || '1'),

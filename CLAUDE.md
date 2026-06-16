@@ -89,6 +89,13 @@ front-claude-app/
 - Cas Saracco 12/06/2026 (`cnv_1lmrvoev`, RED) : brouillon avec `Precio unitario sin IVA :` / `Total sin IVA :` / `IVA (20 %) :` / `Importe con IVA incluido :` tous vides → push au client. Encodé × 10 agents.
 - **Garde-fou code** : `autoDraftService.ts` détecte une ligne « label-prix : » suivie de vide (multilingue) et bloque l'auto-push avec un commentaire de conv "à traiter via le plugin".
 
+### Langue — tout en français dans le plugin jusqu'au push (16/06/2026)
+- TOUT ce qui est écrit dans le plugin (brouillon, QUESTIONS, alertes [⚠️…], section VÉRIFICATION, exemples) est en **français**, intégralement, sans exception.
+- La traduction vers la langue du client se fait UNIQUEMENT au moment du push dans Front App (via `/api/plugin/translate`).
+- Avant le push, le service client (gérant) relit en français — c'est sa langue de travail.
+- INTERDIT : basculer en italien / espagnol / allemand / néerlandais / portugais / anglais / etc., même un seul mot. Pas de contamination par la langue du mail client. Pas de contamination par un terme officiel étranger ("partita IVA", "USt-IdNr", "BTW", "NIF") croisé en milieu de phrase — on garde le terme en VO mais on ne bascule pas la phrase.
+- Cas Cenci Noleggi Mamà Outdoor 16/06/2026 (`cnv_1lktrcev`, RETE) : brouillon commencé en FR, basculé en IT à mi-parcours après mention de "partita IVA IT01520200559" → 3 phrases en italien dans le plugin. Encodé × 10 agents — bloc dédié en **position #2** (juste après RÈGLE MÉTA), ancien item 8 LANGUE de RÈGLES PRIORITAIRES retiré.
+
 ### Taille filet — AUCUN conseil, sur-mesure d'abord puis standard (16/06/2026)
 - Quand un client donne ses dimensions de zone à couvrir, l'agent NE CONSEILLE JAMAIS de prendre « plus petit » ou « plus grand ». Aucune marge à ajouter, aucun retrait à appliquer — le client se débrouille avec son installation.
 - **Ordre obligatoire** dans le brouillon : (1) sur-mesure aux dimensions EXACTES du client, (2) ensuite standard catalogue à la taille la plus proche, (3) « à vous de nous indiquer la solution qui vous convient le mieux ».

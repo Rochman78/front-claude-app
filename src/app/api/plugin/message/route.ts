@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool, { initDB } from '@/lib/db';
 import { createChatStream } from '@/lib/services/claudeService';
+
+// Rappel final injecté en queue du message user. Cf analyze/route.ts pour
+// la justification (recency bias des LLM contre dérive linguistique).
+const LANGUE_REMINDER = `
+
+══════════════════════════════════════════════════════
+🚨 RAPPEL FINAL — À APPLIQUER MAINTENANT, AVANT DE RÉDIGER
+
+Tu rédiges TOUT en FRANÇAIS : brouillon, QUESTIONS, notes, exemples, du premier mot au dernier.
+
+Peu importe la langue dans laquelle le client ou le mail précédent est rédigé : ta réponse reste 100 % EN FRANÇAIS.
+
+La traduction sera faite automatiquement par le code au moment du push dans Front App.
+══════════════════════════════════════════════════════`;
+
 import { buildDocumentsText } from '@/lib/documentSelector';
 import { getConversationImages } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
@@ -158,7 +173,7 @@ RÈGLES :
 
     const messages = [
       ...history.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: message + stockInfo },
+      { role: 'user', content: message + stockInfo + LANGUE_REMINDER },
     ];
 
     // 6. Charger les images de la conversation Front (si disponible)

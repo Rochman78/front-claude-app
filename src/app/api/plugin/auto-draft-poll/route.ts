@@ -26,19 +26,34 @@ async function run(req: NextRequest) {
     const shopInboxes = inboxes.filter((i) => getStoreByInboxName(String(i.name || '')));
 
     // 2. Pour chaque inbox boutique, repérer les conversations Devis récentes.
-    // Limite=100 (max Front) pour couvrir les heures creuses : entre la fin du
-    // cron à 17h30 et sa reprise à 8h, une inbox active (ex: LFC) peut accumuler
-    // 50+ convs → avec limit=30 les plus anciennes du créneau de nuit tombent
-    // hors fenêtre et ne sont jamais scannées (cas cnv_1lm78tp3 du 10/06/2026).
+    // Pagination 2 pages × 100 = 200 conv max par inbox. Couvre :
+    //  - les pics d'activité (LFC peut recevoir 100+ conv le week-end avant
+    //    le 1er tick du cron du lundi matin)
+    //  - les conv qui ont reçu leur tag "Devis" tardivement et sont sorties
+    //    du top 100 entre-temps
+    // Cas cnv_1lndeyc7 (LFC, 15/06/2026 dimanche 9h50) : 0 entrée auto_drafts
+    // → la conv n'avait jamais été scannée.
+    const PAGES_PAR_INBOX = 2;
     const results = [];
     let scanned = 0;
     let candidates = 0;
     for (const inb of shopInboxes) {
-      const convRes = await frontFetch(`/inboxes/${inb.id}/conversations?limit=100`);
-      if (!convRes.ok) continue;
-      const convs: Record<string, unknown>[] = (await convRes.json())._results || [];
-      scanned += convs.length;
-      const tagged = convs.filter((c) =>
+      const convsForInbox: Record<string, unknown>[] = [];
+      let pageToken: string | null = null;
+      for (let p = 0; p < PAGES_PAR_INBOX; p++) {
+        const url = `/inboxes/${inb.id}/conversations?limit=100${pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : ''}`;
+        const convRes = await frontFetch(url);
+        if (!convRes.ok) break;
+        const data = await convRes.json();
+        const page: Record<string, unknown>[] = data._results || [];
+        convsForInbox.push(...page);
+        const pag = data._pagination as Record<string, unknown> | undefined;
+        const next = pag?.next as string | undefined;
+        if (!next || page.length === 0) break;
+        pageToken = next;
+      }
+      scanned += convsForInbox.length;
+      const tagged = convsForInbox.filter((c) =>
         ((c.tags as Record<string, unknown>[]) || []).some((t) => String(t.name || '').toLowerCase() === 'devis')
       );
       candidates += tagged.length;

@@ -185,18 +185,90 @@ Exemple de réponse :
           if (skus.length > 0 && skus.length <= 20) {
             console.log(`[plugin/analyze] Haiku found ${skus.length} SKUs, checking Octopia stock...`);
             const stockData = await getStockBySkuList(skus);
-            const stockLines: string[] = [];
-            for (const sku of skus) {
-              const available = stockData[sku];
+
+            type StockRow = { sku: string; name: string; qtyDemanded: number; available: number | null };
+            const rows: StockRow[] = skus.map((sku) => {
               const info = skuMap[sku];
-              if (available !== undefined) {
-                stockLines.push(`  SKU ${sku} | ${info.name} | demandé: ${info.qtyDemanded} | en stock: ${available}`);
-              } else {
-                stockLines.push(`  SKU ${sku} | ${info.name} | demandé: ${info.qtyDemanded} | stock: non trouvé sur Octopia`);
-              }
+              const qty = parseInt(info.qtyDemanded.replace(/\D/g, ''), 10);
+              const av = stockData[sku];
+              return {
+                sku,
+                name: info.name,
+                qtyDemanded: Number.isFinite(qty) && qty > 0 ? qty : 1,
+                available: typeof av === 'number' ? av : null,
+              };
+            });
+
+            const ruptures = rows.filter((r) => r.available === 0);
+            const partials = rows.filter((r) => r.available !== null && r.available !== 0 && r.available < r.qtyDemanded);
+            const sufficient = rows.filter((r) => r.available !== null && r.available >= r.qtyDemanded);
+            const unknown = rows.filter((r) => r.available === null);
+
+            const blocks: string[] = [];
+
+            if (ruptures.length > 0) {
+              blocks.push(
+                `══════════════════════════════════════════════════════
+🚨 RUPTURE STOCK — PROCESS OBLIGATOIRE
+
+Le(s) SKU catalogue correspondant à la demande du client sont ACTUELLEMENT EN RUPTURE :
+${ruptures.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : 0 | client demande : ${r.qtyDemanded}`).join('\n')}
+
+TU DOIS :
+1. NE PAS proposer ces produits au prix catalogue.
+2. Dans le BROUILLON, informer poliment le client que la référence est actuellement en rupture sur notre site.
+3. PROPOSER DIRECTEMENT un filet SUR-MESURE aux dimensions exactes demandées (utiliser prix-ht-sur-mesure.txt : forme × finition × tranche surface du devis pour le HT/m², puis chiffrer complètement HT / TVA / TTC).
+4. SI le produit n'a pas d'équivalent sur-mesure (fibre de coco, accessoires, cordes, mâts, kits de fixation), proposer en plus l'inscription à la notification de réassort sur la fiche produit du site (mécanisme existant — règle "réassort site bouton").
+5. NE PAS mentionner de quantité restante puisque stock = 0.
+══════════════════════════════════════════════════════`
+              );
             }
-            stockInfo = `\n\n[STOCK OCTOPIA — données temps réel — USAGE INTERNE UNIQUEMENT]\n${stockLines.join('\n')}\n\nATTENTION : ces infos stock sont pour le GÉRANT uniquement. NE PAS les inclure dans le brouillon du mail client. Les mentionner UNIQUEMENT dans la section QUESTIONS à la fin.`;
-            console.log(`[plugin/analyze] stock info ready: ${skus.length} products`);
+
+            if (partials.length > 0) {
+              blocks.push(
+                `══════════════════════════════════════════════════════
+⚠️ STOCK PARTIEL — PROCESS OBLIGATOIRE
+
+Stock < quantité demandée :
+${partials.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : ${r.available} | client demande : ${r.qtyDemanded}`).join('\n')}
+
+TU DOIS :
+1. Chiffrer le standard catalogue normalement.
+2. Mentionner EXPLICITEMENT dans le brouillon le stock immédiat disponible et le solde à fabriquer en sur-mesure.
+3. Formulation type : « Nous avons actuellement X unités en stock immédiat sur les Y demandées. Pour le solde de Z unités, nous pouvons les fabriquer sur mesure aux mêmes dimensions (délai d'environ 21 jours). Souhaitez-vous procéder ainsi ou ajuster votre commande ? »
+4. NE PAS chiffrer le sur-mesure avant la confirmation du client.
+══════════════════════════════════════════════════════`
+              );
+            }
+
+            if (sufficient.length > 0) {
+              blocks.push(
+                `══════════════════════════════════════════════════════
+ℹ️ STOCK SUFFISANT — MENTIONNER LA QUANTITÉ RESTANTE (bonus client)
+
+Stock suffisant pour la demande :
+${sufficient.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : ${r.available} | client demande : ${r.qtyDemanded}`).join('\n')}
+
+TU DOIS :
+1. Chiffrer normalement au tarif catalogue.
+2. MENTIONNER dans le brouillon la quantité restante en stock après son achat — info préventive pour le client en cas de rupture imminente (Charles 17/06/2026 : "comme ça si rupture dans les prochains jours il aura eu l'info").
+3. Formulation type : « Il nous reste actuellement N unités en stock après votre commande. » (où N = stock − qté demandée).
+══════════════════════════════════════════════════════`
+              );
+            }
+
+            if (unknown.length > 0) {
+              blocks.push(
+                `══════════════════════════════════════════════════════
+⚠️ STOCK INCONNU — Octopia n'a pas retourné de stock pour :
+${unknown.map((r) => `  • SKU ${r.sku} | ${r.name}`).join('\n')}
+Signale ces SKU en QUESTIONS au gérant et ne tranche pas (chiffre catalogue par défaut, mais demande confirmation stock).
+══════════════════════════════════════════════════════`
+              );
+            }
+
+            stockInfo = `\n\n${blocks.join('\n\n')}`;
+            console.log(`[plugin/analyze] stock blocks: rupture=${ruptures.length} partial=${partials.length} sufficient=${sufficient.length} unknown=${unknown.length}`);
           }
         } else {
           console.log('[plugin/analyze] Haiku: no catalogue SKUs identified (custom/quote request)');

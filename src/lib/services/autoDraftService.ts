@@ -262,18 +262,34 @@ ${fullBody}`;
     }
 
     // 6a-bis. Garde-fou anti-prix-vides : si le brouillon contient une ligne
-    // type "Precio unitario sin IVA: " (label prix suivi de ':' puis rien),
-    // c'est que Claude a généré un tableau de prix sans avoir les infos pour
-    // chiffrer. On bloque le push : mieux vaut pas de brouillon qu'un devis
-    // avec prix vides envoyé au client.
-    // Cas réel cnv_1lmrvoev (RED, 12/06/2026) : envoi d'un brouillon avec
-    // tableau ES sans valeurs → mauvaise impression.
-    const PRICE_KEYWORD_RE = /\b(total|prix|precio|prezzo|preço|preis|prijs|iva|tva|tax|vat|mwst|btw|importe|importo|gesamt|netto|brutto|subtotal|sous[\s-]?total)\b/i;
+    // type "Total HT : €", "Surface : m²" (label prix/qté suivi de ':' puis
+    // AUCUN chiffre), c'est que Claude a généré un tableau de prix sans avoir
+    // les infos pour chiffrer (ou que cleanDraft a vidé des crochets type
+    // "[8,40 ou 8,50]" qui contenaient des valeurs à trancher). On bloque
+    // le push : mieux vaut pas de brouillon qu'un devis avec prix vides
+    // envoyé au client.
+    // Cas réels :
+    //  - cnv_1lmrvoev (RED, 12/06/2026) : tableau ES "Total sin IVA : "
+    //  - cnv_1lo2b5xz (LFC, 17/06/2026) : tableau FR "Total hors TVA : €"
+    //    avec ambiguïté sur les dimensions, Claude a écrit [X ou Y],
+    //    cleanDraft a viré les crochets → chiffres disparus, unités restées
+    //
+    // Règle élargie : un label-prix:valeur SANS aucun chiffre dans la valeur
+    // est suspect, peu importe ce qui reste (espace, unité € / m² / EUR…).
+    const PRICE_KEYWORD_RE = /\b(total|prix|precio|prezzo|preço|preis|prijs|iva|tva|tax|vat|mwst|btw|importe|importo|gesamt|netto|brutto|subtotal|sous[\s-]?total|surface|dimensions?|quantit[éà]|montant)\b/i;
     const emptyPriceLines = emailText.split('\n').filter((line) => {
       const t = line.trim();
-      // « label: » (où label fait ≤80 chars), suivi de rien
-      if (!/^[^:\n]{1,80}:\s*$/.test(t)) return false;
-      return PRICE_KEYWORD_RE.test(t);
+      // Format "label : valeur" — label ≤ 80 chars, valeur = reste de ligne
+      const m = t.match(/^([^:\n]{1,80}):\s*(.*)$/);
+      if (!m) return false;
+      const label = m[1];
+      const value = m[2];
+      // Label doit contenir un mot-clé prix/qté/surface
+      if (!PRICE_KEYWORD_RE.test(label)) return false;
+      // Suspect si la valeur ne contient AUCUN chiffre (que des espaces, des
+      // unités €/m²/EUR, ou rien). Une valeur normale type "1 247,80 €" a un
+      // chiffre → passe.
+      return !/\d/.test(value);
     });
     if (emptyPriceLines.length > 0) {
       const sample = emptyPriceLines.slice(0, 3).map((l) => `« ${l.trim()} »`).join(', ');

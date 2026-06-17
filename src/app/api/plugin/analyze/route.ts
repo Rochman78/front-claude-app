@@ -6,6 +6,28 @@ import { getStoreByCode } from '@/lib/stores';
 import { getConversationImages } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
 import { callClaude } from '@/lib/services/claudeService';
+import { dedupeRepeatedBlocks } from '@/lib/mailDedup';
+
+// Rappel final ajouté en queue de message user, juste avant que Claude
+// rédige. Position dictée par le "recency bias" des LLM : les instructions
+// en fin de prompt sont mieux respectées que celles en début. Ce rappel
+// prévient la dérive vers la langue du mail client (cas Suex S.r.l. IT,
+// Cenci Noleggi Mamà IT, etc.) que la règle dans agents.instructions ne
+// suffisait pas à corriger sur des fils saturés en langue étrangère.
+const LANGUE_REMINDER = `
+
+══════════════════════════════════════════════════════
+🚨 RAPPEL FINAL — À APPLIQUER MAINTENANT, AVANT DE RÉDIGER
+
+Tu rédiges TOUT en FRANÇAIS : brouillon, QUESTIONS, notes, exemples, du premier mot au dernier.
+
+Le mail client ci-dessus peut être rédigé en italien, allemand, espagnol, néerlandais, portugais, anglais — PEU IMPORTE. Ta réponse reste 100 % EN FRANÇAIS.
+
+Si tu sens que tu vas commencer une phrase dans une autre langue parce que le contexte est saturé d'une autre langue : STOP. Réécris en français.
+
+La traduction sera faite automatiquement par le code au moment du push dans Front App.
+══════════════════════════════════════════════════════`;
+
 
 /**
  * POST /api/plugin/analyze
@@ -187,10 +209,18 @@ Exemple de réponse :
     // 6. Construire le message utilisateur avec le contexte mail + stock
     // forceFresh : ignore l'historique précédent (utilisé par l'auto-draft pour
     // toujours partir d'une analyse vierge même si la conv a déjà été traitée).
+    // Dédupe les signatures email et citations longues répétées avant l'envoi
+    // à Claude (cf cas Suex S.r.l. : 5 répétitions × 1500 chars de signature
+    // italienne saturaient le contexte et faisaient dériver Claude vers l'IT).
+    const dedupResult = dedupeRepeatedBlocks(mailContent);
+    const cleanedMailContent = dedupResult.cleaned;
+    if (dedupResult.removed > 0) {
+      console.log(`[plugin/analyze] dedupe: ${dedupResult.removed} bloc(s) répété(s) retiré(s), -${dedupResult.bytesSaved} chars`);
+    }
     const isResume = !forceFresh && existingMessages.length > 0;
     const userMessage = isResume
-      ? `[Suite de la conversation] Le client a répondu. Voici le fil de mails COMPLET et MIS À JOUR (les messages les plus récents sont les plus importants). Tiens compte de tout ce que tu as échangé avec le gérant précédemment et propose un nouveau brouillon cohérent avec le déroulé de la conversation. Donne plus de poids aux messages les plus récents du client.\n\nClient : ${customerName || ''} (${customerEmail || ''})\n\n${mailContent}${stockInfo}`
-      : `[Analyse demandée] Voici le fil de mails du client ${customerName || ''} (${customerEmail || ''}) :\n\n${mailContent}${stockInfo}`;
+      ? `[Suite de la conversation] Le client a répondu. Voici le fil de mails COMPLET et MIS À JOUR (les messages les plus récents sont les plus importants). Tiens compte de tout ce que tu as échangé avec le gérant précédemment et propose un nouveau brouillon cohérent avec le déroulé de la conversation. Donne plus de poids aux messages les plus récents du client.\n\nClient : ${customerName || ''} (${customerEmail || ''})\n\n${cleanedMailContent}${stockInfo}${LANGUE_REMINDER}`
+      : `[Analyse demandée] Voici le fil de mails du client ${customerName || ''} (${customerEmail || ''}) :\n\n${cleanedMailContent}${stockInfo}${LANGUE_REMINDER}`;
 
     // Sauvegarder le message user en BDD
     const userMsgId = crypto.randomUUID();

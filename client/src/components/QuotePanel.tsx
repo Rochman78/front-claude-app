@@ -217,23 +217,48 @@ export default function QuotePanel({
               <input type="radio" checked={f.clientType === 'company'} onChange={() => upd('clientType', 'company')} /> Entreprise
             </label>
           </div>
-          {f.clientType === 'company' && (
-            <div style={rowStyle}>
-              <div style={{ flex: 1 }}><span style={labelStyle}>Raison sociale</span><input style={inputStyle} value={f.companyName} onChange={(e) => upd('companyName', e.target.value)} /></div>
-              <div style={{ flex: 1 }}><span style={labelStyle}>N° TVA intra</span><input style={inputStyle} value={f.vatNumber} onChange={(e) => {
-                const val = e.target.value;
-                upd('vatNumber', val);
-                // Si n° TVA intra renseigné et pays UE hors France → TVA 0% (LIC)
-                const euCountries = ['AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','GR','HR','HU','IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK'];
-                const countryFromVat = val.replace(/[^A-Z]/g, '').substring(0, 2);
-                const countryFromForm = f.country?.toUpperCase() || '';
-                const country = countryFromVat || countryFromForm;
-                if (val.trim().length >= 4 && euCountries.includes(country)) {
-                  upd('vatPercent', '0');
-                }
-              }} /></div>
-            </div>
-          )}
+          {f.clientType === 'company' && (() => {
+            // Le n° TVA intra est obligatoire si client pro hors France avec
+            // TVA 0 %. On rend le label + l'input visuellement saillants
+            // (rouge) quand obligatoire et vide.
+            const countryUpper = (f.country || '').trim().toUpperCase();
+            const vatPercentNum = parseFloat(f.vatPercent || '0');
+            const vatNumberRequired =
+              vatPercentNum === 0 && countryUpper !== 'FR' && countryUpper !== '';
+            const vatNumberEmpty = !f.vatNumber.trim();
+            const vatNumberError = vatNumberRequired && vatNumberEmpty;
+            const vatLabelStyle = vatNumberError
+              ? { ...labelStyle, color: '#e53e3e', fontWeight: 600 }
+              : labelStyle;
+            const vatInputStyle = vatNumberError
+              ? { ...inputStyle, border: '1.5px solid #e53e3e', background: '#fff5f5' }
+              : inputStyle;
+            return (
+              <div style={rowStyle}>
+                <div style={{ flex: 1 }}><span style={labelStyle}>Raison sociale</span><input style={inputStyle} value={f.companyName} onChange={(e) => upd('companyName', e.target.value)} /></div>
+                <div style={{ flex: 1 }}>
+                  <span style={vatLabelStyle}>N° TVA intra{vatNumberRequired ? ' *' : ''}</span>
+                  <input
+                    style={vatInputStyle}
+                    value={f.vatNumber}
+                    placeholder={vatNumberRequired ? 'Obligatoire (ex : IT12345678901)' : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      upd('vatNumber', val);
+                      // Si n° TVA intra renseigné et pays UE hors France → TVA 0 % (LIC)
+                      const euCountries = ['AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','GR','HR','HU','IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK'];
+                      const countryFromVat = val.replace(/[^A-Z]/g, '').substring(0, 2);
+                      const countryFromForm = f.country?.toUpperCase() || '';
+                      const country = countryFromVat || countryFromForm;
+                      if (val.trim().length >= 4 && euCountries.includes(country)) {
+                        upd('vatPercent', '0');
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })()}
           <div style={rowStyle}>
             <div style={{ flex: 1 }}><span style={labelStyle}>Prénom</span><input style={inputStyle} value={f.firstName} onChange={(e) => upd('firstName', e.target.value)} /></div>
             <div style={{ flex: 1 }}><span style={labelStyle}>Nom</span><input style={inputStyle} value={f.lastName} onChange={(e) => upd('lastName', e.target.value)} /></div>
@@ -378,6 +403,20 @@ export default function QuotePanel({
           if (f.lines.length === 0 || !f.lines[0].label.trim()) missing.push('Produit');
 
           const hasPhone = !!f.phone.trim();
+          // N° TVA intra OBLIGATOIRE quand client = entreprise, hors France,
+          // TVA exempt (0 %). Cas LIC intracommunautaire art. 262 ter I CGI :
+          // sans n° TVA intra valide, la facture ne peut pas être exonérée.
+          const countryUpper = (f.country || '').trim().toUpperCase();
+          const vatPercentNum = parseFloat(f.vatPercent || '0');
+          const requireVatNumber =
+            f.clientType === 'company' &&
+            vatPercentNum === 0 &&
+            countryUpper !== 'FR' &&
+            countryUpper !== '';
+          const vatNumberMissing = requireVatNumber && !f.vatNumber.trim();
+          if (vatNumberMissing) missing.push('N° TVA intra');
+
+          const canGenerate = hasPhone && !vatNumberMissing;
           const hasMissing = missing.length > 0;
 
           return (
@@ -387,14 +426,26 @@ export default function QuotePanel({
                   Numéro de téléphone manquant — obligatoire pour générer le devis.
                 </p>
               )}
-              {hasMissing && hasPhone && (
+              {vatNumberMissing && (
+                <p style={{ color: '#e53e3e', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>
+                  N° de TVA intracommunautaire manquant — obligatoire pour un client pro hors France avec TVA exemptée.
+                </p>
+              )}
+              {hasMissing && canGenerate && (
                 <p style={{ color: '#dd6b20', fontSize: '12px', marginBottom: '8px' }}>
                   Champs manquants : {missing.join(', ')}
                 </p>
               )}
               <div className="quote-panel-actions">
                 <button className="btn-secondary" onClick={() => { setState('idle'); setError(null); }}>Annuler</button>
-                <button className="btn-primary" onClick={() => handleCreateFromForm()} disabled={!hasPhone} style={{ width: 'auto', opacity: hasPhone ? 1 : 0.5 }}>Générer le devis</button>
+                <button
+                  className="btn-primary"
+                  onClick={() => handleCreateFromForm()}
+                  disabled={!canGenerate}
+                  style={{ width: 'auto', opacity: canGenerate ? 1 : 0.5 }}
+                >
+                  Générer le devis
+                </button>
               </div>
             </>
           );

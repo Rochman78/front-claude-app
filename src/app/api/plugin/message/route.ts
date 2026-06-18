@@ -115,27 +115,31 @@ export async function POST(req: NextRequest) {
       [userMsgId, conversationId, 'user', message, now]
     );
 
-    // 5. Vérifier le stock si le message mentionne un produit (non bloquant)
+    // 5. Vérifier le stock si le message mentionne un produit (non bloquant).
+    // Source = prix-ht-standards.txt depuis le 15/06/2026 (catalogue-XXX.txt supprimé).
     let stockInfo = '';
     try {
-      const catalogueFile = allFiles.find((f) => f.name.toLowerCase().includes('catalogue'));
-      if (catalogueFile && process.env.OCTOPIA_SELLER_ID) {
+      const standardsDoc = allFiles.find((f) => f.name === 'prix-ht-standards.txt');
+      if (!standardsDoc) {
+        console.warn('[plugin/message] prix-ht-standards.txt introuvable → stock check sauté');
+      }
+      if (standardsDoc && process.env.OCTOPIA_SELLER_ID) {
         // Construire le contexte : dernier message + historique récent
         const recentContext = history.slice(-4).map((m) => m.content).join('\n') + '\n' + message;
-        const skuExtractPrompt = `Tu es un assistant qui identifie les produits catalogue mentionnés dans une conversation et retrouve les SKU correspondants.
+        const skuExtractPrompt = `Tu es un assistant qui identifie les produits standards mentionnés dans une conversation et retrouve les SKU correspondants.
 
 CONVERSATION RÉCENTE :
 ${recentContext.substring(0, 4000)}
 
-CATALOGUE COMPLET :
-${catalogueFile.content.substring(0, 35000)}
+LISTE DES PRODUITS STANDARDS (format colonnes : Nom | Variante | SKU | TTC | HT par taux TVA) :
+${standardsDoc.content.substring(0, 35000)}
 
 RÈGLES :
-- Le catalogue contient PLUSIEURS sections par couleur (noir, sable, blanc, bleu, vert, militaire, gris renforcé, etc.), par matière (polyester / câble acier / fibre de coco) et accessoires. Parcourir TOUT le catalogue (pas juste les premières lignes).
-- Identifier les produits CATALOGUE STANDARD mentionnés (couleur, taille, finition).
-- Vérifier ATTENTIVEMENT que la COULEUR ET la TAILLE correspondent EXACTEMENT à une ligne du catalogue. Les tailles sont RÉVERSIBLES (3x4 = 4x3). Si la correspondance n'est pas exacte, NE PAS retourner de SKU — ne JAMAIS inventer ni proposer un SKU "approchant".
+- La liste contient des filets standards (par couleur / matière / taille) ET des accessoires (mâts, kits de fixation, cordes, colliers, etc.). Parcourir TOUTE la liste.
+- Identifier les produits CATALOGUE STANDARD mentionnés (couleur, taille, finition, accessoire précis).
+- Vérifier ATTENTIVEMENT que la COULEUR ET la TAILLE correspondent EXACTEMENT à une ligne. Les tailles sont RÉVERSIBLES (3x4 = 4x3). Si la correspondance n'est pas exacte, NE PAS retourner de SKU — ne JAMAIS inventer ni proposer un SKU "approchant".
 - Retourner UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
-- Si aucun produit catalogue identifié, retourner : AUCUN`;
+- Si aucun produit standard identifié, retourner : AUCUN`;
 
         const skuResult = await callClaude(
           [{ role: 'user', content: skuExtractPrompt }],

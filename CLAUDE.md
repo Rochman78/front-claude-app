@@ -145,6 +145,13 @@ front-claude-app/
 - Le code est **généré par le gérant dans Shopify** (1 usage, lié à l'email client) — l'agent annonce dans le mail et flagge dans QUESTIONS pour que le gérant crée le code.
 - Encodé dans `agents.instructions` (9 boutiques, remplace l'ancienne règle « PAS DE CODE RÉDUCTION ») + dans `template-echange-erreur-client.txt`.
 
+### Quadrilatère quelconque — forme acceptée, exige croquis + diagonale ou angles (18/06/2026)
+- L'atelier sait fabriquer **4 catégories** sur-mesure : rectangle/carré, triangle, trapèze (bases parallèles), **quadrilatère quelconque** (4 côtés sans contrainte de parallélisme). Même tarif que Triangle-Trapèze (mêmes lignes dans `prix-ht-sur-mesure.txt`).
+- 4 côtés seuls ne suffisent JAMAIS à calculer la surface d'un quadrilatère quelconque (forme non unique). Il faut **1 donnée supplémentaire** : soit une **diagonale cotée** (option préférée, plus simple à mesurer), soit les **4 angles aux sommets**.
+- **INTERDICTION ABSOLUE** : ne jamais conclure « ces mesures ne forment pas un trapèze géométriquement réalisable » / « incohérence géométrique » sur la seule base des 4 côtés. C'est faux dans 99 % des cas — la forme existe en quadrilatère quelconque, il manque juste la diagonale.
+- Calcul de surface après réception : décomposition en 2 triangles via la diagonale + formule de Héron sur chacun.
+- Cas Dominique Delpit 18/06/2026 (`cnv_1lnflc5z`, LFC) : client demande filet « type trapèze » 4,4×3×5,32×1 m. Sous hypothèse trapèze (bases parallèles), géométriquement impossible — VRAI mais TROMPEUR. En quadrilatère quelconque, forme fabricable, il manque juste la diagonale. Claude a écrit au client « ces mesures ne forment pas un trapèze géométriquement réalisable » → cliente perd confiance et abandonne. Encodé × 10 agents (bloc dédié entre LECTURE DES CROQUIS et TVA) + grille `prix-ht-sur-mesure.txt` × 9 boutiques.
+
 ### Standard vs sur-mesure (jamais de substitution)
 - Si la taille demandée existe au catalogue (tailles **réversibles** : 3×4 = 4×3) → STANDARD, prix TTC.
 - Sinon → SUR MESURE aux **dimensions exactes** demandées. **Jamais** de proposition d'une taille standard « proche » à la place (ni avant, ni à côté du chiffrage sur-mesure).

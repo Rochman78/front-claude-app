@@ -142,24 +142,29 @@ export async function POST(req: NextRequest) {
     // 5. Identifier les SKUs pertinents via Haiku + vérifier stock Octopia (non bloquant)
     let stockInfo = '';
     try {
-      // Extraire les SKUs des produits catalogue correspondant à la demande client
-      const catalogueDoc = allFiles.find((f) => f.name.toLowerCase().includes('catalogue'));
-      if (catalogueDoc && process.env.OCTOPIA_SELLER_ID) {
-        const skuExtractPrompt = `Tu es un assistant qui identifie les produits demandés par le client dans un mail, et qui retrouve les SKU correspondants dans le catalogue.
+      // Extraire les SKUs des produits standards correspondant à la demande client.
+      // Source = prix-ht-standards.txt depuis le 15/06/2026 (catalogue-XXX.txt supprimé,
+      // redondant — prix-ht-standards.txt contient déjà SKU + TTC + HT par TVA).
+      const standardsDoc = allFiles.find((f) => f.name === 'prix-ht-standards.txt');
+      if (!standardsDoc) {
+        console.warn('[plugin/analyze] prix-ht-standards.txt introuvable → stock check sauté');
+      }
+      if (standardsDoc && process.env.OCTOPIA_SELLER_ID) {
+        const skuExtractPrompt = `Tu es un assistant qui identifie les produits demandés par le client dans un mail, et qui retrouve les SKU correspondants dans la liste des produits standards.
 
 MAIL DU CLIENT :
 ${mailContent.substring(0, 4000)}
 
-CATALOGUE COMPLET :
-${catalogueDoc.content.substring(0, 35000)}
+LISTE DES PRODUITS STANDARDS (format colonnes : Nom | Variante | SKU | TTC | HT par taux TVA) :
+${standardsDoc.content.substring(0, 35000)}
 
 RÈGLES :
-- Le catalogue contient PLUSIEURS sections par couleur (noir, sable, blanc, bleu, vert, militaire, gris renforcé, etc.), par matière (polyester / câble acier / fibre de coco) et accessoires. Parcourir TOUT le catalogue (pas juste les premières lignes).
-- Identifier les produits CATALOGUE STANDARD que le client demande (couleur, taille, finition).
-- Vérifier ATTENTIVEMENT que la COULEUR ET la TAILLE demandées correspondent EXACTEMENT à une ligne du catalogue avant de retourner un SKU. Les tailles sont RÉVERSIBLES (3x4 = 4x3). Si la correspondance n'est pas exacte (taille proche, couleur proche), NE PAS retourner de SKU — ne JAMAIS inventer ni proposer un SKU "approchant".
+- La liste contient des filets standards (par couleur / matière / taille) ET des accessoires (mâts, kits de fixation, cordes, colliers, etc.). Parcourir TOUTE la liste.
+- Identifier les produits CATALOGUE STANDARD que le client demande (couleur, taille, finition, ou accessoire précis).
+- Vérifier ATTENTIVEMENT que la COULEUR ET la TAILLE demandées correspondent EXACTEMENT à une ligne avant de retourner un SKU. Les tailles sont RÉVERSIBLES (3x4 = 4x3). Si la correspondance n'est pas exacte (taille proche, couleur proche), NE PAS retourner de SKU — ne JAMAIS inventer ni proposer un SKU "approchant".
 - Si le client demande du sur mesure (dimensions non standard), ne retourner AUCUN SKU.
 - Retourner UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
-- Si aucun produit catalogue identifié, retourner : AUCUN
+- Si aucun produit standard identifié, retourner : AUCUN
 
 Exemple de réponse :
 3760388670833|Filet camouflage noir 2x2|5

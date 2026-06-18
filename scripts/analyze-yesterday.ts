@@ -293,13 +293,26 @@ async function main() {
     }
 
     try {
+      // UPSERT — DO UPDATE permet une ré-analyse propre après ajustement du
+      // prompt (incrémenter prompt_version reste la voie principale, mais
+      // au sein d'une même version on peut re-jouer sans contrainte).
       await db.query(`
         INSERT INTO sav_message_analysis
           (message_id, conversation_id, prompt_version, category, sentiment,
            urgency, escalation_level, escalation_reasons,
-           summary, tags, language, raw_response)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-        ON CONFLICT (message_id, prompt_version) DO NOTHING
+           summary, tags, language, raw_response, analyzed_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, NOW())
+        ON CONFLICT (message_id, prompt_version) DO UPDATE SET
+          category = EXCLUDED.category,
+          sentiment = EXCLUDED.sentiment,
+          urgency = EXCLUDED.urgency,
+          escalation_level = EXCLUDED.escalation_level,
+          escalation_reasons = EXCLUDED.escalation_reasons,
+          summary = EXCLUDED.summary,
+          tags = EXCLUDED.tags,
+          language = EXCLUDED.language,
+          raw_response = EXCLUDED.raw_response,
+          analyzed_at = NOW()
       `, [
         msg.id, msg.conversation_id, PROMPT_VERSION,
         a.category, a.sentiment, a.urgency,
@@ -307,14 +320,15 @@ async function main() {
         a.summary, a.tags, a.language,
         JSON.stringify(a),
       ]);
-      if (!msg.conv_demand_type) {
-        const upd = await db.query(`
-          UPDATE sav_conversations
-          SET demand_type = $2, summary = $3
-          WHERE id = $1 AND demand_type IS NULL
-        `, [msg.conversation_id, a.category, a.summary]);
-        if ((upd.rowCount ?? 0) > 0) convUpdated++;
-      }
+      // Update systématique de la conv (écrase éventuelles valeurs v1) : la
+      // conv ne porte qu'un état courant, la v2 est l'autorité.
+      const upd = await db.query(`
+        UPDATE sav_conversations
+        SET demand_type = $2, summary = $3
+        WHERE id = $1
+          AND (demand_type IS DISTINCT FROM $2 OR summary IS DISTINCT FROM $3)
+      `, [msg.conversation_id, a.category, a.summary]);
+      if ((upd.rowCount ?? 0) > 0) convUpdated++;
       ok++;
     } catch (e: unknown) {
       errors++;
@@ -340,7 +354,64 @@ async function main() {
   console.log(`  Durée totale   : ${Math.round((Date.now() - t0) / 1000)}s`);
   console.log(`[analyze v2] ✓ ${ok} analysés (${critiques} critiques, ${surveiller} à surveiller), ${errors} erreurs, coût estimé ~$${cost.toFixed(3)}`);
 
+  // ─── Bonus : comparatif v1 (Haiku) vs v2 (Sonnet) sur la même fenêtre ──
+  // Affiché uniquement s'il existe des analyses v1 ET v2 sur la fenêtre.
+  // Montre concrètement ce que Sonnet rattrape que Haiku ratait.
+  const cmpRes = await db.query<{
+    total: string;
+    sentiment_changed: string;
+    urgency_changed: string;
+    new_critique: string;
+    new_surveiller: string;
+    urgency_disabled: string;
+    sentiment_aggravated: string;
+  }>(`
+    WITH paired AS (
+      SELECT v1.message_id,
+             v1.sentiment AS s1, v2.sentiment AS s2,
+             v1.urgency AS u1,   v2.urgency AS u2,
+             COALESCE(v2.escalation_level, 'aucun') AS esc2
+      FROM sav_message_analysis v1
+      JOIN sav_message_analysis v2
+        ON v2.message_id = v1.message_id AND v2.prompt_version = 'v2'
+      JOIN sav_messages m ON m.id = v1.message_id
+      WHERE v1.prompt_version = 'v1'
+        AND m.created_at >= $1::timestamptz
+        AND m.created_at <= $2::timestamptz
+    )
+    SELECT
+      COUNT(*) AS total,
+      COUNT(*) FILTER (WHERE s1 IS DISTINCT FROM s2) AS sentiment_changed,
+      COUNT(*) FILTER (WHERE u1 IS DISTINCT FROM u2) AS urgency_changed,
+      COUNT(*) FILTER (WHERE u1 = true AND u2 = false) AS urgency_disabled,
+      COUNT(*) FILTER (WHERE esc2 = 'critique') AS new_critique,
+      COUNT(*) FILTER (WHERE esc2 = 'surveiller') AS new_surveiller,
+      COUNT(*) FILTER (WHERE
+        CASE s1 WHEN 'positif' THEN 0 WHEN 'neutre' THEN 1 WHEN 'négatif' THEN 2 ELSE 3 END
+        <
+        CASE s2 WHEN 'positif' THEN 0 WHEN 'neutre' THEN 1 WHEN 'négatif' THEN 2 ELSE 3 END
+      ) AS sentiment_aggravated
+    FROM paired
+  `, [range.from, range.to]);
+
+  const c = cmpRes.rows[0];
+  if (c && parseInt(c.total, 10) > 0) {
+    const tot = parseInt(c.total, 10);
+    console.log(`\n═══ Comparatif Haiku v1 → Sonnet v2 (${tot} mails communs) ═══`);
+    console.log(`  Sentiment changé      : ${c.sentiment_changed} (${pct(c.sentiment_changed, tot)}%)`);
+    console.log(`    → dont aggravé      : ${c.sentiment_aggravated}`);
+    console.log(`  Urgency changée       : ${c.urgency_changed} (${pct(c.urgency_changed, tot)}%)`);
+    console.log(`    → faux positifs v1  : ${c.urgency_disabled} (Sonnet a annulé)`);
+    console.log(`  🔥 Nouveaux critiques : ${c.new_critique} (invisibles côté Haiku)`);
+    console.log(`  ⚠  Nouveaux surveiller: ${c.new_surveiller} (invisibles côté Haiku)`);
+  }
+
   await db.end();
+}
+
+function pct(n: string | number, total: number): string {
+  const x = typeof n === 'string' ? parseInt(n, 10) : n;
+  return total > 0 ? (Math.round((x / total) * 1000) / 10).toString() : '0';
 }
 
 main().catch(e => { console.error('❌ FATAL', e); process.exit(1); });

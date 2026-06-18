@@ -97,60 +97,54 @@ npx tsx scripts/sav-sync.ts --from 2026-05-25 --to 2026-06-10
 
 ---
 
-## Cron #2 — Analyse Claude des mails inbound (`analyze-yesterday`)
+## Étape 2 du cron — Analyse Claude des mails inbound
 
-Analyse Claude Haiku 4.5 de tous les mails inbound de la veille → catégorie,
-sentiment, urgence, tags. Alimente la page `/dashboard/insatisfaction` du
-frontapp-bi (rapport matin).
+L'analyse Claude Haiku 4.5 des mails inbound de la veille est **intégrée
+au même cron** via `scripts/cron-sav-sync.sh` (étape 2, après la sync).
+Pas de Cron Job Render séparé.
 
-### Création du Cron Job Render
+- **Script** : `scripts/analyze-yesterday.ts`
+- **Output** : table `sav_message_analysis` + colonnes `demand_type`/`summary` sur `sav_conversations`
+- **Consommateur** : page `/dashboard/insatisfaction` du frontapp-bi (rapport matin)
 
-À créer **après le premier déploiement réussi** (= Cron #1 sav-sync tourne, BDD
-peuplée, table `sav_message_analysis` créée via la migration
-`scripts/migrations/20260618_sav_message_analysis.sql`).
+### Protection contre les erreurs
 
-| Champ | Valeur |
-|---|---|
-| **Name** | `analyze-yesterday` |
-| **Region** | Frankfurt (EU) |
-| **Branch** | `main` |
-| **Schedule** | `0 4 * * *` (= 6h Paris été, 5h Paris hiver — toujours après la sync nuit `0 1 * * *`) |
-| **Build Command** | `npm install` |
-| **Command** | `npx tsx scripts/analyze-yesterday.ts` |
-| **Plan** | Starter ($7/mois) |
+L'analyse est **non-bloquante** dans le cron :
 
-### Variables d'environnement
+```bash
+npx tsx scripts/analyze-yesterday.ts \
+  || echo "⚠️  Analyse Claude échouée — sync OK quand même."
+```
+
+Si l'API Anthropic est down ou le quota dépassé, le cron se termine quand
+même en succès (la sync, la partie critique, a déjà tourné).
+
+### Variable d'env à ajouter au Cron Job Render
 
 | Variable | Valeur |
 |---|---|
-| `DATABASE_URL` | (même BDD que le Cron #1) |
 | `ANTHROPIC_API_KEY` | clé Anthropic existante (copier depuis le Web service) |
 
-### Première exécution manuelle
+### Backfill manuel
 
 ```bash
 # En local (dry-run) :
 npx tsx scripts/analyze-yesterday.ts --dry-run --limit 10
 
-# En local (vrai run) :
-npx tsx scripts/analyze-yesterday.ts
-
-# Backfill une date spécifique :
+# Rejouer une date spécifique :
 npx tsx scripts/analyze-yesterday.ts --date 2026-06-17
 ```
 
-### Idempotence
-
-L'INSERT est sécurisé par un index unique `(message_id, prompt_version)` — relancer
+L'INSERT est idempotent (index unique `(message_id, prompt_version)`) — relancer
 le script sur la même date ne re-traite pas les mails déjà analysés.
 
-### Coût Claude Haiku
+### Coût
 
 | Volume | Coût |
 |---|---|
-| ~350 mails/jour | ~$0.30/jour ≈ **$10/mois** |
-| Coût Render Cron Starter | $7/mois |
-| **Total mensuel** | ~$17/mois |
+| ~350 mails/jour | ~$0.30/jour ≈ **$10/mois** Anthropic |
+
+(Pas de coût Render supplémentaire puisqu'on utilise le Cron Job existant.)
 
 ### Versioning du prompt
 

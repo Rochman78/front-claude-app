@@ -93,8 +93,47 @@ async function main() {
   const dbState = new Map<string, { status: string | null; archived_at: Date | null }>();
   for (const row of r2.rows) dbState.set(row.id, { status: row.status, archived_at: row.archived_at });
 
-  let inboxChanged = 0, statusChanged = 0, archivedNow = 0, unchanged = 0, notFound = 0, errors = 0;
+  let inboxChanged = 0, statusChanged = 0, archivedNow = 0, tagsAdded = 0, tagsRemoved = 0, unchanged = 0, notFound = 0, errors = 0;
   const t0 = Date.now();
+
+  // Helper : synchronise les tags d'une conv avec ce que Front retourne
+  async function syncConvTags(cid: string, frontTags: Array<{ id: string; name?: string }>) {
+    if (dryRun) return { added: 0, removed: 0 };
+    for (const t of frontTags) {
+      await db.query(
+        `INSERT INTO sav_tags (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+        [t.id, t.name || t.id]
+      );
+    }
+    const cur = await db.query<{ tag_id: string }>(
+      `SELECT tag_id FROM sav_conversation_tags WHERE conversation_id = $1 AND removed_at IS NULL`,
+      [cid]
+    );
+    const currentIds = new Set(cur.rows.map(r => r.tag_id));
+    const frontIds = new Set(frontTags.map(t => t.id));
+    let added = 0, removed = 0;
+    for (const fId of frontIds) {
+      if (!currentIds.has(fId)) {
+        await db.query(
+          `INSERT INTO sav_conversation_tags (conversation_id, tag_id, applied_at)
+           VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`,
+          [cid, fId]
+        );
+        added++;
+      }
+    }
+    for (const cId of currentIds) {
+      if (!frontIds.has(cId)) {
+        await db.query(
+          `UPDATE sav_conversation_tags SET removed_at = NOW()
+           WHERE conversation_id = $1 AND tag_id = $2 AND removed_at IS NULL`,
+          [cid, cId]
+        );
+        removed++;
+      }
+    }
+    return { added, removed };
+  }
 
   for (let i = 0; i < convs.length; i++) {
     const conv = convs[i];
@@ -153,6 +192,15 @@ async function main() {
           console.log(`    ↻ ${conv.id} :${nextInbox !== conv.inbox_id ? ` inbox→${nextInbox}` : ''}${frontStatus !== cur.status ? ` status→${frontStatus}` : ''}${isArchivedInFront && !cur.archived_at ? ` archived` : ''}`);
         }
       }
+
+      // 3) Synchronise les tags depuis la réponse /conversations/{id}
+      const frontTags = Array.isArray(convRes.tags) ? convRes.tags as Array<{ id: string; name?: string }> : [];
+      const tagDelta = await syncConvTags(conv.id, frontTags);
+      tagsAdded += tagDelta.added;
+      tagsRemoved += tagDelta.removed;
+      if (tagDelta.added + tagDelta.removed > 0 && tagsAdded + tagsRemoved <= 60) {
+        console.log(`    🏷  ${conv.id} : +${tagDelta.added} -${tagDelta.removed} tags (front=${frontTags.map(t => t.name || t.id).join(',') || '∅'})`);
+      }
     } catch (err: any) {
       errors++;
       if (errors <= 5) console.warn(`    ⚠️  ${conv.id} : ${err.message}`);
@@ -168,6 +216,8 @@ async function main() {
   console.log(`  Inbox changés      : ${inboxChanged}${dryRun ? ' (dry-run)' : ''}`);
   console.log(`  Status changés     : ${statusChanged}`);
   console.log(`  Nouvellement archi.: ${archivedNow}`);
+  console.log(`  Tags ajoutés       : ${tagsAdded}`);
+  console.log(`  Tags retirés       : ${tagsRemoved}`);
   console.log(`  Unchanged          : ${unchanged}`);
   console.log(`  404                : ${notFound}`);
   console.log(`  Errors             : ${errors}`);

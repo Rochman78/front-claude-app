@@ -89,6 +89,12 @@ front-claude-app/
 - Cas Saracco 12/06/2026 (`cnv_1lmrvoev`, RED) : brouillon avec `Precio unitario sin IVA :` / `Total sin IVA :` / `IVA (20 %) :` / `Importe con IVA incluido :` tous vides → push au client. Encodé × 10 agents.
 - **Garde-fou code** : `autoDraftService.ts` détecte une ligne « label-prix : » suivie de vide (multilingue) et bloque l'auto-push avec un commentaire de conv "à traiter via le plugin".
 
+### Accessoires — prix strict depuis prix-ht-standards.txt (18/06/2026)
+- Quand l'agent mentionne un accessoire (mât, base d'ancrage, kit fixation, cordes à cliquets, câble acier au mètre, corde polyester tressée, corde fibre de coco, colliers serrage, borne solaire), il DOIT lire EXACTEMENT la ligne SKU correspondante dans `prix-ht-standards.txt` et recopier TTC + HT par TVA. Aucune mémorisation, aucun arrondi, aucun calcul.
+- Liste officielle des SKU accessoires encodée dans `agents.instructions` × 10 boutiques (bloc "⚠️ ACCESSOIRES — PRIX STRICT" inséré juste avant PROCESS DEVIS).
+- Garde-fous métier inclus dans le bloc : (a) câble acier vendu par bobines 7,5/15/30 m, pas au mètre ; (b) NE PAS confondre "corde polyester tressée" (accessoire indépendant en rouleaux) avec "contour polyester Ø 6 mm" (fait partie du filet, soudé au bord) ; (c) NE PAS confondre "câble acier au mètre" (accessoire) avec "contour câble acier Ø 3 mm" (fait partie du filet).
+- Cleanup BDD préalable 18/06/2026 : suppression de 3 lignes fantômes obsolètes du fichier prix-ht-standards.txt (Mât 199,90 €, Cordes à cliquets, Kit de fixation — toutes sans SKU), + relabel de 6 lignes "Default Title | Default Ti" → vrais noms (Mât / Base / Kit / Cordes / Borne solaire / Corde coco). Backups : `backups/prix-ht-accessoires-20260618-080724/`.
+
 ### Langue — tout en français dans le plugin jusqu'au push (16/06/2026)
 - TOUT ce qui est écrit dans le plugin (brouillon, QUESTIONS, alertes [⚠️…], section VÉRIFICATION, exemples) est en **français**, intégralement, sans exception.
 - La traduction vers la langue du client se fait UNIQUEMENT au moment du push dans Front App (via `/api/plugin/translate`).

@@ -215,6 +215,11 @@ async function main() {
       AND m.created_at <= $2::timestamptz
       AND m.body_text IS NOT NULL
       AND LENGTH(m.body_text) > 0
+      -- Exclut les expéditeurs auto/spam connus (économie API Claude).
+      -- Patterns universels (noreply*) + domaines spécifiques (services
+      -- de reviews, marketplaces, notifications) qui n'ont jamais à être
+      -- analysés comme conversation client.
+      AND COALESCE(c.customer_email, '') !~* '(noreply|no-reply|donotreply|do-not-reply|@loox\.io|@yotpo\.com|@trustpilot\.com|@pinterest\.com|@etsy\.com)'
       AND NOT EXISTS (
         SELECT 1 FROM sav_message_analysis a
         WHERE a.message_id = m.id AND a.prompt_version = $3

@@ -77,9 +77,15 @@ async function main() {
   );
   console.log(`  ${activeInboxes.size} inboxes actives (dont ${boutiqueInboxes.size} boutique)`);
 
-  // Convs open à refresher
+  // Convs à refresher : open + archived récentes (< 7j) pour rattraper les
+  // reopen non captés par le webhook. Sans ça, une conv archivée puis rouverte
+  // dans Front sans event reopen reste "archived" en BDD (cas vu pour 11 devis
+  // le 18/06/2026).
   const params: any[] = [];
-  let where = `status IS DISTINCT FROM 'archived' AND archived_at IS NULL AND is_noise = false`;
+  let where = `is_noise = false AND (
+    (status IS DISTINCT FROM 'archived' AND archived_at IS NULL)
+    OR archived_at > NOW() - INTERVAL '7 days'
+  )`;
   if (sinceArg) {
     params.push(sinceArg);
     where += ` AND created_at >= $1`;

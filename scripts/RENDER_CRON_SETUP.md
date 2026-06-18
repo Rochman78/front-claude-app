@@ -94,3 +94,66 @@ npx tsx scripts/sav-sync.ts --from 2026-05-25 --to 2026-06-10
 | Volume Postgres ajouté | ~1-2 MB / jour |
 | Coût Render Cron Starter | ~$7/mois |
 | Total Render BDD + Web + Cron | ~$25-30/mois |
+
+---
+
+## Cron #2 — Analyse Claude des mails inbound (`analyze-yesterday`)
+
+Analyse Claude Haiku 4.5 de tous les mails inbound de la veille → catégorie,
+sentiment, urgence, tags. Alimente la page `/dashboard/insatisfaction` du
+frontapp-bi (rapport matin).
+
+### Création du Cron Job Render
+
+À créer **après le premier déploiement réussi** (= Cron #1 sav-sync tourne, BDD
+peuplée, table `sav_message_analysis` créée via la migration
+`scripts/migrations/20260618_sav_message_analysis.sql`).
+
+| Champ | Valeur |
+|---|---|
+| **Name** | `analyze-yesterday` |
+| **Region** | Frankfurt (EU) |
+| **Branch** | `main` |
+| **Schedule** | `0 4 * * *` (= 6h Paris été, 5h Paris hiver — toujours après la sync nuit `0 1 * * *`) |
+| **Build Command** | `npm install` |
+| **Command** | `npx tsx scripts/analyze-yesterday.ts` |
+| **Plan** | Starter ($7/mois) |
+
+### Variables d'environnement
+
+| Variable | Valeur |
+|---|---|
+| `DATABASE_URL` | (même BDD que le Cron #1) |
+| `ANTHROPIC_API_KEY` | clé Anthropic existante (copier depuis le Web service) |
+
+### Première exécution manuelle
+
+```bash
+# En local (dry-run) :
+npx tsx scripts/analyze-yesterday.ts --dry-run --limit 10
+
+# En local (vrai run) :
+npx tsx scripts/analyze-yesterday.ts
+
+# Backfill une date spécifique :
+npx tsx scripts/analyze-yesterday.ts --date 2026-06-17
+```
+
+### Idempotence
+
+L'INSERT est sécurisé par un index unique `(message_id, prompt_version)` — relancer
+le script sur la même date ne re-traite pas les mails déjà analysés.
+
+### Coût Claude Haiku
+
+| Volume | Coût |
+|---|---|
+| ~350 mails/jour | ~$0.30/jour ≈ **$10/mois** |
+| Coût Render Cron Starter | $7/mois |
+| **Total mensuel** | ~$17/mois |
+
+### Versioning du prompt
+
+Si on change le `SYSTEM_PROMPT` dans `analyze-yesterday.ts`, incrémenter
+`PROMPT_VERSION` (`v1` → `v2`) pour permettre une ré-analyse complète sans
+écraser l'historique précédent.

@@ -245,10 +245,10 @@ export async function getConversationImages(conversationId: string): Promise<{ d
               console.warn(`[frontapp] metadata read failed for ${att.filename}:`, metaErr);
             }
             if (tooLarge) {
-              console.log(`[frontapp] compressing ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB → target < 3.7MB, max 2000px)`);
+              console.log(`[frontapp] compressing ${att.filename} (${Math.round(imgBuffer.byteLength / 1024)}KB → target < 3.7MB, max 1500px)`);
               try {
                 imgBuffer = await sharp(imgBuffer)
-                  .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
+                  .resize({ width: 1500, height: 1500, fit: 'inside', withoutEnlargement: true })
                   .jpeg({ quality: 80 })
                   .toBuffer();
                 finalMediaType = 'image/jpeg';

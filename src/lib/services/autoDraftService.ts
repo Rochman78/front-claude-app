@@ -274,9 +274,18 @@ ${fullBody}`;
     //    avec ambiguïté sur les dimensions, Claude a écrit [X ou Y],
     //    cleanDraft a viré les crochets → chiffres disparus, unités restées
     //
-    // Règle élargie : un label-prix:valeur SANS aucun chiffre dans la valeur
-    // est suspect, peu importe ce qui reste (espace, unité € / m² / EUR…).
+    // Règle : un label-prix:valeur SANS aucun chiffre dans la valeur est
+    // suspect, peu importe ce qui reste (espace, unité € / m² / EUR…).
+    //
+    // EXCEPTION : si la valeur contient du TEXTE alphabétique intentionnel
+    // (≥ 4 lettres consécutives hors unités), c'est un placeholder explicite
+    // à compléter par le client — pas un prix oublié. Ex :
+    //  - "N° TVA intracommunautaire : (à compléter)"  → laisser passer
+    //  - "N.º de IVA intracomunitario : (a completar)" → laisser passer
+    // Cf cnv_1lo7oo9j (RED, Carlos Jordan 18/06/2026) faux positif.
     const PRICE_KEYWORD_RE = /\b(total|prix|precio|prezzo|preço|preis|prijs|iva|tva|tax|vat|mwst|btw|importe|importo|gesamt|netto|brutto|subtotal|sous[\s-]?total|surface|dimensions?|quantit[éà]|montant)\b/i;
+    // Mots à retirer avant de chercher du "vrai texte" : unités monétaires et de mesure
+    const UNIT_TOKENS_RE = /€|EUR|USD|GBP|CHF|m²|m2|m³|m3|HT|TTC|TVA|IVA|MwSt|BTW|VAT/gi;
     const emptyPriceLines = emailText.split('\n').filter((line) => {
       const t = line.trim();
       // Format "label : valeur" — label ≤ 80 chars, valeur = reste de ligne
@@ -286,10 +295,14 @@ ${fullBody}`;
       const value = m[2];
       // Label doit contenir un mot-clé prix/qté/surface
       if (!PRICE_KEYWORD_RE.test(label)) return false;
-      // Suspect si la valeur ne contient AUCUN chiffre (que des espaces, des
-      // unités €/m²/EUR, ou rien). Une valeur normale type "1 247,80 €" a un
-      // chiffre → passe.
-      return !/\d/.test(value);
+      // Si valeur contient un chiffre → c'est une vraie valeur, OK
+      if (/\d/.test(value)) return false;
+      // Si valeur contient du texte alphabétique ≥ 4 lettres (hors unités) →
+      // c'est un placeholder intentionnel (« à compléter », « a completar »,
+      // « to be filled », etc.). Pas un prix oublié.
+      const valueWithoutUnits = value.replace(UNIT_TOKENS_RE, '');
+      if (/[a-zA-Zàâäéèêëîïôöùûüçñáéíóúü]{4,}/.test(valueWithoutUnits)) return false;
+      return true;
     });
     if (emptyPriceLines.length > 0) {
       const sample = emptyPriceLines.slice(0, 3).map((l) => `« ${l.trim()} »`).join(', ');

@@ -95,11 +95,11 @@ async function main() {
   console.log(`\n  ${convs.length} convs open à refresher${sinceArg ? ` (depuis ${sinceArg})` : ''}${dryRun ? ' [DRY-RUN]' : ''}\n`);
 
   // Fetch en BDD le status actuel pour comparer
-  const r2 = await db.query(`SELECT id, status, archived_at FROM sav_conversations WHERE id = ANY($1::text[])`, [convs.map(c => c.id)]);
-  const dbState = new Map<string, { status: string | null; archived_at: Date | null }>();
-  for (const row of r2.rows) dbState.set(row.id, { status: row.status, archived_at: row.archived_at });
+  const r2 = await db.query(`SELECT id, status, archived_at, waiting_since FROM sav_conversations WHERE id = ANY($1::text[])`, [convs.map(c => c.id)]);
+  const dbState = new Map<string, { status: string | null; archived_at: Date | null; waiting_since: Date | null }>();
+  for (const row of r2.rows) dbState.set(row.id, { status: row.status, archived_at: row.archived_at, waiting_since: row.waiting_since });
 
-  let inboxChanged = 0, statusChanged = 0, archivedNow = 0, tagsAdded = 0, tagsRemoved = 0, unchanged = 0, notFound = 0, errors = 0;
+  let inboxChanged = 0, statusChanged = 0, archivedNow = 0, waitingChanged = 0, tagsAdded = 0, tagsRemoved = 0, unchanged = 0, notFound = 0, errors = 0;
   const t0 = Date.now();
 
   // Helper : synchronise les tags d'une conv avec ce que Front retourne
@@ -160,6 +160,7 @@ async function main() {
       if (!convRes) { notFound++; continue; }
       const frontStatus: string = convRes.status; // open, archived, deleted, spam, unassigned, assigned…
       const frontUpdatedAt: number | undefined = convRes.updated_at; // unix seconds
+      const frontWaitingSince: number | null = convRes.waiting_since ?? null; // unix seconds (float) ou null
       const isArchivedInFront = frontStatus === 'archived' || convRes.status_category === 'archived';
 
       const cur = dbState.get(conv.id)!;
@@ -184,6 +185,21 @@ async function main() {
       // Si Front dit pas archivée et on a un archived_at → reset (cas reopen)
       if (!isArchivedInFront && cur.archived_at) {
         updates.push(`archived_at = NULL`);
+      }
+      // waiting_since : aligne sur Front (autorité), mais seulement si différent
+      // (sinon UPDATE inutile sur ~2600 lignes à chaque run).
+      const nextWaiting = frontWaitingSince !== null ? new Date(frontWaitingSince * 1000) : null;
+      const curWaiting = cur.waiting_since;
+      const waitingDiff = (nextWaiting === null) !== (curWaiting === null)
+        || (nextWaiting !== null && curWaiting !== null && nextWaiting.getTime() !== curWaiting.getTime());
+      if (waitingDiff) {
+        if (nextWaiting !== null) {
+          updates.push(`waiting_since = $${pidx++}`);
+          params.push(nextWaiting);
+        } else {
+          updates.push(`waiting_since = NULL`);
+        }
+        waitingChanged++;
       }
 
       if (updates.length === 0) {
@@ -222,6 +238,7 @@ async function main() {
   console.log(`  Inbox changés      : ${inboxChanged}${dryRun ? ' (dry-run)' : ''}`);
   console.log(`  Status changés     : ${statusChanged}`);
   console.log(`  Nouvellement archi.: ${archivedNow}`);
+  console.log(`  Waiting_since chg. : ${waitingChanged}`);
   console.log(`  Tags ajoutés       : ${tagsAdded}`);
   console.log(`  Tags retirés       : ${tagsRemoved}`);
   console.log(`  Unchanged          : ${unchanged}`);

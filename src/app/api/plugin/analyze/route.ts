@@ -249,15 +249,14 @@ TU DOIS :
             if (sufficient.length > 0) {
               blocks.push(
                 `══════════════════════════════════════════════════════
-ℹ️ STOCK SUFFISANT — MENTIONNER LA QUANTITÉ RESTANTE (bonus client)
+ℹ️ STOCK SUFFISANT — vérification interne uniquement
 
-Stock suffisant pour la demande :
+Stock suffisant pour la demande (info INTERNE, NE PAS la mentionner dans le brouillon client) :
 ${sufficient.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : ${r.available} | client demande : ${r.qtyDemanded}`).join('\n')}
 
 TU DOIS :
 1. Chiffrer normalement au tarif catalogue.
-2. MENTIONNER dans le brouillon la quantité restante en stock après son achat — info préventive pour le client en cas de rupture imminente (Charles 17/06/2026 : "comme ça si rupture dans les prochains jours il aura eu l'info").
-3. Formulation type : « Il nous reste actuellement N unités en stock après votre commande. » (où N = stock − qté demandée).
+2. NE PAS écrire la quantité restante en stock dans le brouillon (« il nous reste N unités après votre commande » INTERDIT — Charles 19/06/2026 : « je veux juste une vérification dans les étapes avant la rédaction du brouillon »).
 ══════════════════════════════════════════════════════`
               );
             }

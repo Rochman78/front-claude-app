@@ -257,7 +257,7 @@ ${sufficient.map((r) => `  • SKU ${r.sku} | ${r.name} | stock à l'instant T :
 TU DOIS :
 1. Chiffrer normalement au tarif catalogue.
 2. MENTIONNER dans le brouillon la quantité DISPONIBLE À L'INSTANT T (= valeur du stock Octopia brut, AVANT la commande client).
-3. Formulation type : « Il reste actuellement N unités en stock. » (où N = stock brut, ex. ${sufficient[0].available}). NE PAS ÉCRIRE « après votre commande », NE PAS soustraire la qté demandée.
+3. Formulation type : « Il reste actuellement N unités en stock, sous réserve de disponibilité au moment de la validation de votre devis. » (où N = stock brut, ex. ${sufficient[0].available}). NE PAS ÉCRIRE « après votre commande », NE PAS soustraire la qté demandée. La mention « sous réserve de disponibilité au moment de la validation de votre devis » est OBLIGATOIRE pour tout devis sur un produit catalogue (le devis peut être validé plusieurs jours après son envoi, entre-temps le stock peut s'épuiser).
 ══════════════════════════════════════════════════════`
               );
             }

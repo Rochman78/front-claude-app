@@ -77,14 +77,18 @@ async function main() {
   );
   console.log(`  ${activeInboxes.size} inboxes actives (dont ${boutiqueInboxes.size} boutique)`);
 
-  // Convs à refresher : open + archived récentes (< 7j) pour rattraper les
-  // reopen non captés par le webhook. Sans ça, une conv archivée puis rouverte
-  // dans Front sans event reopen reste "archived" en BDD (cas vu pour 11 devis
-  // le 18/06/2026).
+  // Convs à refresher :
+  //   1. open & cohérentes (status != archived, archived_at IS NULL) — le gros du flow
+  //   2. archived récentes < 7j → rattrape les reopen non captés par le webhook
+  //   3. incohérentes (status != archived MAIS archived_at NOT NULL, peu importe l'âge)
+  //      → Front nous dit qu'elles sont ouvertes mais notre archived_at est périmé
+  //      (bug vu 19/06/2026 : 59 conv avec archived_at jusqu'à 2 mois → 18 devis exclus
+  //      du dashboard à cause du filtre archived_at IS NULL)
   const params: any[] = [];
   let where = `is_noise = false AND (
     (status IS DISTINCT FROM 'archived' AND archived_at IS NULL)
     OR archived_at > NOW() - INTERVAL '7 days'
+    OR (status IS DISTINCT FROM 'archived' AND archived_at IS NOT NULL)
   )`;
   if (sinceArg) {
     params.push(sinceArg);

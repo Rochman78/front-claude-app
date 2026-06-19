@@ -249,15 +249,15 @@ TU DOIS :
             if (sufficient.length > 0) {
               blocks.push(
                 `══════════════════════════════════════════════════════
-ℹ️ STOCK SUFFISANT — MENTIONNER LA QUANTITÉ RESTANTE (bonus client)
+ℹ️ STOCK SUFFISANT — MENTIONNER LA QUANTITÉ DISPONIBLE À L'INSTANT T
 
 Stock suffisant pour la demande :
-${sufficient.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : ${r.available} | client demande : ${r.qtyDemanded}`).join('\n')}
+${sufficient.map((r) => `  • SKU ${r.sku} | ${r.name} | stock à l'instant T : ${r.available} | client demande : ${r.qtyDemanded}`).join('\n')}
 
 TU DOIS :
 1. Chiffrer normalement au tarif catalogue.
-2. MENTIONNER dans le brouillon la quantité restante en stock après son achat — info préventive pour le client en cas de rupture imminente (Charles 17/06/2026 : "comme ça si rupture dans les prochains jours il aura eu l'info").
-3. Formulation type : « Il nous reste actuellement N unités en stock après votre commande. » (où N = stock − qté demandée).
+2. MENTIONNER dans le brouillon la quantité DISPONIBLE À L'INSTANT T (= valeur du stock Octopia brut, AVANT la commande client).
+3. Formulation type : « Il reste actuellement N unités en stock, sous réserve de disponibilité au moment de la validation de votre devis. » (où N = stock brut, ex. ${sufficient[0].available}). NE PAS ÉCRIRE « après votre commande », NE PAS soustraire la qté demandée. La mention « sous réserve de disponibilité au moment de la validation de votre devis » est OBLIGATOIRE pour tout devis sur un produit catalogue (le devis peut être validé plusieurs jours après son envoi, entre-temps le stock peut s'épuiser).
 ══════════════════════════════════════════════════════`
               );
             }

@@ -352,3 +352,20 @@ export async function createDraft(conversationId: string, body: string, channelI
   data.frontUrl = `https://app.frontapp.com/open/${conversationId}`;
   return data;
 }
+
+/**
+ * Archive une conversation Front. Utilisé par l'auto-send : dès qu'un devis
+ * part automatiquement, la conv est archivée pour ne pas encombrer la file
+ * du SAV. Le client peut toujours répondre — Front rouvrira la conv
+ * automatiquement à la réception du prochain mail entrant.
+ */
+export async function archiveConversation(conversationId: string): Promise<void> {
+  const res = await frontFetch(`/conversations/${conversationId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'archived' }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`archive ${res.status}: ${t.substring(0, 300)}`);
+  }
+}

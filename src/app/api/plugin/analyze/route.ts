@@ -249,14 +249,15 @@ TU DOIS :
             if (sufficient.length > 0) {
               blocks.push(
                 `══════════════════════════════════════════════════════
-ℹ️ STOCK SUFFISANT — vérification interne uniquement
+ℹ️ STOCK SUFFISANT — MENTIONNER LA QUANTITÉ DISPONIBLE À L'INSTANT T
 
-Stock suffisant pour la demande (info INTERNE, NE PAS la mentionner dans le brouillon client) :
-${sufficient.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : ${r.available} | client demande : ${r.qtyDemanded}`).join('\n')}
+Stock suffisant pour la demande :
+${sufficient.map((r) => `  • SKU ${r.sku} | ${r.name} | stock à l'instant T : ${r.available} | client demande : ${r.qtyDemanded}`).join('\n')}
 
 TU DOIS :
 1. Chiffrer normalement au tarif catalogue.
-2. NE PAS écrire la quantité restante en stock dans le brouillon (« il nous reste N unités après votre commande » INTERDIT — Charles 19/06/2026 : « je veux juste une vérification dans les étapes avant la rédaction du brouillon »).
+2. MENTIONNER dans le brouillon la quantité DISPONIBLE À L'INSTANT T (= valeur du stock Octopia brut, AVANT la commande client).
+3. Formulation type : « Il reste actuellement N unités en stock. » (où N = stock brut, ex. ${sufficient[0].available}). NE PAS ÉCRIRE « après votre commande », NE PAS soustraire la qté demandée.
 ══════════════════════════════════════════════════════`
               );
             }

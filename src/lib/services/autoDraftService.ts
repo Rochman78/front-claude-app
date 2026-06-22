@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import pool, { initDB } from '@/lib/db';
-import { frontFetch, textToHtml } from '@/lib/services/frontappService';
+import { archiveConversation, frontFetch, textToHtml } from '@/lib/services/frontappService';
 import { getStoreByInboxName } from '@/lib/stores';
 import { cleanDraft } from '@/lib/cleanDraft';
 import { callClaude } from '@/lib/services/claudeService';
@@ -371,6 +371,20 @@ ${fullBody}`;
       ? '📤 Mail envoyé automatiquement par Claude (auto-send devis). Si la réponse n\'est pas bonne, contre-mail rapidement.'
       : '✍️ Brouillon créé automatiquement par Claude. Tout le détail est dans le plugin si besoin d\'aller vérifier.';
     await postComment(conversationId, comment);
+
+    // 9. En mode auto-send, archiver la conv : le devis est parti, plus besoin
+    // qu'elle reste dans la file. Front la rouvrira automatiquement si le
+    // client répond. (En mode brouillon, on laisse ouvert — l'équipe doit la
+    // traiter.)
+    if (sendMode) {
+      try {
+        await archiveConversation(conversationId);
+        console.log(`[auto-draft] ${conversationId} archivée après auto-send`);
+      } catch (archiveErr) {
+        const m = archiveErr instanceof Error ? archiveErr.message : 'archive failed';
+        console.warn(`[auto-draft] ${conversationId} archive échouée (non bloquant):`, m);
+      }
+    }
 
     console.log(`[auto-draft] ${conversationId} (${store.code}) → ${sendMode ? 'ENVOYÉ' : 'brouillon posé'}`);
     return { conversationId, status: finalStatus };

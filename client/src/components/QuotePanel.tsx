@@ -469,7 +469,15 @@ export default function QuotePanel({
     // pré-remplie reste utile au collab). Regex large multi-langue :
     // trapèze, trapézoïdal (FR), trapezoid/trapezium (EN), trapezio (IT),
     // trapézio (PT), trapezförmig (DE), trapeziumvormig (NL), trapecio (ES).
-    const trapezeDetected = /\btrap[eéè]?[zc]/i.test(claudeText || '');
+    //
+    // Avant test, on strip les occurrences "Triangle-Trapèze" / "Triangle/Trapèze"
+    // qui viennent du LIBELLÉ de la catégorie tarifaire dans prix-ht-sur-mesure.txt
+    // (les triangles et trapèzes y partagent les mêmes lignes de prix). Cf cas
+    // cnv_1lpzowt3 (LFC, 24/06/2026) : devis 100 % triangles + rectangle, le
+    // panel affichait à tort "Trapèze détecté" car le brouillon Claude expliquait
+    // « Triangles → TRIANGLE-TRAPÈZE / ACIER → 24,50 €/m² HT ».
+    const cleanedText = (claudeText || '').replace(/triangle[-\s/]+trap[eéè]?[zc][a-zé]*/gi, '');
+    const trapezeDetected = /\btrap[eéè]?[zc]/i.test(cleanedText);
     setIsTrapeze(trapezeDetected);
     if (trapezeDetected) {
       setShowTrapezePopup(true);

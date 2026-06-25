@@ -143,6 +143,23 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
     const sole = msgs[0];
     if (sole.is_inbound !== true) return skip('l\'unique message n\'est pas entrant', store.code);
     if (sole.is_draft === true) return skip('l\'unique message est un brouillon', store.code);
+
+    // Skip les notifications auto (transporteurs, bounces, no-reply). Ces mails
+    // n'attendent aucune action humaine — on évite l'appel classifier + analyze
+    // Sonnet qui serait gaspillé. ATTENTION : mailer@shopify.com est explicitement
+    // EXCLU de la regex car c'est l'expéditeur des formulaires de contact du site
+    // (= vraies demandes clients à traiter). Le check FORM_START en aval suffit
+    // pour eux. Regex à enrichir au fur et à mesure si on observe d'autres patterns.
+    const AUTO_SENDER_RE = /(no[-_.]?reply|noreply|mailer[-_.]?daemon|^bounces?@|mondialrelay|@laposte\.fr|chronopost|colissimo|@[^@\s]*\.myshopify\.com|notifications?@(?!shopify))/i;
+    const recipients = (sole.recipients as Array<{ role?: string; handle?: string }> | undefined) || [];
+    const fromRcpt = recipients.find((r) => r.role === 'from');
+    const senderHandle = fromRcpt?.handle
+      || ((sole.author as Record<string, unknown> | undefined)?.email as string)
+      || '';
+    if (senderHandle && AUTO_SENDER_RE.test(senderHandle)) {
+      return skip(`auto-sender détecté (${senderHandle}) — pas d'analyse`, store.code);
+    }
+
     const inbound = [sole];
 
     // 3a. Vérifier que c'est une vraie demande de devis.

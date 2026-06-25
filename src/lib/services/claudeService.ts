@@ -47,7 +47,7 @@ export function buildMessages(messages: { role: string; content: string }[], doc
             {
               type: 'text' as const,
               text: `DOCUMENTS DE RÉFÉRENCE (à consulter pour répondre au client) :\n\n${documents}`,
-              cache_control: { type: 'ephemeral' as const },
+              cache_control: { type: 'ephemeral' as const, ttl: '1h' as const },
             },
           ],
         },
@@ -107,7 +107,7 @@ export function buildSystemBlock(systemPrompt: string): Anthropic.Messages.TextB
     {
       type: 'text' as const,
       text: systemPrompt || 'Tu es un assistant IA utile.',
-      cache_control: { type: 'ephemeral' as const },
+      cache_control: { type: 'ephemeral' as const, ttl: '1h' as const },
     },
   ];
 }

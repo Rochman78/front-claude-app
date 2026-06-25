@@ -33,6 +33,16 @@ fi
 
 echo "═══ Sync terminée ═══"
 
+# ─── Étape 1.5 : réconciliation status (rapide, < 1 min) ─────────
+# Le sync upsert le status depuis /conversations (snapshot Phase 2). Si une
+# conv a été ré-ouverte côté Front pendant la fenêtre sync, on rate l'event
+# reopen et la BDD reste à 'archived'. Cas vu 25/06 sur 19 conv.
+# Ce script fetch les conv ouvertes Front (paginated) et force le status
+# en BDD pour celles encore marquées archived. Idempotent.
+echo "═══ Réconciliation status conv ouvertes — $(date -u '+%Y-%m-%d %H:%M:%S') UTC ═══"
+npx tsx scripts/reconcile-open-convs.ts \
+  || echo "⚠️  Réconciliation échouée — pas bloquant, sync OK."
+
 # ─── Étape 2 : analyse Claude (bonus, non-bloquante) ─────────────
 echo "═══ Analyse mails veille — $(date -u '+%Y-%m-%d %H:%M:%S') UTC ═══"
 npx tsx scripts/analyze-yesterday.ts \

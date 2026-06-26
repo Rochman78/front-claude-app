@@ -114,10 +114,21 @@ export async function GET(req: NextRequest) {
     if (!process.env.PENNYLANE_API_TOKEN) {
       return NextResponse.json({ error: 'PENNYLANE_API_TOKEN non configuré' }, { status: 500 });
     }
-    const bankAccountId = process.env.PENNYLANE_DEVIS_BANK_ACCOUNT_ID;
-    if (!bankAccountId) {
+    // Comptes DEVIS Pennylane à interroger (union des résultats).
+    // `PENNYLANE_DEVIS_BANK_ACCOUNT_IDS` (pluriel, IDs séparés par virgule) prend
+    // le pas s'il est défini. Sinon, fallback sur le singulier `PENNYLANE_DEVIS_
+    // BANK_ACCOUNT_ID` (rétrocompat avec la conf 1 compte avant 26/06/2026).
+    const idsRaw = process.env.PENNYLANE_DEVIS_BANK_ACCOUNT_IDS
+      || process.env.PENNYLANE_DEVIS_BANK_ACCOUNT_ID
+      || '';
+    const bankAccountIds = idsRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => /^\d+$/.test(s))
+      .map((s) => parseInt(s, 10));
+    if (bankAccountIds.length === 0) {
       return NextResponse.json(
-        { error: 'PENNYLANE_DEVIS_BANK_ACCOUNT_ID non configuré (compte DEVIS Pennylane)' },
+        { error: 'PENNYLANE_DEVIS_BANK_ACCOUNT_IDS non configuré (au moins 1 ID de compte DEVIS Pennylane)' },
         { status: 500 }
       );
     }
@@ -178,38 +189,62 @@ export async function GET(req: NextRequest) {
     since.setDate(since.getDate() - SEARCH_WINDOW_DAYS);
     const sinceStr = since.toISOString().substring(0, 10);
 
-    // 4. Appel Pennylane — filtre bank_account_id + date >= since
-    const filter = JSON.stringify([
-      { field: 'bank_account_id', operator: 'eq', value: parseInt(bankAccountId, 10) },
-      { field: 'date', operator: 'gteq', value: sinceStr },
-    ]);
-    // Pas de `sort=…` : Pennylane v2 rejette toutes les syntaxes courantes
-    // (`sort=date:desc`, `sort=-date`, `sort=date`) avec 400 "Invalid sort
-    // format". On trie côté serveur par score après réception — le tri
-    // Pennylane par date n'apporte rien au scoring final.
-    const url = `${PENNYLANE_API_URL}/transactions?limit=100&filter=${encodeURIComponent(filter)}`;
-
+    // 4. Appels Pennylane parallèles — 1 par compte DEVIS, puis union des
+    // résultats. Pennylane v2 ne supporte pas d'operator `in` sur bank_account_id
+    // (testé : 400) → on fait N requêtes et on merge. Pas de `sort=…` : v2
+    // rejette toutes les syntaxes courantes (testé : 400). Tri par score
+    // côté serveur après réception.
     const t0 = Date.now();
-    const pnlnRes = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${process.env.PENNYLANE_API_TOKEN}`,
-        Accept: 'application/json',
-      },
-    });
+    const perAccountResults = await Promise.all(
+      bankAccountIds.map(async (accountId) => {
+        const filter = JSON.stringify([
+          { field: 'bank_account_id', operator: 'eq', value: accountId },
+          { field: 'date', operator: 'gteq', value: sinceStr },
+        ]);
+        const url = `${PENNYLANE_API_URL}/transactions?limit=100&filter=${encodeURIComponent(filter)}`;
+        const r = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${process.env.PENNYLANE_API_TOKEN}`,
+            Accept: 'application/json',
+          },
+        });
+        if (!r.ok) {
+          const errBody = await r.text();
+          console.error(`[bank-transactions/search] Pennylane ${r.status} compte ${accountId}:`, errBody.substring(0, 200));
+          return { accountId, ok: false, items: [] as PnlnTransaction[], status: r.status };
+        }
+        const d = await r.json();
+        return { accountId, ok: true, items: (d.items || []) as PnlnTransaction[], status: 200 };
+      })
+    );
     const elapsed = Date.now() - t0;
 
-    if (!pnlnRes.ok) {
-      const errBody = await pnlnRes.text();
-      console.error(`[bank-transactions/search] Pennylane ${pnlnRes.status} (${elapsed}ms):`, errBody.substring(0, 300));
+    // Si TOUS les comptes ont échoué, on remonte une 502. Si un seul échoue,
+    // on continue avec les autres (résilience : un compte temporairement
+    // déconnecté côté Pennylane ne doit pas bloquer la vérif sur l'autre).
+    const failedCount = perAccountResults.filter((r) => !r.ok).length;
+    if (failedCount === bankAccountIds.length) {
+      const first = perAccountResults[0];
       return NextResponse.json(
-        { error: `Pennylane ${pnlnRes.status}`, detail: errBody.substring(0, 300) },
+        { error: `Pennylane ${first.status} sur tous les comptes`, detail: 'aucun compte n\'a répondu correctement' },
         { status: 502 }
       );
     }
 
-    const data = await pnlnRes.json();
-    const items: PnlnTransaction[] = data.items || [];
-    console.log(`[bank-transactions/search] convId=${frontConvId} quote=${quoteNumber} expected=${finalExpectedAmount} → ${items.length} tx en ${elapsed}ms`);
+    // Merge + déduplique par id (sécurité — un même tx ne devrait pas
+    // apparaître sur 2 comptes, mais on protège quand même).
+    const seenTxIds = new Set<string>();
+    const items: PnlnTransaction[] = [];
+    for (const r of perAccountResults) {
+      for (const tx of r.items) {
+        const key = String(tx.id);
+        if (!seenTxIds.has(key)) {
+          seenTxIds.add(key);
+          items.push(tx);
+        }
+      }
+    }
+    console.log(`[bank-transactions/search] convId=${frontConvId} quote=${quoteNumber} expected=${finalExpectedAmount} → ${items.length} tx (${bankAccountIds.length} comptes, ${failedCount} en échec) en ${elapsed}ms`);
 
     // 5. Scorer et trier
     const scored = items
@@ -230,7 +265,7 @@ export async function GET(req: NextRequest) {
         pennylaneUrl: bddQuote?.pennylane_url || '',
         createdAt: bddQuote?.created_at || '',
       },
-      bankAccountId,
+      bankAccountIds,
       searchWindowDays: SEARCH_WINDOW_DAYS,
       scanned: items.length,
       results: scored,

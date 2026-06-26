@@ -464,19 +464,29 @@ export default function QuotePanel({
     setError(null);
     setState('extracting');
 
-    // Détection trapèze sur le brouillon Claude. Si match, on affiche le popup
-    // ET on vide les lignes produit après l'extract-quote (l'identité client
-    // pré-remplie reste utile au collab). Regex large multi-langue :
-    // trapèze, trapézoïdal (FR), trapezoid/trapezium (EN), trapezio (IT),
-    // trapézio (PT), trapezförmig (DE), trapeziumvormig (NL), trapecio (ES).
+    // Détection trapèze : on cherche le mot uniquement dans la (ou les) section(s)
+    // BROUILLON de la réponse Claude (= ce qui partira au client), JAMAIS dans
+    // les sections ÉTAPE / QUESTIONS / classification interne. Sinon on déclenche
+    // sur des analyses comparatives type « ce pourrait être un trapèze ou un
+    // quadrilatère » alors que le devis final chiffre un rectangle.
     //
-    // Avant test, on strip les occurrences "Triangle-Trapèze" / "Triangle/Trapèze"
-    // qui viennent du LIBELLÉ de la catégorie tarifaire dans prix-ht-sur-mesure.txt
-    // (les triangles et trapèzes y partagent les mêmes lignes de prix). Cf cas
-    // cnv_1lpzowt3 (LFC, 24/06/2026) : devis 100 % triangles + rectangle, le
-    // panel affichait à tort "Trapèze détecté" car le brouillon Claude expliquait
-    // « Triangles → TRIANGLE-TRAPÈZE / ACIER → 24,50 €/m² HT ».
-    const cleanedText = (claudeText || '').replace(/triangle[-\s/]+trap[eéè]?[zc][a-zé]*/gi, '');
+    // Faux positifs catchés par cette logique :
+    //   1. « TRIANGLE-TRAPÈZE / ACIER » (libellé tarifaire de prix-ht-sur-mesure.txt)
+    //      — cnv_1lpzowt3 (LFC, 24/06/2026)
+    //   2. « la zone est un trapèze ou un quadrilatère » écrit en ÉTAPE/QUESTIONS
+    //      par Claude qui décrit une photo client — cnv_1lpat1zr (RED, 26/06/2026)
+    //
+    // Regex large multi-langue conservée pour les vrais cas : trapèze /
+    // trapézoïdal (FR), trapezoid/trapezium (EN), trapezio (IT), trapézio (PT),
+    // trapezförmig (DE), trapeziumvormig (NL), trapecio (ES).
+    const broulionRe = /BROUILLON\b([\s\S]*?)(?=\n---|\nQUESTIONS\b|\nMAIL FINAL\b|$)/gi;
+    const broulionSections = [...(claudeText || '').matchAll(broulionRe)].map(m => m[0]).join('\n');
+    // Si on ne trouve aucune section BROUILLON (vieux format ou flux atypique),
+    // fallback sur le texte complet pour ne pas désactiver la détection.
+    const sourceForTrapeze = broulionSections || (claudeText || '');
+    // Strip le libellé tarifaire "Triangle-Trapèze" / "Triangle/Trapèze" /
+    // "Triangle Trapèze" avant test, pour ne pas matcher dessus.
+    const cleanedText = sourceForTrapeze.replace(/triangle[-\s/]+trap[eéè]?[zc][a-zé]*/gi, '');
     const trapezeDetected = /\btrap[eéè]?[zc]/i.test(cleanedText);
     setIsTrapeze(trapezeDetected);
     if (trapezeDetected) {

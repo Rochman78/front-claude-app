@@ -22,7 +22,7 @@ interface SearchResponse {
     pennylaneUrl: string;
     createdAt: string;
   };
-  bankAccountId: string;
+  bankAccountIds: number[];
   searchWindowDays: number;
   scanned: number;
   results: BankTx[];

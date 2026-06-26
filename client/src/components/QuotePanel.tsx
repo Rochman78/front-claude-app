@@ -646,9 +646,12 @@ export default function QuotePanel({
           if (!l.description) return undefined;
           // Pas de description si unit=piece (standard catalogue)
           if (l.unit === 'piece') return undefined;
-          // Pas de description si la quantité est un entier (standard en m2 par erreur Sonnet)
-          const qty = parseFloat(l.quantity.replace(',', '.')) || 0;
-          if (qty > 0 && qty === Math.floor(qty) && qty <= 20) return undefined;
+          // Ancien filtre « qty entière ≤ 20 → drop » retiré le 25/06/2026 :
+          // il virait à tort la description des sur-mesure dont la surface
+          // tombait sur un entier (cas cnv_1lpzowt3 SARL BABYLAND : ligne
+          // « 1 × Filet rectangulaire 3×2 m → 6 m² » sans description, alors
+          // que les 2 lignes précédentes 70,4 et 10,8 m² gardaient la leur).
+          // Le check unit='piece' suffit pour les vrais standards.
           return l.description;
         })(),
         quantity: parseFloat(l.quantity.replace(',', '.')) || 1,

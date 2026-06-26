@@ -82,6 +82,15 @@ export default function QuotePanel({
   // de tranche, prix m²…). Identité client gardée, lignes vidées.
   const [isTrapeze, setIsTrapeze] = useState(false);
   const [showTrapezePopup, setShowTrapezePopup] = useState(false);
+  // Lignes que Claude avait extraites (pour bypass si trapèze détecté à tort).
+  const [claudeExtractedLines, setClaudeExtractedLines] = useState<Array<{
+    label: string;
+    quantity: string;
+    unitPrice: string;
+    unit: string;
+    type: string;
+    description?: string;
+  }> | null>(null);
 
   // Exposer handleClick au parent
   useEffect(() => {
@@ -181,6 +190,27 @@ export default function QuotePanel({
                 la surface et le prix unitaire HT en croisant avec la grille <code>prix-ht-sur-mesure.txt</code>.
                 L'identité client (nom, email, adresse) reste pré-remplie.
               </p>
+              {/* Bypass : si le panel détecte un trapèze à tort (rectangle, triangles
+                  + libellé tarifaire "Triangle-Trapèze", mention "trapèze" dans une
+                  observation photo, etc.), on permet de restaurer les lignes que
+                  Claude avait extraites en un clic. */}
+              {claudeExtractedLines && claudeExtractedLines.length > 0 && (
+                <button
+                  onClick={() => {
+                    setShowTrapezePopup(false);
+                    setIsTrapeze(false);
+                    setVerifyForm(f => (f ? { ...f, lines: claudeExtractedLines } : f));
+                  }}
+                  style={{
+                    width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                    border: '1px solid #cbd5e0', borderRadius: '6px',
+                    background: 'white', color: '#2d3748', cursor: 'pointer',
+                    marginBottom: '8px',
+                  }}
+                >
+                  Ce n'est pas un trapèze — pré-remplir quand même
+                </button>
+              )}
               <button
                 onClick={() => setShowTrapezePopup(false)}
                 style={{
@@ -188,7 +218,7 @@ export default function QuotePanel({
                   border: 'none', borderRadius: '6px', background: '#e53e3e', color: 'white', cursor: 'pointer',
                 }}
               >
-                J'ai compris
+                J'ai compris (lignes vides)
               </button>
             </div>
           </div>
@@ -553,6 +583,21 @@ export default function QuotePanel({
       const isCatalogue = displayLines.some(l => l.unit === 'piece');
 
       setExtractedQuote(parsed as unknown as ExtractedQuote | null);
+
+      // Backup des lignes Claude pour permettre un bypass si le popup "Trapèze
+      // détecté" est un faux positif (cf bouton « Ce n'est pas un trapèze »
+      // dans le popup).
+      const backupLines = displayLines.length > 0
+        ? displayLines.map(l => ({
+            label: String(l.label || ''),
+            quantity: String(l.quantity || '1'),
+            unitPrice: String(l.unitPrice || '0'),
+            unit: String(l.unit || 'm2'),
+            type: String(l.type || 'product'),
+            description: l.description ? String(l.description) : undefined,
+          }))
+        : null;
+      setClaudeExtractedLines(backupLines);
 
       setVerifyForm({
         clientType: (customer?.type === 'company' ? 'company' : 'individual'),

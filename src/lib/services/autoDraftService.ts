@@ -216,6 +216,60 @@ ${fullBody}`;
       }
     }
 
+    // 3b. Garde-fou anti-mail-mixte : si le mail contient une demande SAV /
+    // retour / remboursement / échange / garantie / changement d'adresse /
+    // annulation, on FORCE le mode brouillon (pas d'auto-send), même si
+    // AUTO_SEND_ENABLED=true. Raison : ces sujets exigent une décision humaine,
+    // l'agent ne doit JAMAIS y répondre en auto. Cas réel cnv_1lqw8h1z (LFC,
+    // 29/06/2026, Mathieu PHILIPPE) : demande devis sur-mesure + retour
+    // commande LFC33972 → l'agent a inventé un échange avec remboursement +
+    // code promo ECHANGE15, et l'auto-send a transmis au client.
+    let forceBrouillonMode = false;
+    let savReason = '';
+    {
+      const fullBody = inboundBodies.join('\n\n').substring(0, 4000);
+      try {
+        const savPrompt = `Tu reçois un mail envoyé à une boutique e-commerce de filets / voiles d'ombrage.
+
+Réponds UNIQUEMENT par OUI ou NON.
+
+Réponds OUI si le mail contient — EN PLUS de toute demande de devis éventuelle — au moins UN de ces sujets qui exige une décision humaine :
+- retour de produit (renvoyer un article, étiquette retour, RMA, « je veux retourner »)
+- remboursement (« être remboursé », « créditer », « avoir un remboursement »)
+- échange (« changer pour », « échanger contre »)
+- garantie, défaut produit, produit cassé / défectueux / non conforme
+- réclamation SAV générale (« je ne suis pas content », « le produit ne va pas »)
+- annulation de commande
+- changement d'adresse de livraison / coordonnées sur une commande existante
+- suivi de livraison / colis perdu / délai dépassé
+- mention d'un numéro de commande déjà passée (#LFC..., commande #...) à propos d'un problème
+
+Réponds NON si le mail ne contient AUCUN de ces sujets, OU si le mail est UNIQUEMENT une demande de devis / prix / chiffrage sur un produit (même mention de dimensions, finitions, projet).
+
+Mail :
+${fullBody}`;
+        const savVerdict = (await callClaude(
+          [{ role: 'user', content: savPrompt }],
+          { model: 'claude-haiku-4-5-20251001', maxTokens: 10 }
+        )).trim().toUpperCase();
+        if (savVerdict.startsWith('OUI')) {
+          forceBrouillonMode = true;
+          savReason = 'mail contient un sujet SAV / retour / remboursement / échange / garantie / annulation → mode brouillon forcé (décision humaine requise)';
+          console.log(`[auto-draft] ${conversationId} SAV detector verdict="${savVerdict.slice(0, 30)}" → FORCE brouillon mode`);
+        } else {
+          console.log(`[auto-draft] ${conversationId} SAV detector verdict="${savVerdict.slice(0, 30)}" → auto-send autorisé`);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'sav detector err';
+        // Si le détecteur SAV plante, on bascule par prudence en mode brouillon
+        // (mieux vaut un faux positif "trop prudent" qu'un faux négatif
+        // "envoyé alors qu'il fallait pas").
+        forceBrouillonMode = true;
+        savReason = `SAV detector error: ${msg.slice(0, 80)} → mode brouillon forcé par prudence`;
+        console.warn(`[auto-draft] ${conversationId} SAV detector failed: ${msg} — force brouillon par prudence`);
+      }
+    }
+
     // 4. Contexte pour analyze
     const mailContent = inboundBodies.filter(Boolean).join('\n\n---\n\n');
     if (mailContent.length < 10) return skip('contenu client vide', store.code);
@@ -364,7 +418,13 @@ ${fullBody}`;
     // Sinon (défaut) → crée juste un brouillon que l'équipe relit/envoie à la main.
     // Kill switch : il suffit de mettre AUTO_SEND_ENABLED=false sur Render et redeploy
     // pour rebasculer en mode brouillon, sans toucher au code.
-    const sendMode = process.env.AUTO_SEND_ENABLED === 'true';
+    // Override : si le détecteur SAV a flaggé un sujet hors-devis dans le mail,
+    // on force le mode brouillon même si AUTO_SEND_ENABLED=true.
+    const envSendMode = process.env.AUTO_SEND_ENABLED === 'true';
+    const sendMode = envSendMode && !forceBrouillonMode;
+    if (envSendMode && forceBrouillonMode) {
+      console.log(`[auto-draft] ${conversationId} auto-send DÉSACTIVÉ pour cette conv : ${savReason}`);
+    }
 
     const endpointName = sendMode ? 'send-message' : 'push-draft';
     const handler = sendMode ? sendMessagePOST : pushDraftPOST;
@@ -383,9 +443,11 @@ ${fullBody}`;
 
     // 8. Idempotence + commentaire interne court pour l'agent
     const finalStatus: 'sent' | 'drafted' = sendMode ? 'sent' : 'drafted';
-    await record(conversationId, store.code, finalStatus, '');
+    await record(conversationId, store.code, finalStatus, forceBrouillonMode ? savReason : '');
     const comment = sendMode
       ? '📤 Mail envoyé automatiquement par Claude (auto-send devis). Si la réponse n\'est pas bonne, contre-mail rapidement.'
+      : forceBrouillonMode
+      ? '⚠️ Brouillon créé automatiquement par Claude — auto-send BLOQUÉ : le mail contient un sujet SAV (retour, remboursement, échange, garantie, annulation, etc.). Décision humaine requise avant envoi. Détail dans le plugin.'
       : '✍️ Brouillon créé automatiquement par Claude. Tout le détail est dans le plugin si besoin d\'aller vérifier.';
     await postComment(conversationId, comment);
 

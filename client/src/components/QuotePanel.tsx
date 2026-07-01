@@ -91,6 +91,11 @@ export default function QuotePanel({
     type: string;
     description?: string;
   }> | null>(null);
+  // Popup "croquis manquant" bloquant pour les formes non rectangle/carré
+  // sans aucune image annexée.
+  const [showMissingSketchPopup, setShowMissingSketchPopup] = useState(false);
+  const [askSketchStatus, setAskSketchStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
+  const [askSketchError, setAskSketchError] = useState<string | null>(null);
 
   // Exposer handleClick au parent
   useEffect(() => {
@@ -219,6 +224,99 @@ export default function QuotePanel({
                 }}
               >
                 J'ai compris (lignes vides)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Popup croquis manquant — bloquant quand on tente de générer le devis
+            sur une forme autre que rectangle/carré et sans aucune image annexée.
+            3 boutons : demander le croquis au client (brouillon Front), bypass
+            avec confirmation, ou annuler. */}
+        {showMissingSketchPopup && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2500,
+          }}>
+            <div style={{
+              background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '460px', width: '92%',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.2)', color: '#000',
+            }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 700, color: '#9b2c2c' }}>
+                ⚠ Croquis obligatoire — aucune image annexée
+              </h3>
+              <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '10px' }}>
+                Ce devis contient une forme <strong>{detectComplexShape()}</strong> qui ne peut pas être fabriquée
+                sans un croquis annoté (cotes, vue de dessus).
+              </p>
+              <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '12px' }}>
+                Sélectionne au moins une image dans la section « Annexes » ci-dessus,
+                ou choisis l'une des options :
+              </p>
+
+              {askSketchStatus === 'ok' ? (
+                <div style={{
+                  background: '#f0fff4', border: '1px solid #9ae6b4', borderRadius: '6px',
+                  padding: '10px', fontSize: '12.5px', color: '#22543d', marginBottom: '10px',
+                }}>
+                  ✓ Brouillon de demande de croquis posé dans Front. Relis et envoie côté Front App.
+                </div>
+              ) : askSketchStatus === 'error' ? (
+                <div style={{
+                  background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px',
+                  padding: '10px', fontSize: '12.5px', color: '#742a2a', marginBottom: '10px',
+                }}>
+                  ✗ Erreur : {askSketchError || 'push brouillon échoué'}
+                </div>
+              ) : null}
+
+              <button
+                onClick={() => handleAskSketchDraft()}
+                disabled={askSketchStatus === 'sending' || askSketchStatus === 'ok'}
+                style={{
+                  width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                  border: 'none', borderRadius: '6px', background: askSketchStatus === 'ok' ? '#a0aec0' : '#3182ce',
+                  color: 'white', cursor: askSketchStatus === 'sending' || askSketchStatus === 'ok' ? 'default' : 'pointer',
+                  marginBottom: '8px', opacity: askSketchStatus === 'sending' ? 0.7 : 1,
+                }}
+              >
+                {askSketchStatus === 'sending'
+                  ? '…envoi du brouillon…'
+                  : askSketchStatus === 'ok'
+                  ? '✓ Brouillon posé dans Front'
+                  : 'Envoyer un mail au client pour demander le croquis'}
+              </button>
+
+              <button
+                onClick={() => {
+                  const ok = window.confirm(
+                    'Es-tu sûr ? Aucun croquis annexé au devis PDF. '
+                    + "L'atelier n'aura pas la vue de dessus ni les cotes précises pour fabriquer."
+                  );
+                  if (ok) {
+                    setShowMissingSketchPopup(false);
+                    handleCreateFromForm(true);
+                  }
+                }}
+                style={{
+                  width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                  border: '1px solid #cbd5e0', borderRadius: '6px',
+                  background: 'white', color: '#dd6b20', cursor: 'pointer',
+                  marginBottom: '8px',
+                }}
+              >
+                Générer sans croquis (à confirmer)
+              </button>
+
+              <button
+                onClick={() => setShowMissingSketchPopup(false)}
+                style={{
+                  width: '100%', padding: '8px 16px', fontSize: '12.5px', fontWeight: 500,
+                  border: 'none', borderRadius: '6px',
+                  background: 'transparent', color: '#4a5568', cursor: 'pointer',
+                }}
+              >
+                Annuler
               </button>
             </div>
           </div>
@@ -672,8 +770,111 @@ export default function QuotePanel({
     }
   }
 
-  async function handleCreateFromForm() {
+  // Pousse un brouillon "demande de croquis" dans Front App. Texte rédigé en
+  // français, traduit vers la langue de la boutique au moment du push via
+  // /api/plugin/translate (même flow que le brouillon devis principal).
+  async function handleAskSketchDraft() {
+    if (!frontConversationId) {
+      setAskSketchStatus('error');
+      setAskSketchError('frontConversationId manquant');
+      return;
+    }
+    setAskSketchStatus('sending');
+    setAskSketchError(null);
+    try {
+      const prenom = verifyForm?.firstName?.trim() || '';
+      const forme = detectComplexShape() || 'forme complexe';
+      const bodyFr = [
+        `Bonjour${prenom ? ' ' + prenom : ''},`,
+        '',
+        `Merci pour votre demande. Pour vous établir un chiffrage précis sur la forme demandée (${forme}), nous aurions besoin d'un croquis à main levée de votre zone, avec :`,
+        '',
+        '- Les cotes exactes de chaque côté (au dixième de mètre près)',
+        '- Une vue de dessus de la zone à couvrir',
+        '',
+        'Une simple photo prise au smartphone d\'un croquis papier suffit.',
+        '',
+        'Dès réception, nous vous transmettons le chiffrage complet.',
+      ].join('\n');
+
+      // Traduire si boutique non-FR (même logique que DraftFinal)
+      const storeLang = STORE_LANG[storeCode] || 'fr';
+      let bodyFinal = bodyFr;
+      if (storeLang !== 'fr') {
+        try {
+          const tr = await fetch(`${API_BASE}/api/plugin/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: bodyFr, targetLanguage: storeLang, mailContent: '' }),
+          });
+          if (tr.ok) {
+            const j = await tr.json();
+            if (j.translatedText) bodyFinal = j.translatedText;
+          }
+        } catch (e) {
+          console.warn('[QuotePanel] traduction demande croquis échouée, envoi FR :', e);
+        }
+      }
+
+      // Convertir en HTML simple (paragraphes séparés par des sauts de ligne)
+      const html = bodyFinal
+        .split('\n')
+        .map((l) => (l.trim() ? `<p>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>` : '<p>&nbsp;</p>'))
+        .join('');
+
+      const res = await fetch(`${API_BASE}/api/plugin/push-draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: frontConversationId, body: html }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t.substring(0, 200) || `push-draft ${res.status}`);
+      }
+      console.log('[QuotePanel] demande de croquis pushée dans Front');
+      setAskSketchStatus('ok');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'erreur inconnue';
+      console.error('[QuotePanel] handleAskSketchDraft error:', msg);
+      setAskSketchStatus('error');
+      setAskSketchError(msg);
+    }
+  }
+
+  // Détecte si une forme "complexe" (non rectangle et non carré) est présente
+  // dans les lignes produit → un croquis annexe devient obligatoire. Sinon
+  // impossible pour l'atelier de fabriquer sans ambiguïté.
+  function detectComplexShape(): string | null {
+    if (!verifyForm) return null;
+    for (const l of verifyForm.lines) {
+      const t = `${l.label} ${l.description || ''}`.toLowerCase();
+      if (/\btriang/.test(t)) return 'triangle';
+      if (/\btrap[eéè]?[zc]/.test(t) && !/triangle[-\s/]+trap/.test(t)) return 'trapèze';
+      if (/\bquadrilat[eè]re/.test(t)) return 'quadrilatère';
+      if (/\bsur[-\s]?mesure\b/.test(t) && !/rectangul/.test(t) && !/\bcarr[éeè]/.test(t)) {
+        // sur-mesure mentionné sans forme explicite → on demande le croquis par prudence
+        return 'sur-mesure';
+      }
+    }
+    return null;
+  }
+
+  async function handleCreateFromForm(bypassSketchCheck = false) {
     if (!verifyForm) return;
+
+    // Garde-fou croquis obligatoire pour formes non rectangle/carré (sauf bypass)
+    if (!bypassSketchCheck) {
+      const complexShape = detectComplexShape();
+      const hasAnyAppendix = availableImages.some((img) => img.selected);
+      if (complexShape && !hasAnyAppendix) {
+        console.log(`[QuotePanel] Forme complexe détectée (${complexShape}) sans annexe → popup croquis manquant`);
+        setShowMissingSketchPopup(true);
+        setAskSketchStatus('idle');
+        setAskSketchError(null);
+        return;
+      }
+    }
+
     setState('creating');
     setError(null);
 

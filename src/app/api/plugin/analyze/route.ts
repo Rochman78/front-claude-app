@@ -170,10 +170,16 @@ Exemple de réponse :
 3760388670833|Filet camouflage noir 2x2|5
 3760388670796|Filet camouflage noir 2x3|3`;
 
-        console.log('[plugin/analyze] calling Haiku to extract SKUs from mail...');
+        // Rebasculé sur Sonnet 4.6 le 01/07/2026 après retours qualité :
+        // Haiku confondait couleurs proches (ex sable ↔ beige) et tailles
+        // inversées, ce qui injectait le mauvais bloc STOCK dans le prompt
+        // → décisions Claude fausses en cascade. Sur ce genre de matching
+        // exact "couleur + taille + finition", Sonnet vaut la différence
+        // de coût.
+        console.log('[plugin/analyze] calling Sonnet to extract SKUs from mail...');
         const skuResult = await callClaude(
           [{ role: 'user', content: skuExtractPrompt }],
-          { model: 'claude-haiku-4-5-20251001', maxTokens: 500 }
+          { model: 'claude-sonnet-4-6', maxTokens: 500 }
         );
 
         if (skuResult && !skuResult.includes('AUCUN')) {

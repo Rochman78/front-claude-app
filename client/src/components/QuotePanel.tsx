@@ -11,6 +11,24 @@ const STORE_LANG: Record<string, string> = {
   TAR: 'de', HET: 'nl', RED: 'es', REDE: 'pt', RETE: 'it',
 };
 
+/** Codes pays UE (27) — FR EXCLU volontairement puisqu'on est boutique française
+ * et que la TVA nationale s'applique sur les transactions FR → FR sans besoin
+ * de n° intra. */
+const EU_COUNTRIES_NON_FR = [
+  'AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','GR','HR','HU',
+  'IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK',
+];
+
+/** Libellés lisibles pour le brouillon "demande n° TVA" */
+const COUNTRY_LABEL: Record<string, string> = {
+  AT: 'Autriche', BE: 'Belgique', BG: 'Bulgarie', CY: 'Chypre', CZ: 'République tchèque',
+  DE: 'Allemagne', DK: 'Danemark', EE: 'Estonie', ES: 'Espagne', FI: 'Finlande',
+  GR: 'Grèce', HR: 'Croatie', HU: 'Hongrie', IE: 'Irlande', IT: 'Italie',
+  LT: 'Lituanie', LU: 'Luxembourg', LV: 'Lettonie', MT: 'Malte', NL: 'Pays-Bas',
+  PL: 'Pologne', PT: 'Portugal', RO: 'Roumanie', SE: 'Suède', SI: 'Slovénie',
+  SK: 'Slovaquie',
+};
+
 interface ImageSelection {
   data: string;
   mediaType: string;
@@ -96,6 +114,11 @@ export default function QuotePanel({
   const [showMissingSketchPopup, setShowMissingSketchPopup] = useState(false);
   const [askSketchStatus, setAskSketchStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
   const [askSketchError, setAskSketchError] = useState<string | null>(null);
+  // Popup "n° TVA intra manquant" bloquant pour les entreprises UE hors FR
+  // sans n° TVA intracommunautaire.
+  const [showMissingVatPopup, setShowMissingVatPopup] = useState(false);
+  const [askVatStatus, setAskVatStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
+  const [askVatError, setAskVatError] = useState<string | null>(null);
 
   // Exposer handleClick au parent
   useEffect(() => {
@@ -322,6 +345,104 @@ export default function QuotePanel({
           </div>
         )}
 
+        {/* Popup n° TVA intra manquant — bloquant quand on tente de générer le
+            devis pour une entreprise UE hors FR sans n° TVA intracommunautaire.
+            3 boutons : demander le n° au client (brouillon Front), bypass avec
+            confirmation (TVA FR 20 % appliquée par défaut), ou annuler. */}
+        {showMissingVatPopup && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2500,
+          }}>
+            <div style={{
+              background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '460px', width: '92%',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.2)', color: '#000',
+            }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 700, color: '#9b2c2c' }}>
+                ⚠ N° de TVA intracommunautaire manquant
+              </h3>
+              <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '10px' }}>
+                Client entreprise en <strong>{COUNTRY_LABEL[(verifyForm?.country || '').trim().toUpperCase()] || verifyForm?.country}</strong>{' '}
+                sans numéro de TVA intracommunautaire.
+              </p>
+              <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '12px' }}>
+                Sans ce numéro, la TVA <strong>française à 20 %</strong> sera appliquée sur le devis
+                (impossible de facturer en exonération intracommunautaire). Ajoute le n° de TVA
+                dans le champ ci-dessus si tu l'as, ou choisis :
+              </p>
+
+              {askVatStatus === 'ok' ? (
+                <div style={{
+                  background: '#f0fff4', border: '1px solid #9ae6b4', borderRadius: '6px',
+                  padding: '10px', fontSize: '12.5px', color: '#22543d', marginBottom: '10px',
+                }}>
+                  ✓ Brouillon de demande de n° TVA posé dans Front. Relis et envoie côté Front App.
+                </div>
+              ) : askVatStatus === 'error' ? (
+                <div style={{
+                  background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px',
+                  padding: '10px', fontSize: '12.5px', color: '#742a2a', marginBottom: '10px',
+                }}>
+                  ✗ Erreur : {askVatError || 'push brouillon échoué'}
+                </div>
+              ) : null}
+
+              <button
+                onClick={() => handleAskVatDraft()}
+                disabled={askVatStatus === 'sending' || askVatStatus === 'ok'}
+                style={{
+                  width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                  border: 'none', borderRadius: '6px', background: askVatStatus === 'ok' ? '#a0aec0' : '#3182ce',
+                  color: 'white', cursor: askVatStatus === 'sending' || askVatStatus === 'ok' ? 'default' : 'pointer',
+                  marginBottom: '8px', opacity: askVatStatus === 'sending' ? 0.7 : 1,
+                }}
+              >
+                {askVatStatus === 'sending'
+                  ? '…envoi du brouillon…'
+                  : askVatStatus === 'ok'
+                  ? '✓ Brouillon posé dans Front'
+                  : 'Envoyer un mail au client pour demander le n° TVA'}
+              </button>
+
+              <button
+                onClick={() => {
+                  const ok = window.confirm(
+                    'Es-tu sûr ? Le devis sera généré avec TVA française 20 % '
+                    + '(pas de facturation en exonération intracommunautaire).'
+                  );
+                  if (ok) {
+                    setShowMissingVatPopup(false);
+                    // On bypass la TVA MAIS on garde le check croquis (déjà passé
+                    // avant l'affichage du popup TVA, donc ok). On rappelle avec
+                    // (bypassSketch=true, bypassVat=true) pour skip les 2 checks
+                    // au retour.
+                    handleCreateFromForm(true, true);
+                  }
+                }}
+                style={{
+                  width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                  border: '1px solid #cbd5e0', borderRadius: '6px',
+                  background: 'white', color: '#dd6b20', cursor: 'pointer',
+                  marginBottom: '8px',
+                }}
+              >
+                Générer avec TVA française 20 % (à confirmer)
+              </button>
+
+              <button
+                onClick={() => setShowMissingVatPopup(false)}
+                style={{
+                  width: '100%', padding: '8px 16px', fontSize: '12.5px', fontWeight: 500,
+                  border: 'none', borderRadius: '6px',
+                  background: 'transparent', color: '#4a5568', cursor: 'pointer',
+                }}
+              >
+                Annuler (revenir au formulaire pour saisir le n° TVA)
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Bandeau permanent rappel trapèze, visible tant que le formulaire est ouvert */}
         {isTrapeze && (
           <div style={{
@@ -374,11 +495,10 @@ export default function QuotePanel({
                       const val = e.target.value;
                       upd('vatNumber', val);
                       // Si n° TVA intra renseigné et pays UE hors France → TVA 0 % (LIC)
-                      const euCountries = ['AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','GR','HR','HU','IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK'];
                       const countryFromVat = val.replace(/[^A-Z]/g, '').substring(0, 2);
                       const countryFromForm = f.country?.toUpperCase() || '';
                       const country = countryFromVat || countryFromForm;
-                      if (val.trim().length >= 4 && euCountries.includes(country)) {
+                      if (val.trim().length >= 4 && EU_COUNTRIES_NON_FR.includes(country)) {
                         upd('vatPercent', '0');
                       }
                     }}
@@ -531,20 +651,20 @@ export default function QuotePanel({
           if (f.lines.length === 0 || !f.lines[0].label.trim()) missing.push('Produit');
 
           const hasPhone = !!f.phone.trim();
-          // N° TVA intra OBLIGATOIRE quand client = entreprise, hors France,
-          // TVA exempt (0 %). Cas LIC intracommunautaire art. 262 ter I CGI :
-          // sans n° TVA intra valide, la facture ne peut pas être exonérée.
+          // N° TVA intra manquant : signalé en amont pour info uniquement.
+          // Le blocage effectif se fait au moment du clic "Générer le devis"
+          // via un popup (permet le bypass avec confirmation).
           const countryUpper = (f.country || '').trim().toUpperCase();
-          const vatPercentNum = parseFloat(f.vatPercent || '0');
-          const requireVatNumber =
+          const isEuNonFrCompany =
             f.clientType === 'company' &&
-            vatPercentNum === 0 &&
-            countryUpper !== 'FR' &&
-            countryUpper !== '';
-          const vatNumberMissing = requireVatNumber && !f.vatNumber.trim();
+            EU_COUNTRIES_NON_FR.includes(countryUpper);
+          const vatNumberMissing = isEuNonFrCompany && !f.vatNumber.trim();
           if (vatNumberMissing) missing.push('N° TVA intra');
 
-          const canGenerate = hasPhone && !vatNumberMissing;
+          // Le bouton reste actif même si n° TVA manquant — le clic déclenche
+          // le popup qui offre le bypass. Seul le téléphone bloque encore le
+          // bouton (obligatoire côté Pennylane pour émettre le devis).
+          const canGenerate = hasPhone;
           const hasMissing = missing.length > 0;
 
           return (
@@ -555,8 +675,8 @@ export default function QuotePanel({
                 </p>
               )}
               {vatNumberMissing && (
-                <p style={{ color: '#e53e3e', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>
-                  N° de TVA intracommunautaire manquant — obligatoire pour un client pro hors France avec TVA exemptée.
+                <p style={{ color: '#dd6b20', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>
+                  ⚠ N° de TVA intracommunautaire manquant — sans ce numéro, TVA française 20 % appliquée par défaut. Le clic sur « Générer le devis » ouvrira un popup avec l'option d'envoyer un mail au client pour demander son n° TVA.
                 </p>
               )}
               {hasMissing && canGenerate && (
@@ -841,6 +961,72 @@ export default function QuotePanel({
     }
   }
 
+  // Pousse un brouillon "demande n° TVA intra" dans Front App. Même flow que
+  // handleAskSketchDraft (traduction auto + push-draft).
+  async function handleAskVatDraft() {
+    if (!frontConversationId) {
+      setAskVatStatus('error');
+      setAskVatError('frontConversationId manquant');
+      return;
+    }
+    setAskVatStatus('sending');
+    setAskVatError(null);
+    try {
+      const prenom = verifyForm?.firstName?.trim() || '';
+      const countryCode = (verifyForm?.country || '').trim().toUpperCase();
+      const paysLabel = COUNTRY_LABEL[countryCode] || countryCode;
+      const bodyFr = [
+        `Bonjour${prenom ? ' ' + prenom : ''},`,
+        '',
+        `Merci pour votre demande. Vous étant une entreprise située en ${paysLabel}, nous pourrions vous émettre le devis en exonération de TVA intracommunautaire (art. 138 Directive 2006/112/CE). Pour cela, pourriez-vous nous transmettre votre numéro de TVA intracommunautaire ?`,
+        '',
+        'Format attendu : code pays + chiffres (ex : ES1234567890, DE123456789, IT12345678901).',
+        '',
+        'Sans ce numéro, nous serons contraints d\'appliquer la TVA française à 20 % sur le devis.',
+      ].join('\n');
+
+      const storeLang = STORE_LANG[storeCode] || 'fr';
+      let bodyFinal = bodyFr;
+      if (storeLang !== 'fr') {
+        try {
+          const tr = await fetch(`${API_BASE}/api/plugin/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: bodyFr, targetLanguage: storeLang, mailContent: '' }),
+          });
+          if (tr.ok) {
+            const j = await tr.json();
+            if (j.translatedText) bodyFinal = j.translatedText;
+          }
+        } catch (e) {
+          console.warn('[QuotePanel] traduction demande n° TVA échouée, envoi FR :', e);
+        }
+      }
+
+      const html = bodyFinal
+        .split('\n')
+        .map((l) => (l.trim() ? `<p>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>` : '<p>&nbsp;</p>'))
+        .join('');
+
+      const res = await fetch(`${API_BASE}/api/plugin/push-draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: frontConversationId, body: html }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t.substring(0, 200) || `push-draft ${res.status}`);
+      }
+      console.log('[QuotePanel] demande de n° TVA pushée dans Front');
+      setAskVatStatus('ok');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'erreur inconnue';
+      console.error('[QuotePanel] handleAskVatDraft error:', msg);
+      setAskVatStatus('error');
+      setAskVatError(msg);
+    }
+  }
+
   // Détecte si une forme "complexe" (non rectangle et non carré) est présente
   // dans les lignes produit → un croquis annexe devient obligatoire. Sinon
   // impossible pour l'atelier de fabriquer sans ambiguïté.
@@ -859,7 +1045,7 @@ export default function QuotePanel({
     return null;
   }
 
-  async function handleCreateFromForm(bypassSketchCheck = false) {
+  async function handleCreateFromForm(bypassSketchCheck = false, bypassVatCheck = false) {
     if (!verifyForm) return;
 
     // Garde-fou croquis obligatoire pour formes non rectangle/carré (sauf bypass)
@@ -871,6 +1057,22 @@ export default function QuotePanel({
         setShowMissingSketchPopup(true);
         setAskSketchStatus('idle');
         setAskSketchError(null);
+        return;
+      }
+    }
+
+    // Garde-fou n° TVA intra pour entreprise UE hors FR (sauf bypass)
+    if (!bypassVatCheck) {
+      const countryUpper = (verifyForm.country || '').trim().toUpperCase();
+      const isEuNonFrCompany =
+        verifyForm.clientType === 'company' &&
+        EU_COUNTRIES_NON_FR.includes(countryUpper);
+      const vatMissing = isEuNonFrCompany && !verifyForm.vatNumber.trim();
+      if (vatMissing) {
+        console.log(`[QuotePanel] Entreprise UE (${countryUpper}) sans n° TVA intra → popup n° TVA manquant`);
+        setShowMissingVatPopup(true);
+        setAskVatStatus('idle');
+        setAskVatError(null);
         return;
       }
     }
@@ -954,8 +1156,7 @@ export default function QuotePanel({
       };
 
       // Mention légale obligatoire pour l'intracommunautaire (UE hors France, TVA 0%, n° TVA intra)
-      const euCountries = ['AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','GR','HR','HU','IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK'];
-      if (vatPercent === 0 && euCountries.includes(country) && f.vatNumber) {
+      if (vatPercent === 0 && EU_COUNTRIES_NON_FR.includes(country) && f.vatNumber) {
         payload.freeText = 'VAT exempt – Intra-Community supply – Article 138 of Directive 2006/112/EC.';
       }
 

@@ -147,6 +147,11 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [showTemplateSummary, setShowTemplateSummary] = useState<string | null>(null);
   const [manualValidation, setManualValidation] = useState(false);
   const [draftInvalidated, setDraftInvalidated] = useState(false);
+  // Popup avertissement : QUESTIONS contient au moins un 🔴 BLOQUANT au moment
+  // du clic "Valider le brouillon". Le gérant doit lire les points bloquants
+  // avant de valider (ou bypass explicite).
+  const [showBlockingWarnPopup, setShowBlockingWarnPopup] = useState(false);
+  const [blockingItems, setBlockingItems] = useState<string[]>([]);
   const [quotePdfUrl, setQuotePdfUrl] = useState<string | null>(null);
   const [quoteNumber, setQuoteNumber] = useState<string | null>(null);
   const [_quotePennylaneUrl, setQuotePennylaneUrl] = useState<string | null>(null);
@@ -437,6 +442,36 @@ export default function PluginMain({ context }: PluginMainProps) {
   // RÈGLE STRICTE : le bloc vert n'apparaît JAMAIS si Claude a des questions en attente
   // sauf si l'utilisateur clique manuellement "Valider le brouillon"
   const lastAssistantMsg = [...claude.messages].reverse().find((m) => m.role === 'assistant');
+
+  // Extrait les points 🔴 BLOQUANT de la section QUESTIONS du dernier message
+  // assistant. Utilisé pour avertir le gérant avant qu'il ne clique "Valider
+  // le brouillon" sur un devis dont certaines questions restent bloquantes.
+  function extractBlockingItems(content: string): string[] {
+    if (!content) return [];
+    // Ne regarder que la section QUESTIONS (après le dernier "QUESTIONS" du texte)
+    const idxQ = Math.max(content.lastIndexOf('\nQUESTIONS\n'), content.lastIndexOf('\nQUESTIONS ('));
+    const questionsSection = idxQ >= 0 ? content.slice(idxQ) : content;
+    // Match toutes les occurrences 🔴 BLOQUANT — description (jusqu'à la fin de ligne
+    // ou jusqu'au prochain 🟠/🟢/🔴 ou double saut de ligne).
+    const re = /🔴\s*BLOQUANT[^\n]*(?:\n(?![\s]*[🔴🟠🟢]|\n)[^\n]*)*/g;
+    const matches = questionsSection.match(re) || [];
+    return matches.map((m) => m.trim());
+  }
+
+  // Handler du clic "Valider le brouillon" : intercepte si des 🔴 BLOQUANT
+  // sont détectés dans la section QUESTIONS. Popup 2 boutons (annuler / bypass).
+  function handleValidateDraftClick() {
+    const content = quoteDraftText || lastAssistantMsg?.content || '';
+    const blockers = extractBlockingItems(content);
+    if (blockers.length > 0) {
+      console.log(`[plugin] "Valider le brouillon" cliqué mais ${blockers.length} point(s) 🔴 BLOQUANT restant(s) → popup`);
+      setBlockingItems(blockers);
+      setShowBlockingWarnPopup(true);
+      return;
+    }
+    setManualValidation(true);
+    setDraftInvalidated(false);
+  }
   // hasDraft accepte aussi quoteDraftText : utilisé par le mail devis ET par
   // le panel "Vérifier virement reçu" pour injecter un brouillon préparé sans
   // nouveau passage par Claude.
@@ -524,6 +559,73 @@ export default function PluginMain({ context }: PluginMainProps) {
 
   return (
     <div className="plugin-shell">
+      {/* Popup avertissement : QUESTIONS contient au moins un 🔴 BLOQUANT au
+          clic "Valider le brouillon". Affiche la liste des points bloquants
+          détectés + 2 options (annuler ou pousser quand même). */}
+      {showBlockingWarnPopup && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000,
+          }}
+        >
+          <div style={{
+            background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '500px', width: '92%',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.2)', color: '#000', maxHeight: '80vh', overflowY: 'auto',
+          }}>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '15px', fontWeight: 700, color: '#9b2c2c' }}>
+              🔴 {blockingItems.length} point{blockingItems.length > 1 ? 's' : ''} bloquant{blockingItems.length > 1 ? 's' : ''} en attente
+            </h3>
+            <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '10px' }}>
+              La section QUESTIONS de Claude signale des points qui devraient être traités
+              <strong> avant </strong> de valider le brouillon.
+              Le mail que tu vas pousser risque d'être incomplet ou incorrect.
+            </p>
+            <div style={{
+              background: '#fff5f5', border: '1px solid #feb2b2', borderRadius: '6px',
+              padding: '10px', fontSize: '11.5px', lineHeight: 1.4, marginBottom: '14px',
+              maxHeight: '250px', overflowY: 'auto', whiteSpace: 'pre-wrap',
+            }}>
+              {blockingItems.map((b, i) => (
+                <div key={i} style={{ marginBottom: i < blockingItems.length - 1 ? '10px' : 0, color: '#742a2a' }}>
+                  {b}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowBlockingWarnPopup(false)}
+              style={{
+                width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                border: 'none', borderRadius: '6px', background: '#3182ce', color: 'white', cursor: 'pointer',
+                marginBottom: '8px',
+              }}
+            >
+              Annuler — revenir aux questions
+            </button>
+            <button
+              onClick={() => {
+                const ok = window.confirm(
+                  'Es-tu sûr ? Le brouillon sera poussé dans Front App sans que les points 🔴 BLOQUANT '
+                  + "aient été traités. Le mail peut contenir une info manquante ou incorrecte."
+                );
+                if (ok) {
+                  setShowBlockingWarnPopup(false);
+                  setManualValidation(true);
+                  setDraftInvalidated(false);
+                }
+              }}
+              style={{
+                width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                border: '1px solid #cbd5e0', borderRadius: '6px',
+                background: 'white', color: '#dd6b20', cursor: 'pointer',
+              }}
+            >
+              Valider quand même (à confirmer)
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Zone scrollable */}
       <div className="plugin-scroll" ref={scrollRef}>
         <MailPreview
@@ -1005,7 +1107,7 @@ export default function PluginMain({ context }: PluginMainProps) {
 
           {/* Brouillon pas validé */}
           {!showDraft && hasDraft && (
-            <button className="btn-validate" onClick={() => { setManualValidation(true); setDraftInvalidated(false); }}>
+            <button className="btn-validate" onClick={handleValidateDraftClick}>
               Valider le brouillon
             </button>
           )}

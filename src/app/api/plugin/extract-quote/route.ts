@@ -1,5 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callClaude } from '@/lib/services/claudeService';
+import pool, { initDB } from '@/lib/db';
+
+/** Taux de TVA disponibles dans prix-ht-standards.txt (colonnes 4 à 15 des lignes) */
+const VAT_RATES = [0, 17, 18, 19, 20, 21, 22, 23, 24, 25, 25.5, 27];
+
+/** Retourne l'index de colonne HT correspondant à un taux TVA, ou -1 si inconnu */
+function vatColumnIndex(vatPercent: number): number {
+  // Tolérance 0.05 pour cover 25.5
+  return VAT_RATES.findIndex((r) => Math.abs(r - vatPercent) < 0.05);
+}
+
+/** Parse une ligne du fichier prix-ht-standards.txt (nouveau format tabulaire).
+ *  Colonnes : typologie | forme | matiere | couleur | taille | SKU | TTC | HT × 12
+ *  Retourne un dict par SKU. */
+function parsePriceFile(content: string): Record<string, { ttc: number; hts: number[]; label: string }> {
+  const out: Record<string, { ttc: number; hts: number[]; label: string }> = {};
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('═') || line.startsWith('-') || line.startsWith('⚠') || line.startsWith('ℹ')) continue;
+    const parts = line.split('|').map((p) => p.trim());
+    // Attend 19 colonnes (6 meta + 1 TTC + 12 HT)
+    if (parts.length !== 19) continue;
+    const sku = parts[5];
+    if (!/^\d{12,14}$/.test(sku)) continue;
+    const ttc = parseFloat(parts[6].replace(',', '.'));
+    if (Number.isNaN(ttc)) continue;
+    const hts: number[] = [];
+    for (let i = 7; i < 19; i++) {
+      const v = parseFloat(parts[i].replace(',', '.'));
+      if (Number.isNaN(v)) break;
+      hts.push(v);
+    }
+    if (hts.length !== 12) continue;
+    const label = `${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]} ${parts[4]}`.trim();
+    out[sku] = { ttc, hts, label };
+  }
+  return out;
+}
+
+/** Charge le prix-ht-standards.txt d'un store depuis la BDD.
+ *  Cache mémoire simple (invalidé au restart process). */
+const priceFileCache: Record<string, { at: number; catalog: Record<string, { ttc: number; hts: number[]; label: string }> }> = {};
+async function loadPriceCatalog(storeCode: string): Promise<Record<string, { ttc: number; hts: number[]; label: string }>> {
+  const cached = priceFileCache[storeCode];
+  // Cache 5 min pour éviter de recharger sur chaque devis
+  if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.catalog;
+  await initDB();
+  const { rows } = await pool.query(
+    `SELECT af.content FROM agent_files af
+     JOIN agents a ON a.id = af.agent_id
+     WHERE a.store_code = $1 AND af.name = 'prix-ht-standards.txt'
+     LIMIT 1`,
+    [storeCode]
+  );
+  if (rows.length === 0) return {};
+  const catalog = parsePriceFile(rows[0].content);
+  priceFileCache[storeCode] = { at: Date.now(), catalog };
+  return catalog;
+}
+
+/** Détecte le SKU dans un label / description (13 chiffres) */
+function extractSku(label: string, description?: string): string | null {
+  const combined = `${label || ''} ${description || ''}`;
+  const m = combined.match(/\b(37\d{11})\b/);
+  return m ? m[1] : null;
+}
 
 /**
  * POST /api/plugin/extract-quote
@@ -29,8 +95,10 @@ export async function POST(req: NextRequest) {
 === RÈGLE N°2 : PRIX ===
 - Tous les unitPrice doivent être en HT.
 - Les prix de la grille sur mesure sont déjà en HT → copier tel quel.
-- Les prix du catalogue standard sont en TTC → NE PAS les copier comme HT.
-  Pour les produits standard, copier le prix TTC et mettre unit="piece".
+- Les prix du catalogue standard sont en TTC dans le mail → copier le prix TTC dans unitPrice, mettre unit="piece". Le serveur convertira automatiquement en HT selon le SKU et la TVA du client.
+
+=== RÈGLE N°2 BIS : SKU OBLIGATOIRE POUR LES STANDARDS ===
+Pour CHAQUE ligne avec unit="piece" (standard catalogue), tu DOIS inclure le SKU (13 chiffres, commence par 37) dans le label OU dans la description. Cherche le SKU dans le mail ou déduis-le depuis le fichier prix-ht-standards.txt en croisant typologie + forme + matière + couleur + taille. Format recommandé : ajouter " (SKU 3770030527170)" à la fin du label. Sans SKU, la conversion TTC→HT côté serveur est impossible.
 
 === RÈGLE N°3 : LABEL (TOUJOURS dans la langue de la boutique) ===
 - Le brouillon est en français mais le label du devis PDF DOIT être dans la LANGUE DE LA BOUTIQUE.
@@ -122,7 +190,64 @@ ${claudeText}
       return NextResponse.json({ error: 'Réponse Claude invalide', raw: result }, { status: 500 });
     }
 
-    return NextResponse.json(parsed);
+    // Post-processing STANDARDS : convertir le TTC saisi par Claude en HT via
+    // le SKU + le taux TVA. Claude est censé écrire le TTC affiché dans le mail
+    // + le SKU dans le label. Le serveur lit le prix-ht-standards.txt du store,
+    // vérifie la cohérence TTC catalogue vs TTC saisi, et remplace unitPrice
+    // par le vrai HT selon la TVA du client.
+    //
+    // Warnings orange (non bloquants) émis dans warnings[] renvoyé au client :
+    //  - Aucun SKU dans le label → fallback : on garde le prix tel quel (comportement d'avant)
+    //  - SKU introuvable au catalogue → fallback idem
+    //  - TTC catalogue ≠ TTC saisi (tolérance 0,01 €) → on applique quand même
+    //    le HT catalogue (catalogue prioritaire) + warning
+    //  - Taux TVA absent des 12 colonnes du fichier → fallback
+    const warnings: string[] = [];
+    try {
+      if (storeCode && Array.isArray(parsed?.lines)) {
+        const catalog = await loadPriceCatalog(storeCode);
+        const vatPercent = typeof parsed.vatPercent === 'number' ? parsed.vatPercent : 20;
+        const vatColIdx = vatColumnIndex(vatPercent);
+
+        for (let i = 0; i < parsed.lines.length; i++) {
+          const line = parsed.lines[i];
+          if (line?.unit !== 'piece') continue; // sur-mesure et autres inchangés
+
+          const priceInMail = Number(line.unitPrice) || 0;
+          const sku = extractSku(String(line.label || ''), String(line.description || ''));
+
+          if (!sku) {
+            warnings.push(`Ligne "${(line.label || '').substring(0, 60)}" : aucun SKU détecté dans le label → prix conservé tel quel (${priceInMail} €). Ajoute manuellement le SKU pour vérification.`);
+            continue;
+          }
+          const entry = catalog[sku];
+          if (!entry) {
+            warnings.push(`Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : SKU introuvable dans le catalogue du store ${storeCode} → prix conservé (${priceInMail} €).`);
+            continue;
+          }
+          if (vatColIdx < 0) {
+            warnings.push(`Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : taux TVA ${vatPercent} % non couvert par le catalogue (taux disponibles : ${VAT_RATES.join(', ')}) → prix conservé.`);
+            continue;
+          }
+
+          // Vérif cohérence TTC saisi ≈ TTC catalogue (tolérance 0,01 €)
+          if (Math.abs(entry.ttc - priceInMail) > 0.01) {
+            warnings.push(
+              `⚠ Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : TTC saisi ${priceInMail.toFixed(2)} € ≠ TTC catalogue ${entry.ttc.toFixed(2)} €. Le HT catalogue est utilisé (${entry.hts[vatColIdx].toFixed(2)} € HT à ${vatPercent} %). Vérifie que le mail n'a pas annoncé un montant différent au client.`
+            );
+          }
+
+          const oldPrice = line.unitPrice;
+          line.unitPrice = entry.hts[vatColIdx];
+          console.log(`[extract-quote] SKU ${sku} : ${oldPrice} € → HT ${line.unitPrice} € (TVA ${vatPercent} %)`);
+        }
+      }
+    } catch (postErr) {
+      console.warn('[extract-quote] post-processing (SKU → HT) failed:', postErr);
+      warnings.push(`Erreur interne lors de la vérification catalogue : ${(postErr as Error).message || postErr}. Prix conservés tels quels.`);
+    }
+
+    return NextResponse.json({ ...parsed, warnings });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Erreur inconnue';
     console.error('[extract-quote] error:', message);

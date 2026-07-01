@@ -122,6 +122,9 @@ export default function QuotePanel({
   // Popup "TVA incohérente" bloquant quand n° TVA intra UE renseigné mais
   // taux TVA saisi ≠ 0 (LIC art. 138 impose 0 %).
   const [showVatShouldBeZeroPopup, setShowVatShouldBeZeroPopup] = useState(false);
+  // Warnings serveur (ex: TTC saisi ≠ TTC catalogue, SKU absent, etc.)
+  // remontés depuis /api/plugin/extract-quote. Affichés en orange dans le panel.
+  const [extractWarnings, setExtractWarnings] = useState<string[]>([]);
 
   // Exposer handleClick au parent
   useEffect(() => {
@@ -626,6 +629,25 @@ export default function QuotePanel({
           </div>
         </div>
 
+        {/* Warnings serveur (cohérence catalogue SKU / TTC) — affichés au-dessus
+            des lignes produit, en orange (non bloquant, l'utilisateur peut
+            corriger à la main ou valider). */}
+        {extractWarnings.length > 0 && (
+          <div style={{
+            background: '#fffbeb', border: '1px solid #f6ad55', borderRadius: '6px',
+            padding: '8px 10px', margin: '6px 0 10px 0', fontSize: '11.5px', color: '#7b341e',
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: '4px' }}>
+              ⚠ {extractWarnings.length} avertissement{extractWarnings.length > 1 ? 's' : ''} de cohérence catalogue :
+            </div>
+            <ul style={{ margin: 0, paddingLeft: '18px', lineHeight: 1.4 }}>
+              {extractWarnings.map((w, i) => (
+                <li key={i} style={{ marginBottom: i < extractWarnings.length - 1 ? '4px' : 0 }}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Produits */}
         <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
           <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '12px' }}>Produits</div>
@@ -874,9 +896,16 @@ export default function QuotePanel({
       if (response.ok) {
         parsed = await response.json();
         console.log('[QuotePanel] extract-quote result:', parsed);
+        // Récupérer les warnings serveur (cohérence catalogue SKU / TTC)
+        const w = (parsed?.warnings as string[] | undefined) || [];
+        setExtractWarnings(w);
+        if (w.length > 0) {
+          console.warn('[QuotePanel] extract-quote warnings:', w);
+        }
       } else {
         const err = await response.json().catch(() => ({ error: 'Erreur extraction' }));
         console.warn('[QuotePanel] extract-quote failed:', err);
+        setExtractWarnings([]);
       }
 
       // Sauver le TTC attendu (extrait du mail)

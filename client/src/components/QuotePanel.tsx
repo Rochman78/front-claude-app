@@ -119,6 +119,9 @@ export default function QuotePanel({
   const [showMissingVatPopup, setShowMissingVatPopup] = useState(false);
   const [askVatStatus, setAskVatStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
   const [askVatError, setAskVatError] = useState<string | null>(null);
+  // Popup "TVA incohérente" bloquant quand n° TVA intra UE renseigné mais
+  // taux TVA saisi ≠ 0 (LIC art. 138 impose 0 %).
+  const [showVatShouldBeZeroPopup, setShowVatShouldBeZeroPopup] = useState(false);
 
   // Exposer handleClick au parent
   useEffect(() => {
@@ -442,6 +445,99 @@ export default function QuotePanel({
             </div>
           </div>
         )}
+
+        {/* Popup TVA devrait être à 0 % — bloquant quand n° TVA intra UE
+            renseigné mais taux TVA saisi ≠ 0. LIC art. 138 : la vente est
+            obligatoirement exonérée. Sinon = surfacturation client. */}
+        {showVatShouldBeZeroPopup && verifyForm && (() => {
+          const countryUpper = (verifyForm.country || '').trim().toUpperCase();
+          const paysLabel = COUNTRY_LABEL[countryUpper] || countryUpper;
+          const currentVat = parseFloat(verifyForm.vatPercent || '0');
+          // Estimation grossière de l'écart (calcul propre côté sub-total)
+          const totalHT = verifyForm.lines.reduce((acc, l) => {
+            const q = parseFloat(l.quantity.replace(',', '.')) || 0;
+            const p = parseFloat(l.unitPrice.replace(',', '.')) || 0;
+            return acc + q * p;
+          }, 0);
+          const ecartTTC = Math.round(totalHT * (currentVat / 100) * 100) / 100;
+          return (
+            <div style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2500,
+            }}>
+              <div style={{
+                background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '480px', width: '92%',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.2)', color: '#000',
+              }}>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 700, color: '#9b2c2c' }}>
+                  ⚠ TVA incohérente — devrait être à 0 %
+                </h3>
+                <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '10px' }}>
+                  Client entreprise en <strong>{paysLabel}</strong> avec n° TVA intracommunautaire{' '}
+                  <code style={{ background: '#f7fafc', padding: '1px 4px', borderRadius: 3 }}>{verifyForm.vatNumber}</code>{' '}
+                  renseigné.
+                </p>
+                <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '10px' }}>
+                  Dans ce cas, la loi impose <strong>TVA à 0 %</strong> (livraison intracommunautaire — art. 138 Directive 2006/112/CE). Or le taux saisi est <strong>{currentVat} %</strong>.
+                </p>
+                {ecartTTC > 0 && (
+                  <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '10px', color: '#c05621', fontWeight: 600 }}>
+                    Écart potentiel : ~{ecartTTC.toFixed(2)} € de TVA en trop sur le devis.
+                  </p>
+                )}
+                <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '14px', color: '#742a2a' }}>
+                  ⚠ Avant de continuer : <strong>vérifie l'historique mail</strong> — le client a peut-être vu un TTC annoncé avec cette TVA nationale. Le vrai TTC en LIC sera différent, il faudra peut-être re-communiquer.
+                </p>
+
+                <button
+                  onClick={() => {
+                    setVerifyForm({ ...verifyForm, vatPercent: '0' });
+                    setShowVatShouldBeZeroPopup(false);
+                  }}
+                  style={{
+                    width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                    border: 'none', borderRadius: '6px', background: '#38a169', color: 'white', cursor: 'pointer',
+                    marginBottom: '8px',
+                  }}
+                >
+                  Corriger : passer la TVA à 0 % (LIC)
+                </button>
+
+                <button
+                  onClick={() => {
+                    const ok = window.confirm(
+                      `Es-tu sûr ? Le devis partira avec TVA ${currentVat} % au lieu de 0 %. `
+                      + "Vérifie que le client n'a pas déjà vu un montant TTC annoncé — sinon le vrai TTC en LIC sera différent."
+                    );
+                    if (ok) {
+                      setShowVatShouldBeZeroPopup(false);
+                      handleCreateFromForm(true, true, true);
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                    border: '1px solid #cbd5e0', borderRadius: '6px',
+                    background: 'white', color: '#dd6b20', cursor: 'pointer',
+                    marginBottom: '8px',
+                  }}
+                >
+                  Générer quand même avec TVA {currentVat} % (à confirmer)
+                </button>
+
+                <button
+                  onClick={() => setShowVatShouldBeZeroPopup(false)}
+                  style={{
+                    width: '100%', padding: '8px 16px', fontSize: '12.5px', fontWeight: 500,
+                    border: 'none', borderRadius: '6px',
+                    background: 'transparent', color: '#4a5568', cursor: 'pointer',
+                  }}
+                >
+                  Annuler (revenir au formulaire)
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Bandeau permanent rappel trapèze, visible tant que le formulaire est ouvert */}
         {isTrapeze && (
@@ -1045,7 +1141,7 @@ export default function QuotePanel({
     return null;
   }
 
-  async function handleCreateFromForm(bypassSketchCheck = false, bypassVatCheck = false) {
+  async function handleCreateFromForm(bypassSketchCheck = false, bypassVatCheck = false, bypassVatShouldBeZeroCheck = false) {
     if (!verifyForm) return;
 
     // Garde-fou croquis obligatoire pour formes non rectangle/carré (sauf bypass)
@@ -1073,6 +1169,22 @@ export default function QuotePanel({
         setShowMissingVatPopup(true);
         setAskVatStatus('idle');
         setAskVatError(null);
+        return;
+      }
+    }
+
+    // Garde-fou TVA=0 obligatoire quand n° TVA intra UE renseigné (LIC
+    // art. 138 Directive 2006/112/CE). Sinon le client reçoit un devis
+    // avec TVA nationale, alors qu'il aurait dû être exonéré → risque de
+    // surfacturation vs ce qui a été annoncé dans les précédents mails.
+    if (!bypassVatShouldBeZeroCheck) {
+      const countryUpper = (verifyForm.country || '').trim().toUpperCase();
+      const isEuNonFr = EU_COUNTRIES_NON_FR.includes(countryUpper);
+      const hasVatNumber = !!verifyForm.vatNumber.trim();
+      const vatPercent = parseFloat(verifyForm.vatPercent || '0');
+      if (isEuNonFr && hasVatNumber && vatPercent !== 0) {
+        console.log(`[QuotePanel] n° TVA intra ${verifyForm.vatNumber} + pays ${countryUpper} + TVA ${vatPercent}% → popup TVA devrait être 0`);
+        setShowVatShouldBeZeroPopup(true);
         return;
       }
     }

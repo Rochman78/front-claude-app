@@ -1268,8 +1268,11 @@ export default function QuotePanel({
       };
 
       // Mention légale obligatoire pour l'intracommunautaire (UE hors France, TVA 0%, n° TVA intra)
+      // Format demandé par Charles 01/07/2026 : mention FR avec article 262 ter I CGI
+      // + article 138 Directive 2006/112/CE. Injectée dans le champ
+      // "ajouter une description" du devis Pennylane (pdf_invoice_free_text).
       if (vatPercent === 0 && EU_COUNTRIES_NON_FR.includes(country) && f.vatNumber) {
-        payload.freeText = 'VAT exempt – Intra-Community supply – Article 138 of Directive 2006/112/EC.';
+        payload.freeText = 'Exonération de TVA – Livraison intracommunautaire – article 262 ter I du CGI – article 138 de la directive 2006/112/CE.';
       }
 
       // Traduire labels si boutique non-FR

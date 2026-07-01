@@ -78,8 +78,13 @@ export async function POST(req: NextRequest) {
     };
     const langName = langNames[detectedLanguage] || detectedLanguage;
 
+    // Rebasculé Sonnet 4.6 le 01/07/2026 : la traduction Haiku donnait des
+    // formulations maladroites (surtout DE / NL / IT) qui dégradaient
+    // l'image de marque puisque le brouillon part directement au client.
+    // La détection de langue au-dessus reste sur Haiku (le sélecteur
+    // pré-rempli par store_code prime de toute façon).
     const translateResponse = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       messages: [
         {

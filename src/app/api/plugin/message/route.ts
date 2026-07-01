@@ -141,9 +141,12 @@ RÈGLES :
 - Retourner UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
 - Si aucun produit standard identifié, retourner : AUCUN`;
 
+        // Rebasculé Sonnet 4.6 le 01/07/2026 — même raison qu'analyze : Haiku
+        // se trompait sur le matching couleur/taille exact, injection stock
+        // erronée en cascade.
         const skuResult = await callClaude(
           [{ role: 'user', content: skuExtractPrompt }],
-          { model: 'claude-haiku-4-5-20251001', maxTokens: 500 }
+          { model: 'claude-sonnet-4-6', maxTokens: 500 }
         );
 
         if (skuResult && !skuResult.includes('AUCUN')) {

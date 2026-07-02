@@ -13,6 +13,23 @@ import ErrorBoundary from './ErrorBoundary';
 import LoadingState from './LoadingState';
 import { isDraftReady } from '../utils/cleanDraft';
 
+/** Prompt à copier par le gérant pour décrire une PJ trop volumineuse via Claude Desktop. */
+const PJ_DESCRIBE_PROMPT = 'Décris moi l\'image pour claude api frontapp';
+
+/** Détecte le marker de PJ trop volumineuse renvoyé par /api/plugin/analyze. */
+const PJ_MARKER = '__PJ_TOO_LARGE__';
+
+function parsePjMarker(text: string | undefined | null): { name: string; sizeBytes: number; type: 'pdf' | 'image' }[] | null {
+  if (!text || !text.startsWith(PJ_MARKER)) return null;
+  try {
+    const payload = JSON.parse(text.slice(PJ_MARKER.length));
+    const list = payload?.attachments;
+    return Array.isArray(list) ? list : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Structure réelle d'un message Front SDK */
 interface FrontAttachment {
   id: string;
@@ -430,13 +447,28 @@ export default function PluginMain({ context }: PluginMainProps) {
     setSelectedTemplateId('');
   }
 
+  // Détecter le court-circuit PJ trop volumineuse (renvoyé par /analyze quand
+  // une PJ > 22 MB PDF ou > 5 MB image est présente). Le marker peut arriver
+  // soit dans le streamingContent (temps réel) soit dans le premier message
+  // assistant (après stream ou après restore depuis cache).
+  const pjTooLargeFromStream = parsePjMarker(claude.streamingContent);
+  const pjTooLargeFromMsg = parsePjMarker(claude.messages.find((m) => m.role === 'assistant')?.content);
+  const pjTooLarge = pjTooLargeFromStream || pjTooLargeFromMsg;
+
+  // Messages exposés à ClaudeChat et à toute la logique brouillon : on filtre
+  // le message marker pour qu'il n'apparaisse jamais en tant que "réponse
+  // Claude" ni ne déclenche hasDraft / QuotePanel.
+  const visibleMessages = pjTooLargeFromMsg
+    ? claude.messages.filter((m) => !parsePjMarker(m.content))
+    : claude.messages;
+
   // État initial : pas encore d'analyse
-  const hasMessages = claude.messages.length > 0;
+  const hasMessages = visibleMessages.length > 0;
 
   // Détecter si le brouillon est prêt
   // RÈGLE STRICTE : le bloc vert n'apparaît JAMAIS si Claude a des questions en attente
   // sauf si l'utilisateur clique manuellement "Valider le brouillon"
-  const lastAssistantMsg = [...claude.messages].reverse().find((m) => m.role === 'assistant');
+  const lastAssistantMsg = [...visibleMessages].reverse().find((m) => m.role === 'assistant');
   // hasDraft accepte aussi quoteDraftText : utilisé par le mail devis ET par
   // le panel "Vérifier virement reçu" pour injecter un brouillon préparé sans
   // nouveau passage par Claude.
@@ -631,10 +663,79 @@ export default function PluginMain({ context }: PluginMainProps) {
         <LoadingState progressive />
       )}
 
-      {(hasMessages || claude.streamingContent) && (
+      {/* Bandeau orange : PJ trop volumineuse pour l'API Anthropic (> 22 MB
+          PDF ou > 5 MB image). Le gérant doit décrire la PJ via Claude
+          Desktop, puis coller la description dans le chat pour que l'agent
+          continue l'analyse. */}
+      {pjTooLarge && pjTooLarge.length > 0 && (
+        <div
+          style={{
+            margin: '8px 0',
+            padding: '12px',
+            background: '#fff4e5',
+            border: '2px solid #ff9800',
+            borderRadius: '8px',
+            fontSize: '12px',
+            color: '#3d2600',
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '6px' }}>
+            ⚠️ PJ trop volumineuse pour Claude API
+          </div>
+          <div style={{ marginBottom: '8px' }}>
+            {pjTooLarge.map((a) => (
+              <div key={a.name} style={{ fontFamily: 'monospace', fontSize: '11px' }}>
+                • {a.name} ({(a.sizeBytes / 1024 / 1024).toFixed(1)} MB)
+              </div>
+            ))}
+          </div>
+          <div style={{ marginBottom: '8px' }}>
+            Ouvre l'app <strong>Claude Desktop</strong>, glisse-y la PJ avec ce prompt :
+          </div>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '8px' }}>
+            <code
+              style={{
+                flex: 1,
+                padding: '6px 8px',
+                background: 'white',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontFamily: 'monospace',
+                userSelect: 'all',
+              }}
+            >
+              {PJ_DESCRIBE_PROMPT}
+            </code>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(PJ_DESCRIBE_PROMPT).catch(() => {});
+              }}
+              style={{
+                padding: '6px 10px',
+                background: '#ff9800',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              📋 Copier
+            </button>
+          </div>
+          <div style={{ fontSize: '11px', fontStyle: 'italic' }}>
+            Colle ensuite la description que Claude Desktop te renvoie dans le chat ci-dessous — l'agent reprendra l'analyse avec ce contexte.
+          </div>
+        </div>
+      )}
+
+      {(hasMessages || (claude.streamingContent && !parsePjMarker(claude.streamingContent))) && (
         <ClaudeChat
-          messages={claude.messages}
-          streamingContent={claude.streamingContent}
+          messages={visibleMessages}
+          streamingContent={parsePjMarker(claude.streamingContent) ? '' : claude.streamingContent}
           isStreaming={claude.isStreaming}
           onSend={claude.sendMessage}
         />

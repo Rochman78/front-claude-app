@@ -82,18 +82,31 @@ export async function getConversationMessages(conversationId: string): Promise<{
   };
 }
 
+export type OversizedAttachment = { name: string; sizeBytes: number; type: 'pdf' | 'image' };
+
 /**
- * Récupère les images (PJ) d'une conversation Front.
- * Télécharge les attachments image > 10KB et les convertit en base64.
+ * Récupère les images (PJ) d'une conversation Front avec métadonnées des PJ oversized.
+ * Base pour getConversationImages() (legacy) et pour les routes qui doivent alerter
+ * le gérant quand une PJ dépasse la limite Anthropic (32 MB base64 par bloc PDF).
  */
-export async function getConversationImages(conversationId: string): Promise<{ data: string; mediaType: string; name: string; type: 'image' | 'pdf' }[]> {
+export async function getConversationAttachments(conversationId: string): Promise<{
+  images: { data: string; mediaType: string; name: string; type: 'image' | 'pdf' }[];
+  oversized: OversizedAttachment[];
+}> {
   const images: { data: string; mediaType: string; name: string; type: 'image' | 'pdf' }[] = [];
+  const oversized: OversizedAttachment[] = [];
   const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
   const pdfType = 'application/pdf';
   const maxImages = 10;
   const minSize = 10 * 1024; // 10KB min — exclut logos/icônes
   const maxSize = 5 * 1024 * 1024; // 5MB max
-  const maxPdfSize = 30 * 1024 * 1024; // 30MB max pour les PDF
+  // Baissé 30 MB → 22 MB le 02/07/2026 (cas cnv_1lqryidz Anne Tonetto, PDF
+  // 28 MB) : la limite Anthropic pour un bloc document PDF est 32 MB en
+  // base64. 22 MB brut × 1.33 ≈ 29 MB base64 = safe sous le plafond.
+  // Au-delà, on ne skip PAS silencieusement : la route analyze retournera un
+  // marker __PJ_TOO_LARGE__ au plugin pour que le gérant colle une
+  // description via Claude Desktop.
+  const maxPdfSize = 22 * 1024 * 1024;
 
   // Dédup : la même PJ peut apparaître plusieurs fois dans un fil (signature mail
   // intégrée, citation des messages précédents, etc.) — typique d'image001.png à
@@ -103,7 +116,7 @@ export async function getConversationImages(conversationId: string): Promise<{ d
 
   try {
     const res = await frontFetch(`/conversations/${conversationId}/messages`);
-    if (!res.ok) return [];
+    if (!res.ok) return { images, oversized };
     const data = await res.json();
     const messages = data._results || [];
 
@@ -168,10 +181,12 @@ export async function getConversationImages(conversationId: string): Promise<{ d
         }
         if (!isPdf && size > maxSize) {
           console.log(`[frontapp] skipping large image ${att.filename} (${size} bytes)`);
+          oversized.push({ name: att.filename || 'image', sizeBytes: size, type: 'image' });
           continue;
         }
         if (isPdf && size > maxPdfSize) {
           console.log(`[frontapp] skipping large PDF ${att.filename} (${size} bytes)`);
+          oversized.push({ name: att.filename || 'document.pdf', sizeBytes: size, type: 'pdf' });
           continue;
         }
 
@@ -274,7 +289,16 @@ export async function getConversationImages(conversationId: string): Promise<{ d
   }
 
   const totalB64 = images.reduce((s, im) => s + im.data.length, 0);
-  console.log(`[frontapp] getConversationImages done: ${images.length} attachments, ~${Math.round(totalB64 / 1024)}KB base64 total`);
+  console.log(`[frontapp] getConversationAttachments done: ${images.length} attachments (~${Math.round(totalB64 / 1024)}KB base64), ${oversized.length} oversized skipped`);
+  return { images, oversized };
+}
+
+/**
+ * Legacy : retourne uniquement les images (compat avec les callers qui n'ont
+ * pas besoin des PJ oversized). Nouveaux callers → getConversationAttachments.
+ */
+export async function getConversationImages(conversationId: string): Promise<{ data: string; mediaType: string; name: string; type: 'image' | 'pdf' }[]> {
+  const { images } = await getConversationAttachments(conversationId);
   return images;
 }
 

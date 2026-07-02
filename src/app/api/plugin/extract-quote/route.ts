@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
 - Les prix du catalogue standard sont en TTC dans le mail → copier le prix TTC dans unitPrice, mettre unit="piece". Le serveur convertira automatiquement en HT selon le SKU et la TVA du client.
 
 === RÈGLE N°2 BIS : SKU OBLIGATOIRE POUR LES STANDARDS ===
-Pour CHAQUE ligne avec unit="piece" (standard catalogue), tu DOIS inclure le SKU (13 chiffres, commence par 37) dans le label OU dans la description. Cherche le SKU dans le mail ou déduis-le depuis le fichier prix-ht-standards.txt en croisant typologie + forme + matière + couleur + taille. Format recommandé : ajouter " (SKU 3770030527170)" à la fin du label. Sans SKU, la conversion TTC→HT côté serveur est impossible.
+Pour CHAQUE ligne avec unit="piece" (standard catalogue), tu DOIS inclure le SKU (13 chiffres, commence par 37) dans la DESCRIPTION (PAS dans le label — le label reste propre avec juste le nom produit). Cherche le SKU dans le mail ou déduis-le depuis le fichier prix-ht-standards.txt en croisant typologie + forme + matière + couleur + taille. Format EXACT : description = "SKU : 3770030527170". Sans SKU, la conversion TTC→HT côté serveur est impossible.
 
 === RÈGLE N°3 : LABEL (TOUJOURS dans la langue de la boutique) ===
 - Le brouillon est en français mais le label du devis PDF DOIT être dans la LANGUE DE LA BOUTIQUE.
@@ -132,8 +132,8 @@ Pour CHAQUE ligne avec unit="piece" (standard catalogue), tu DOIS inclure le SKU
 - Remise globale (ex: -10%) → champ "discountPercent", PAS une ligne dans "lines".
 
 === RÈGLE N°5 : DESCRIPTION ===
-- SUR MESURE uniquement : description = "Quantité : X | Total m² : Y | Délai de production + livraison : environ 21 jours"
-- STANDARD : pas de description.
+- SUR MESURE : description = "Quantité : X | Total m² : Y | Délai de production + livraison : environ 21 jours"
+- STANDARD : description = "SKU : xxxxxxxxxxxxx" (cf. règle N°2 BIS — le SKU va SUR SA PROPRE LIGNE en description, pour lisibilité du devis PDF et parsing serveur TTC→HT).
 
 === RÈGLE N°7 : COORDONNÉES CLIENT ===
 - Chercher le téléphone, nom, prénom, adresse dans TOUT le fil de mails (y compris le PREMIER message, souvent un formulaire de contact avec le numéro de téléphone).

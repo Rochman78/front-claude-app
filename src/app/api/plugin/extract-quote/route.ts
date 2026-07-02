@@ -220,19 +220,30 @@ ${claudeText || '(aucun chiffrage service client — extraire depuis le fil de m
           if (line?.unit !== 'piece') continue; // sur-mesure et autres inchangés
 
           const priceInMail = Number(line.unitPrice) || 0;
+
+          // Skip les lignes hors périmètre catalogue :
+          //  - type transport / transport_discount : ce sont des services de
+          //    livraison, pas des produits catalogue (pas de SKU attendu).
+          //  - unitPrice = 0 : ligne "gratuite" (livraison offerte, remise,
+          //    etc.), rien à vérifier côté prix.
+          const lineType = String(line.type || '').toLowerCase();
+          if (lineType === 'transport' || lineType === 'transport_discount' || priceInMail === 0) {
+            continue;
+          }
+
           const sku = extractSku(String(line.label || ''), String(line.description || ''));
 
           if (!sku) {
-            warnings.push(`Ligne "${(line.label || '').substring(0, 60)}" : aucun SKU détecté dans le label → prix conservé tel quel (${priceInMail} €). Ajoute manuellement le SKU pour vérification.`);
+            warnings.push(`⚠️ Ligne "${(line.label || '').substring(0, 60)}" : SKU manquant dans la description → prix conservé (${priceInMail.toFixed(2)} €). Complète la description avec « SKU : xxxxxxxxxxxxx » (13 chiffres) pour activer la vérification catalogue.`);
             continue;
           }
           const entry = catalog[sku];
           if (!entry) {
-            warnings.push(`Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : SKU introuvable dans le catalogue du store ${storeCode} → prix conservé (${priceInMail} €).`);
+            warnings.push(`⚠️ Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : SKU introuvable dans prix-ht-standards.txt du store ${storeCode} → prix conservé (${priceInMail.toFixed(2)} €). Vérifie que le SKU est correct.`);
             continue;
           }
           if (vatColIdx < 0) {
-            warnings.push(`Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : taux TVA ${vatPercent} % non couvert par le catalogue (taux disponibles : ${VAT_RATES.join(', ')}) → prix conservé.`);
+            warnings.push(`⚠️ Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : taux TVA ${vatPercent} % non couvert par le catalogue → prix conservé (${priceInMail.toFixed(2)} €). Taux disponibles : ${VAT_RATES.join(', ')}.`);
             continue;
           }
 

@@ -663,8 +663,49 @@ export default function QuotePanel({
             const showDescription = !isTransport;
             return (
               <div key={idx} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: idx < f.lines.length - 1 ? '1px dashed #ddd' : 'none' }}>
+                {/* Produit : label découpé en cellules sur " — " (em-dash
+                    séparateur standard des labels sur-mesure : « Filet de
+                    camouflage rectangulaire sur-mesure — sable — câble acier
+                    inox Ø 3 mm » → 3 cellules typologie / couleur / finition).
+                    Pour les labels sans em-dash (accessoires, standards), le
+                    label reste en une seule cellule. Édition par cellule,
+                    réassemblage avec " — " en sortie. */}
+                {(() => {
+                  const rawLabel = line.label || '';
+                  const parts = rawLabel.length > 0 ? rawLabel.split(' — ') : [''];
+                  const updatePart = (partIdx: number, val: string) => {
+                    const next = [...parts];
+                    next[partIdx] = val;
+                    updLine(idx, 'label', next.filter((s) => s.trim().length > 0).join(' — '));
+                  };
+                  const partStyle = {
+                    flex: 1,
+                    minWidth: '110px',
+                    padding: '4px 6px',
+                    fontSize: '12px',
+                    color: '#1a202c',
+                    background: '#fff',
+                    border: '1px solid #cbd5e0',
+                    borderRadius: '4px',
+                    fontWeight: 500 as const,
+                  };
+                  return (
+                    <div style={{ marginBottom: '6px' }}>
+                      <span style={labelStyle}>Produit</span>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {parts.map((part, partIdx) => (
+                          <input
+                            key={partIdx}
+                            style={partStyle}
+                            value={part}
+                            onChange={(e) => updatePart(partIdx, e.target.value)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div style={{ ...rowStyle, alignItems: 'flex-end', marginBottom: showDescription ? '4px' : '0' }}>
-                  <div style={{ flex: 3 }}><span style={labelStyle}>Produit</span><input style={inputStyle} value={line.label} onChange={(e) => updLine(idx, 'label', e.target.value)} /></div>
                   <div style={{ flex: 1 }}><span style={labelStyle}>Qté</span><input style={inputStyle} value={line.quantity} onChange={(e) => updLine(idx, 'quantity', e.target.value)} /></div>
                   <div style={{ flex: 1 }}><span style={labelStyle}>Prix HT</span><input style={inputStyle} value={line.unitPrice} onChange={(e) => updLine(idx, 'unitPrice', e.target.value)} /></div>
                   <div style={{ flex: 1 }}>
@@ -675,7 +716,7 @@ export default function QuotePanel({
                     </select>
                   </div>
                   {f.lines.length > 1 && (
-                    <button onClick={() => removeLine(idx)} style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '16px', padding: '0 4px' }}>×</button>
+                    <button onClick={() => removeLine(idx)} style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '16px', padding: '0 4px', alignSelf: 'flex-end' }}>×</button>
                   )}
                 </div>
                 {showDescription && (() => {
@@ -789,6 +830,12 @@ export default function QuotePanel({
           const ttcMismatch = expectedTTC !== null && Math.abs(totalTTC - expectedTTC) > 1;
           return (
             <>
+              {/* Bloc totaux — l'écart avec expectedTTC (TTC du dernier
+                  chiffrage envoyé au client par mail) est baked in la ligne
+                  Total TTC elle-même : gras + vert si écart 0, gras + rouge
+                  si écart > 0,01 € avec le montant de l'écart affiché.
+                  Rendu voulu par Charles (02/07/2026) — plus de bandeau
+                  séparé "✓ TTC cohérent". */}
               <div style={{
                 marginBottom: '10px',
                 padding: '10px',
@@ -799,20 +846,32 @@ export default function QuotePanel({
                 border: ttcMismatch ? '1px solid #fc8181' : '1px solid #4fd1c5',
               }}>
                 <div>Total HT brut : <strong>{totalHTBrut.toFixed(2)} €</strong></div>
-                {discount > 0 && <div>Remise ({discount}%) : <strong>-{discountAmount.toFixed(2)} €</strong></div>}
-                {discount > 0 && <div>Total HT après remise : <strong>{totalHT.toFixed(2)} €</strong></div>}
-                {discount === 0 && <div>Total HT : <strong>{totalHT.toFixed(2)} €</strong></div>}
+                {/* Ligne Remise toujours affichée (même à 0 %) — demande
+                    Charles 02/07/2026 : garder les 5 lignes constantes pour
+                    lecture rapide, éviter le saut visuel selon présence
+                    d'une remise. */}
+                <div>Remise ({discount}%) : <strong>{discount > 0 ? `-${discountAmount.toFixed(2)}` : '0.00'} €</strong></div>
+                <div>Total HT après remise : <strong>{totalHT.toFixed(2)} €</strong></div>
                 <div>TVA ({vat}%) : <strong>{r2(totalHT * vat / 100).toFixed(2)} €</strong></div>
-                <div>Total TTC : <strong>{totalTTC.toFixed(2)} €</strong></div>
-                {/* Ligne "✓ TTC cohérent avec le mail" retirée le 02/07/2026
-                    (demande Charles : redondant avec les totaux au-dessus,
-                    encombre l'interface). Le warning ⚠ TTC mismatch reste,
-                    lui, actionnable. */}
-                {ttcMismatch && expectedTTC !== null && (
-                  <div style={{ marginTop: '4px', color: '#c53030', fontWeight: 700 }}>
-                    ⚠ TTC attendu (mail) : {expectedTTC.toFixed(2)} € — écart de {Math.abs(totalTTC - expectedTTC).toFixed(2)} €
-                  </div>
-                )}
+                {(() => {
+                  // Ligne Total TTC : gras + vert (écart 0) OU gras + rouge
+                  // (écart X €) selon comparaison avec expectedTTC (TTC du
+                  // dernier chiffrage envoyé au client par mail).
+                  // Sans expectedTTC (pas de mail précédent référencé), on
+                  // reste sur un rendu neutre.
+                  if (expectedTTC === null) {
+                    return <div>Total TTC : <strong>{totalTTC.toFixed(2)} €</strong></div>;
+                  }
+                  const ecart = Math.abs(totalTTC - expectedTTC);
+                  const isAligned = ecart <= 0.01;
+                  const color = isAligned ? '#22543d' : '#c53030';
+                  const ecartStr = isAligned ? '0 €' : `${ecart.toFixed(2)} €`;
+                  return (
+                    <div style={{ color, fontWeight: 700 }}>
+                      Total TTC : {totalTTC.toFixed(2)} € — écart {ecartStr}
+                    </div>
+                  );
+                })()}
               </div>
               {ttcMismatch && (
                 <p style={{ color: '#e53e3e', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>

@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     }
 
     await initDB();
-    const { storeCode, customerEmail, customerName, mailContent, frontConversationId, subject, channel, forceFresh } = await req.json();
+    const { storeCode, customerEmail, customerName, mailContent, frontConversationId, subject, channel, forceFresh, skipOversizedCheck } = await req.json();
 
     if (!storeCode || !mailContent || !frontConversationId) {
       return NextResponse.json({ error: 'storeCode, mailContent et frontConversationId requis' }, { status: 400 });
@@ -366,7 +366,14 @@ Signale ces SKU en QUESTIONS au gérant et ne tranche pas (chiffre catalogue par
     // lance PAS Claude — on renvoie un marker que le plugin reconnaît pour
     // afficher un bandeau orange demandant au gérant de coller la description
     // (workflow Q1=B validé le 02/07/2026).
-    if (oversized.length > 0) {
+    //
+    // Bypass explicite : si le gérant a cliqué "Ignorer la PJ" dans le
+    // bandeau (skipOversizedCheck=true), on saute le court-circuit et on
+    // laisse Claude tourner avec les images légères uniquement. La PJ
+    // oversized reste absente du prompt (elle a été triée côté
+    // getConversationAttachments — imageBlocks n'inclut jamais les PJ
+    // dépassant les seuils), donc pas de risque de plantage Anthropic.
+    if (oversized.length > 0 && !skipOversizedCheck) {
       // On sauve le contexte mail en BDD (user msg) pour que le follow-up
       // /message ait le fil complet quand le gérant collera la description.
       // On envoie aussi X-Conversation-Id pour que le plugin puisse chaîner

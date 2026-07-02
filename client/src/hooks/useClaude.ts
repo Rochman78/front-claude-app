@@ -18,6 +18,7 @@ interface UseClaudeReturn {
     subject?: string;
     channel?: string;
     images?: { data: string; mediaType: string; name: string }[];
+    skipOversizedCheck?: boolean;
   }) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   restore: (msgs: Message[], convId: string, frontConvId: string) => void;
@@ -110,6 +111,7 @@ export function useClaude(): UseClaudeReturn {
     subject?: string;
     channel?: string;
     images?: { data: string; mediaType: string; name: string }[];
+    skipOversizedCheck?: boolean;
   }) => {
     // NE PAS abort le stream précédent — il continue en arrière-plan et sauve en cache via onBackgroundComplete
     // On crée juste un nouveau controller pour ce stream

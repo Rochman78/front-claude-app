@@ -302,8 +302,8 @@ export default function PluginMain({ context }: PluginMainProps) {
     );
   }
 
-  async function handleAnalyze(noteOverride?: string) {
-    console.log('[plugin] handleAnalyze called');
+  async function handleAnalyze(noteOverride?: string, skipOversizedCheck?: boolean) {
+    console.log('[plugin] handleAnalyze called', { skipOversizedCheck });
     conversationCache.setPending(frontConvId);
     console.log('[plugin] store:', store);
     console.log('[plugin] context.conversation:', context.conversation);
@@ -392,6 +392,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         subject,
         channel: isChat ? 'chat' : 'email',
         images: images.length > 0 ? images : undefined,
+        skipOversizedCheck: skipOversizedCheck || undefined,
       };
       console.log('[plugin] payload preview:', {
         storeCode: payload.storeCode,
@@ -664,9 +665,13 @@ export default function PluginMain({ context }: PluginMainProps) {
       )}
 
       {/* Bandeau orange : PJ trop volumineuse pour l'API Anthropic (> 22 MB
-          PDF ou > 5 MB image). Le gérant doit décrire la PJ via Claude
-          Desktop, puis coller la description dans le chat pour que l'agent
-          continue l'analyse. */}
+          PDF ou > 5 MB image). Le gérant a 2 choix :
+          - Décrire la PJ via Claude Desktop (flow détaillé — nécessaire quand
+            le contenu de la PJ est indispensable au chiffrage).
+          - Ignorer la PJ (bypass — quand la question client ne dépend pas
+            de la PJ, ex : suivi paiement, adresse, délai). Relance /analyze
+            avec skipOversizedCheck=true, Claude tourne sur le texte + PJ
+            légères, la lourde reste absente du prompt. */}
       {pjTooLarge && pjTooLarge.length > 0 && (
         <div
           style={{
@@ -688,6 +693,45 @@ export default function PluginMain({ context }: PluginMainProps) {
                 • {a.name} ({(a.sizeBytes / 1024 / 1024).toFixed(1)} MB)
               </div>
             ))}
+          </div>
+          <div style={{ fontWeight: 600, marginBottom: '6px' }}>Comment veux-tu procéder ?</div>
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => {
+                claude.reset(frontConvId);
+                handleAnalyze(undefined, true);
+              }}
+              style={{
+                flex: '1 1 45%',
+                padding: '8px 10px',
+                background: 'white',
+                color: '#3d2600',
+                border: '1px solid #ff9800',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              🚫 Ignorer la PJ, analyser sans
+            </button>
+            <button
+              onClick={() => { /* No-op : c'est le flow actuel — le gérant copie et colle en chat. */ }}
+              disabled
+              style={{
+                flex: '1 1 45%',
+                padding: '8px 10px',
+                background: '#ff9800',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'default',
+              }}
+            >
+              📋 Décrire via Claude Desktop ↓
+            </button>
           </div>
           <div style={{ marginBottom: '8px' }}>
             Ouvre l'app <strong>Claude Desktop</strong>, glisse-y la PJ avec ce prompt :
@@ -712,8 +756,6 @@ export default function PluginMain({ context }: PluginMainProps) {
             />
             <button
               onClick={(e) => {
-                // Sélectionne le champ à côté (utile si clipboard API bloquée
-                // par la sandbox iframe Front) puis tente la copie.
                 const btn = e.currentTarget;
                 const input = btn.previousElementSibling as HTMLInputElement | null;
                 if (input) {
@@ -726,7 +768,6 @@ export default function PluginMain({ context }: PluginMainProps) {
                 };
                 if (navigator.clipboard?.writeText) {
                   navigator.clipboard.writeText(PJ_DESCRIBE_PROMPT).then(() => done(true)).catch(() => {
-                    // Fallback : execCommand (déprécié mais souvent seul dispo en iframe)
                     try { done(document.execCommand('copy')); }
                     catch { done(false); }
                   });

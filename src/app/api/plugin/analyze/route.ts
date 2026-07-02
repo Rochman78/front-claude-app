@@ -354,13 +354,27 @@ Signale ces SKU en QUESTIONS au gérant et ne tranche pas (chiffre catalogue par
     // afficher un bandeau orange demandant au gérant de coller la description
     // (workflow Q1=B validé le 02/07/2026).
     if (oversized.length > 0) {
+      // On sauve le contexte mail en BDD (user msg) pour que le follow-up
+      // /message ait le fil complet quand le gérant collera la description.
+      // On envoie aussi X-Conversation-Id pour que le plugin puisse chaîner
+      // sur /message et que useConversationCache clear son flag pending.
+      const dedupResult = dedupeRepeatedBlocks(mailContent);
+      const cleanedMailContent = dedupResult.cleaned;
+      const contextMsg = `[Analyse demandée] Voici le fil de mails du client ${customerName || ''} (${customerEmail || ''}) :\n\n${cleanedMailContent}\n\n[NOTE INTERNE : une ou plusieurs PJ étaient trop volumineuses pour l'API Anthropic (${oversized.map((a) => `${a.name} ${(a.sizeBytes / 1024 / 1024).toFixed(1)} MB`).join(', ')}). Le gérant va les décrire via Claude Desktop et poster la description en chat.]`;
+      const userMsgId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      await pool.query(
+        'INSERT INTO claude_messages (id, conversation_id, role, content, created_at) VALUES ($1, $2, $3, $4, $5)',
+        [userMsgId, conversation.id, 'user', contextMsg, now]
+      );
       const payload = JSON.stringify({ attachments: oversized });
-      console.log(`[plugin/analyze] court-circuit PJ_TOO_LARGE (${oversized.length} PJ) — attente description du gérant`);
+      console.log(`[plugin/analyze] court-circuit PJ_TOO_LARGE (${oversized.length} PJ) — attente description du gérant, conv=${conversation.id}`);
       return new Response(`__PJ_TOO_LARGE__${payload}`, {
         headers: {
           'Content-Type': 'text/plain; charset=utf-8',
           'X-Content-Type-Options': 'nosniff',
           'Cache-Control': 'no-cache, no-transform',
+          'X-Conversation-Id': conversation.id,
         },
       });
     }

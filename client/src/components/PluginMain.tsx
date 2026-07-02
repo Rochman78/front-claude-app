@@ -624,7 +624,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         <LoadingState message="Chargement de l'historique..." />
       )}
 
-      {!hasMessages && !claude.isStreaming && !loadingHistory && conversationCache.isPending(frontConvId) && (
+      {!hasMessages && !pjTooLarge && !claude.isStreaming && !loadingHistory && conversationCache.isPending(frontConvId) && (
         <LoadingState message="Analyse en cours sur ce mail..." />
       )}
 
@@ -693,7 +693,12 @@ export default function PluginMain({ context }: PluginMainProps) {
             Ouvre l'app <strong>Claude Desktop</strong>, glisse-y la PJ avec ce prompt :
           </div>
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '8px' }}>
-            <code
+            <input
+              type="text"
+              readOnly
+              value={PJ_DESCRIBE_PROMPT}
+              onFocus={(e) => e.currentTarget.select()}
+              onClick={(e) => e.currentTarget.select()}
               style={{
                 flex: 1,
                 padding: '6px 8px',
@@ -702,14 +707,33 @@ export default function PluginMain({ context }: PluginMainProps) {
                 borderRadius: '4px',
                 fontSize: '11px',
                 fontFamily: 'monospace',
-                userSelect: 'all',
+                color: '#000',
               }}
-            >
-              {PJ_DESCRIBE_PROMPT}
-            </code>
+            />
             <button
-              onClick={() => {
-                navigator.clipboard.writeText(PJ_DESCRIBE_PROMPT).catch(() => {});
+              onClick={(e) => {
+                // Sélectionne le champ à côté (utile si clipboard API bloquée
+                // par la sandbox iframe Front) puis tente la copie.
+                const btn = e.currentTarget;
+                const input = btn.previousElementSibling as HTMLInputElement | null;
+                if (input) {
+                  input.focus();
+                  input.select();
+                }
+                const done = (ok: boolean) => {
+                  btn.textContent = ok ? '✅ Copié' : '⌘+C pour copier';
+                  setTimeout(() => { btn.textContent = '📋 Copier'; }, 2000);
+                };
+                if (navigator.clipboard?.writeText) {
+                  navigator.clipboard.writeText(PJ_DESCRIBE_PROMPT).then(() => done(true)).catch(() => {
+                    // Fallback : execCommand (déprécié mais souvent seul dispo en iframe)
+                    try { done(document.execCommand('copy')); }
+                    catch { done(false); }
+                  });
+                } else {
+                  try { done(document.execCommand('copy')); }
+                  catch { done(false); }
+                }
               }}
               style={{
                 padding: '6px 10px',
@@ -732,7 +756,7 @@ export default function PluginMain({ context }: PluginMainProps) {
         </div>
       )}
 
-      {(hasMessages || (claude.streamingContent && !parsePjMarker(claude.streamingContent))) && (
+      {(hasMessages || pjTooLarge || (claude.streamingContent && !parsePjMarker(claude.streamingContent))) && (
         <ClaudeChat
           messages={visibleMessages}
           streamingContent={parsePjMarker(claude.streamingContent) ? '' : claude.streamingContent}

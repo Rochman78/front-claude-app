@@ -352,16 +352,30 @@ Note : "deliveryAddress" doit être :
             continue;
           }
 
-          // Vérif cohérence TTC saisi ≈ TTC catalogue (tolérance 0,01 €)
-          if (Math.abs(entry.ttc - priceInMail) > 0.01) {
+          // Vérif cohérence prix saisi ≈ prix catalogue (tolérance 0,01 €).
+          // Le mail peut annoncer le prix soit en TTC (règle N°2), soit en HT
+          // (cas où le mail explicite « Prix HT : 24,92 € »). Les 2 sont OK
+          // tant que priceInMail colle à l'une des 2 valeurs catalogue au
+          // taux TVA du client. Le warning ne s'émet que si NI TTC NI HT ne
+          // matchent (vrai désalignement à faire vérifier au gérant).
+          //
+          // Cas déclencheur (cnv_1lnmfndj, Kit fixation LFC) : mail écrit
+          // « Prix HT : 24,92 € » → priceInMail=24.92 = HT@20 % catalogue,
+          // mais entry.ttc=29.90 → warning "TTC saisi ≠ TTC catalogue" tirait
+          // à tort alors que le HT correspondait exactement. Fix : accepter
+          // les 2 angles.
+          const catalogHT = entry.hts[vatColIdx];
+          const matchesTtc = Math.abs(entry.ttc - priceInMail) <= 0.01;
+          const matchesHt = Math.abs(catalogHT - priceInMail) <= 0.01;
+          if (!matchesTtc && !matchesHt) {
             warnings.push(
-              `⚠ Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : TTC saisi ${priceInMail.toFixed(2)} € ≠ TTC catalogue ${entry.ttc.toFixed(2)} €. Le HT catalogue est utilisé (${entry.hts[vatColIdx].toFixed(2)} € HT à ${vatPercent} %). Vérifie que le mail n'a pas annoncé un montant différent au client.`
+              `⚠ Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : prix saisi ${priceInMail.toFixed(2)} € ≠ catalogue (TTC ${entry.ttc.toFixed(2)} € / HT ${catalogHT.toFixed(2)} € à ${vatPercent} %). Le HT catalogue est appliqué. Vérifie que le mail n'a pas annoncé un montant différent au client.`
             );
           }
 
           const oldPrice = line.unitPrice;
-          line.unitPrice = entry.hts[vatColIdx];
-          console.log(`[extract-quote] SKU ${sku} : ${oldPrice} € → HT ${line.unitPrice} € (TVA ${vatPercent} %)`);
+          line.unitPrice = catalogHT;
+          console.log(`[extract-quote] SKU ${sku} : ${oldPrice} € → HT ${line.unitPrice} € (TVA ${vatPercent} %)${matchesTtc ? ' [saisi=TTC catalogue]' : matchesHt ? ' [saisi=HT catalogue, pas de warning]' : ' [désaligné → warning]'}`);
         }
       }
     } catch (postErr) {

@@ -181,7 +181,7 @@ export default function QuotePanel({
       setVerifyForm({ ...f, lines: newLines });
     };
     const addLine = () => {
-      setVerifyForm({ ...f, lines: [...f.lines, { label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }] });
+      setVerifyForm({ ...f, lines: [...f.lines, { label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product', description: '' }] });
     };
     const removeLine = (idx: number) => {
       if (f.lines.length <= 1) return;
@@ -651,23 +651,50 @@ export default function QuotePanel({
         {/* Produits */}
         <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
           <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '12px' }}>Produits</div>
-          {f.lines.map((line, idx) => (
-            <div key={idx} style={{ ...rowStyle, alignItems: 'flex-end' }}>
-              <div style={{ flex: 3 }}><span style={labelStyle}>Produit</span><input style={inputStyle} value={line.label} onChange={(e) => updLine(idx, 'label', e.target.value)} /></div>
-              <div style={{ flex: 1 }}><span style={labelStyle}>Qté</span><input style={inputStyle} value={line.quantity} onChange={(e) => updLine(idx, 'quantity', e.target.value)} /></div>
-              <div style={{ flex: 1 }}><span style={labelStyle}>Prix HT</span><input style={inputStyle} value={line.unitPrice} onChange={(e) => updLine(idx, 'unitPrice', e.target.value)} /></div>
-              <div style={{ flex: 1 }}>
-                <span style={labelStyle}>Unité</span>
-                <select style={{ ...inputStyle, padding: '3px 4px' }} value={line.unit} onChange={(e) => updLine(idx, 'unit', e.target.value)}>
-                  <option value="m2">m²</option>
-                  <option value="piece">unité</option>
-                </select>
+          {f.lines.map((line, idx) => {
+            const lineType = String(line.type || '').toLowerCase();
+            const isTransport = lineType === 'transport' || lineType === 'transport_discount';
+            // Description visible pour les produits (SKU pour standards,
+            // "Quantité : X | Total m² : Y | Délai..." pour sur-mesure).
+            // Cachée pour les lignes transport / remise transport qui n'en
+            // ont pas besoin dans le PDF Pennylane.
+            const showDescription = !isTransport;
+            return (
+              <div key={idx} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: idx < f.lines.length - 1 ? '1px dashed #ddd' : 'none' }}>
+                <div style={{ ...rowStyle, alignItems: 'flex-end', marginBottom: showDescription ? '4px' : '0' }}>
+                  <div style={{ flex: 3 }}><span style={labelStyle}>Produit</span><input style={inputStyle} value={line.label} onChange={(e) => updLine(idx, 'label', e.target.value)} /></div>
+                  <div style={{ flex: 1 }}><span style={labelStyle}>Qté</span><input style={inputStyle} value={line.quantity} onChange={(e) => updLine(idx, 'quantity', e.target.value)} /></div>
+                  <div style={{ flex: 1 }}><span style={labelStyle}>Prix HT</span><input style={inputStyle} value={line.unitPrice} onChange={(e) => updLine(idx, 'unitPrice', e.target.value)} /></div>
+                  <div style={{ flex: 1 }}>
+                    <span style={labelStyle}>Unité</span>
+                    <select style={{ ...inputStyle, padding: '3px 4px' }} value={line.unit} onChange={(e) => updLine(idx, 'unit', e.target.value)}>
+                      <option value="m2">m²</option>
+                      <option value="piece">unité</option>
+                    </select>
+                  </div>
+                  {f.lines.length > 1 && (
+                    <button onClick={() => removeLine(idx)} style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '16px', padding: '0 4px' }}>×</button>
+                  )}
+                </div>
+                {showDescription && (
+                  <div>
+                    <span style={labelStyle}>
+                      Description
+                      <span style={{ color: '#888', fontWeight: 400, marginLeft: '4px' }}>
+                        (visible sous le produit dans le PDF — ex : « SKU : 3770030527439 » ou « Quantité : X | Total m² : Y | Délai... »)
+                      </span>
+                    </span>
+                    <input
+                      style={inputStyle}
+                      value={line.description || ''}
+                      onChange={(e) => updLine(idx, 'description', e.target.value)}
+                      placeholder={line.unit === 'piece' ? 'SKU : xxxxxxxxxxxxx' : 'Quantité : X | Total m² : Y | Délai de production + livraison : environ 21 jours'}
+                    />
+                  </div>
+                )}
               </div>
-              {f.lines.length > 1 && (
-                <button onClick={() => removeLine(idx)} style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '16px', padding: '0 4px' }}>×</button>
-              )}
-            </div>
-          ))}
+            );
+          })}
           <button onClick={addLine} style={{ fontSize: '11px', color: '#4a90d9', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
             + Ajouter un produit
           </button>
@@ -1243,14 +1270,11 @@ export default function QuotePanel({
         label: l.label,
         description: (() => {
           if (!l.description) return undefined;
-          // Pas de description si unit=piece (standard catalogue)
-          if (l.unit === 'piece') return undefined;
-          // Ancien filtre « qty entière ≤ 20 → drop » retiré le 25/06/2026 :
-          // il virait à tort la description des sur-mesure dont la surface
-          // tombait sur un entier (cas cnv_1lpzowt3 SARL BABYLAND : ligne
-          // « 1 × Filet rectangulaire 3×2 m → 6 m² » sans description, alors
-          // que les 2 lignes précédentes 70,4 et 10,8 m² gardaient la leur).
-          // Le check unit='piece' suffit pour les vrais standards.
+          // Filtre "unit=piece → pas de description" retiré le 02/07/2026 :
+          // depuis PR #167, la description des STANDARDS contient le SKU
+          // ("SKU : 3770030527439") qui doit apparaître sous le libellé du
+          // produit dans le PDF Pennylane (cohérence visuelle avec la ligne
+          // description des sur-mesure, demande Charles).
           return l.description;
         })(),
         quantity: parseFloat(l.quantity.replace(',', '.')) || 1,

@@ -25,6 +25,19 @@ Le mail client ci-dessus peut être rédigé en italien, allemand, espagnol, né
 
 Si tu sens que tu vas commencer une phrase dans une autre langue parce que le contexte est saturé d'une autre langue : STOP. Réécris en français.
 
+PIÈGE FRÉQUENT — TABLEAU TARIFAIRE CITÉ PAR LE CLIENT :
+Le client peut recopier un ancien tableau que nous lui avons envoyé, dans SA langue (Dutch, Deutsch, Español, Italiano, Português, English…). Tu REDESSINES ce tableau en FRANÇAIS avec les libellés FR ci-dessous, sans exception. Même si le client cite « corrige ce tableau », tu recopies la structure mais en FR.
+
+Libellés étrangers → équivalent FR OBLIGATOIRE dans TON brouillon :
+  NL : Eenheidsprijs → Prix unitaire | Btw → TVA | Korting → Remise | Totaal → Total | Verschuldigd bedrag → Montant dû | Hoeveelheid → Quantité | exclusief btw → HT | inclusief btw → TTC
+  DE : Einzelpreis → Prix unitaire | MwSt → TVA | Rabatt → Remise | Gesamt → Total | Fälliger Betrag → Montant dû | Menge → Quantité | netto → HT | brutto → TTC
+  ES : Precio unitario → Prix unitaire | IVA → TVA | Descuento → Remise | Total → Total | Importe a pagar → Montant dû | Cantidad → Quantité | sin IVA → HT | con IVA → TTC
+  IT : Prezzo unitario → Prix unitaire | IVA → TVA | Sconto → Remise | Totale → Total | Importo dovuto → Montant dû | Quantità → Quantité | esclusa IVA → HT | inclusa IVA → TTC
+  PT : Preço unitário → Prix unitaire | IVA → TVA | Desconto → Remise | Total → Total | Valor a pagar → Montant dû | Quantidade → Quantité | sem IVA → HT | com IVA → TTC
+  EN : Unit price → Prix unitaire | VAT → TVA | Discount → Remise | Total → Total | Amount due → Montant dû | Quantity → Quantité | excl. VAT → HT | incl. VAT → TTC
+
+INTERDIT ABSOLU dans ton brouillon : « Eenheidsprijs », « Btw », « Korting », « Verschuldigd bedrag », « Precio unitario », « Descuento », « Importe », « Prezzo », « Sconto », « Preis », « MwSt », « Rabatt », « Preço », « Desconto », « Unit price », « Discount », « Amount due ». Aucun de ces mots ne doit apparaître.
+
 La traduction sera faite automatiquement par le code au moment du push dans Front App.
 ══════════════════════════════════════════════════════`;
 

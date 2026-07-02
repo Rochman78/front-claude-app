@@ -757,54 +757,32 @@ export default function QuotePanel({
                     <button onClick={() => removeLine(idx)} style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '16px', padding: '0 4px', alignSelf: 'flex-end' }}>×</button>
                   )}
                 </div>
-                {showDescription && (() => {
-                  // La description est stockée comme une seule string avec
-                  // segments séparés par " | ". Pour l'édition, on la split en
-                  // cellules distinctes (une par segment) → meilleure lecture
-                  // visuelle (SUR MESURE = 3 cellules Qté / Total m² / Délai,
-                  // STANDARD = 1 cellule SKU). L'édition d'une cellule
-                  // réassemble la string complète.
-                  const raw = line.description || '';
-                  const segments = raw.length > 0 ? raw.split(' | ') : [''];
-                  // Placeholders segment par segment selon le type de ligne
-                  const placeholders: string[] = line.unit === 'piece'
-                    ? ['SKU : xxxxxxxxxxxxx']
-                    : ['Quantité : X', 'Total m² : Y', 'Délai de production + livraison : environ 21 jours'];
-                  const updateSegment = (segIdx: number, val: string) => {
-                    const next = [...segments];
-                    next[segIdx] = val;
-                    updLine(idx, 'description', next.filter((s) => s.trim().length > 0).join(' | '));
-                  };
-                  const segStyle = {
-                    flex: 1,
-                    minWidth: '100px',
-                    padding: '4px 6px',
-                    fontSize: '11px',
-                    fontStyle: 'italic' as const,
-                    color: '#4a5568',
-                    background: '#fefce8',
-                    border: '1px solid #eab308',
-                    borderRadius: '4px',
-                  };
-                  return (
-                    <div style={{ marginTop: '4px' }}>
-                      <span style={{ ...labelStyle, fontSize: '10px', color: '#718096', fontWeight: 400, fontStyle: 'italic' as const }}>
-                        Description (visible sous le produit dans le PDF)
-                      </span>
-                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                        {segments.map((seg, segIdx) => (
-                          <input
-                            key={segIdx}
-                            style={segStyle}
-                            value={seg}
-                            onChange={(e) => updateSegment(segIdx, e.target.value)}
-                            placeholder={placeholders[segIdx] || ''}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
+                {showDescription && (
+                  // Description : 1 SEULE cellule éditable (revient au format
+                  // demandé par Charles 02/07/2026, PR #171 split en cellules
+                  // reverté sur PR de ce commit). Style italique + jaune pâle
+                  // pour dissociation visuelle du bloc produit au-dessus.
+                  <div style={{ marginTop: '4px' }}>
+                    <span style={{ ...labelStyle, fontSize: '10px', color: '#718096', fontWeight: 400, fontStyle: 'italic' as const }}>
+                      Description (visible sous le produit dans le PDF)
+                    </span>
+                    <input
+                      style={{
+                        width: '100%',
+                        padding: '4px 6px',
+                        fontSize: '11px',
+                        fontStyle: 'italic',
+                        color: '#4a5568',
+                        background: '#fefce8',
+                        border: '1px solid #eab308',
+                        borderRadius: '4px',
+                      }}
+                      value={line.description || ''}
+                      onChange={(e) => updLine(idx, 'description', e.target.value)}
+                      placeholder={line.unit === 'piece' ? 'SKU : xxxxxxxxxxxxx' : 'Quantité : X | Total m² : Y | Délai de production + livraison : environ 21 jours'}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -976,9 +954,17 @@ export default function QuotePanel({
                   className="btn-quote"
                   onClick={() => handleCreateFromForm()}
                   disabled={!canGenerate}
-                  style={{ width: 'auto', opacity: canGenerate ? 1 : 0.5 }}
+                  style={{
+                    width: '100%',
+                    padding: '14px 16px',
+                    fontSize: '15px',
+                    fontWeight: 700,
+                    letterSpacing: '0.02em',
+                    boxShadow: canGenerate ? '0 3px 10px rgba(46, 162, 103, 0.4)' : 'none',
+                    opacity: canGenerate ? 1 : 0.5,
+                  }}
                 >
-                  Créer devis PDF dans Pennylane
+                  📄 Créer devis PDF dans Pennylane
                 </button>
               </div>
             </>

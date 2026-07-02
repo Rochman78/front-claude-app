@@ -68,6 +68,73 @@ function extractSku(label: string, description?: string): string | null {
 }
 
 /**
+ * Tente de retrouver le SKU d'une ligne devis à partir du catalogue quand
+ * Claude n'a pas su l'ajouter (typique : accessoires, dont le SKU n'est
+ * jamais énoncé dans les brouillons clients).
+ *
+ * Stratégie :
+ *   1. Match par prix : trouver les entrées catalogue dont HT@vatPercent OU
+ *      TTC égalent le prix saisi à 0,01 € près.
+ *   2. Si une seule → on retourne son SKU.
+ *   3. Si plusieurs → on désambigue par overlap de tokens entre le label
+ *      saisi et le label catalogue (typologie / forme / matière / couleur /
+ *      taille). Le meilleur score gagne — sauf ex-aequo → null (warning).
+ *   4. Si zéro → null.
+ */
+function inferSkuFromCatalog(
+  catalog: Record<string, { ttc: number; hts: number[]; label: string }>,
+  priceInMail: number,
+  vatColIdx: number,
+  lineLabel: string,
+): string | null {
+  if (priceInMail <= 0) return null;
+  const TOL = 0.01;
+
+  // Étape 1 : shortlist des entrées dont le prix (HT à la bonne TVA OU TTC)
+  // colle au prix saisi. Deux candidats possibles car Claude peut copier soit
+  // le TTC (règle N°2), soit le HT s'il est marqué explicitement dans le mail.
+  const candidates: string[] = [];
+  for (const [sku, entry] of Object.entries(catalog)) {
+    const htAtVat = vatColIdx >= 0 ? entry.hts[vatColIdx] : NaN;
+    const htMatch = Number.isFinite(htAtVat) && Math.abs(htAtVat - priceInMail) <= TOL;
+    const ttcMatch = Math.abs(entry.ttc - priceInMail) <= TOL;
+    if (htMatch || ttcMatch) candidates.push(sku);
+  }
+
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  // Étape 2 : désambiguer par overlap de tokens (label saisi ∩ label catalogue)
+  const norm = (s: string) => s
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip accents
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const stopwords = new Set(['de', 'du', 'des', 'le', 'la', 'les', 'un', 'une', 'en', 'et', 'a', 'au', 'aux', 'sur', 'pour', 'avec', 'sans', 'pièce', 'piece', 'unité', 'unite']);
+  const tokenize = (s: string) => norm(s).split(' ').filter((t) => t.length >= 3 && !stopwords.has(t));
+  const lineTokens = new Set(tokenize(lineLabel));
+
+  let best: { sku: string; score: number } | null = null;
+  let tied = false;
+  for (const sku of candidates) {
+    const entry = catalog[sku];
+    const catTokens = tokenize(entry.label);
+    let score = 0;
+    for (const t of catTokens) if (lineTokens.has(t)) score++;
+    if (best === null || score > best.score) {
+      best = { sku, score };
+      tied = false;
+    } else if (score === best.score) {
+      tied = true;
+    }
+  }
+  // Match unique (score strictement supérieur aux autres) OU tous égaux mais
+  // 1 seule ligne dans la liste → retour du best. Sinon ambiguïté → null.
+  if (best && !tied && best.score > 0) return best.sku;
+  return null;
+}
+
+/**
  * POST /api/plugin/extract-quote
  * Extrait les données structurées d'un devis depuis le texte Claude + fil de mails.
  * Utilise Claude Haiku pour un parsing fiable, toutes langues confondues.
@@ -231,11 +298,26 @@ ${claudeText || '(aucun chiffrage service client — extraire depuis le fil de m
             continue;
           }
 
-          const sku = extractSku(String(line.label || ''), String(line.description || ''));
+          let sku = extractSku(String(line.label || ''), String(line.description || ''));
 
+          // Auto-inférence si Claude n'a pas mis le SKU (typique : accessoires
+          // dont le SKU n'est jamais écrit dans les brouillons clients).
+          // On tente de retrouver le SKU dans le catalogue par match sur le
+          // prix (HT@vatPercent ou TTC), désambigué au besoin par overlap
+          // token label saisi ∩ label catalogue. Si un SKU unique sort → on
+          // l'injecte dans la description et on continue le flow normal.
           if (!sku) {
-            warnings.push(`⚠️ Ligne "${(line.label || '').substring(0, 60)}" : SKU manquant dans la description → prix conservé (${priceInMail.toFixed(2)} €). Complète la description avec « SKU : xxxxxxxxxxxxx » (13 chiffres) pour activer la vérification catalogue.`);
-            continue;
+            const inferred = inferSkuFromCatalog(catalog, priceInMail, vatColIdx, String(line.label || ''));
+            if (inferred) {
+              sku = inferred;
+              const currentDesc = String(line.description || '').trim();
+              const skuLine = `SKU : ${inferred}`;
+              line.description = currentDesc ? `${currentDesc} | ${skuLine}` : skuLine;
+              console.log(`[extract-quote] SKU ${inferred} auto-inféré pour ligne "${(line.label || '').substring(0, 40)}" (prix ${priceInMail} €)`);
+            } else {
+              warnings.push(`⚠️ Ligne "${(line.label || '').substring(0, 60)}" : SKU manquant et inférence catalogue impossible (aucune ligne du store ${storeCode} n'égale ${priceInMail.toFixed(2)} € en HT ou TTC). Complète manuellement la description avec « SKU : xxxxxxxxxxxxx ».`);
+              continue;
+            }
           }
           const entry = catalog[sku];
           if (!entry) {

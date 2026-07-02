@@ -80,8 +80,14 @@ export async function POST(req: NextRequest) {
 
     const { claudeText, mailThread, customerEmail, customerName, storeCode } = await req.json();
 
-    if (!claudeText) {
-      return NextResponse.json({ error: 'claudeText requis' }, { status: 400 });
+    // Au moins UNE source (claudeText OU mailThread). Autorise le flow "Générer
+    // devis PDF direct" depuis la page d'accueil du plugin (sans passer par
+    // Analyser avec Claude) : dans ce cas claudeText est vide, mais mailThread
+    // contient le fil complet, et la règle N°8 dit à Claude d'aller chercher
+    // le chiffrage dans le mail antérieur si le "CHIFFRAGE SERVICE CLIENT"
+    // est vide.
+    if (!claudeText && !mailThread) {
+      return NextResponse.json({ error: 'claudeText ou mailThread requis' }, { status: 400 });
     }
 
     const systemPrompt = `Tu extrais les données d'un devis depuis un mail de service client. Retourne un JSON structuré.
@@ -150,7 +156,7 @@ Boutique : ${storeCode || '?'}
 ${mailThread || '(aucun)'}
 
 --- CHIFFRAGE SERVICE CLIENT ---
-${claudeText}
+${claudeText || '(aucun chiffrage service client — extraire depuis le fil de mails ci-dessus, cf. règle N°8)'}
 
 --- JSON ATTENDU ---
 {

@@ -177,6 +177,11 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [showResumePopup, setShowResumePopup] = useState(false);
   const [resumeNote, setResumeNote] = useState<string>('');
   const [showPaymentCheck, setShowPaymentCheck] = useState(false);
+  // Mode "Générer devis PDF direct" depuis la page d'accueil, sans passer par
+  // Analyser avec Claude. Fait apparaître QuotePanel avec claudeText vide et
+  // déclenche l'extraction depuis le mailThread seul.
+  const [directQuoteMode, setDirectQuoteMode] = useState(false);
+  const [directQuotePending, setDirectQuotePending] = useState(false);
   const [resolvedEmail, setResolvedEmail] = useState<string>('');
   const [resolvedName, setResolvedName] = useState<string>('');
   const [pushLang, setPushLang] = useState<string>('auto');
@@ -210,6 +215,8 @@ export default function PluginMain({ context }: PluginMainProps) {
     setShowResumePopup(false);
     setSelectedTemplateId('');
     setPushLang('auto');
+    setDirectQuoteMode(false);
+    setDirectQuotePending(false);
 
     // Restaurer les infos devis depuis le cache mémoire ou la BDD
     const cachedQuote = conversationCache.getQuoteFromCache(frontConvId);
@@ -416,6 +423,44 @@ export default function PluginMain({ context }: PluginMainProps) {
     }
   }
 
+  /**
+   * "Générer devis PDF" direct depuis la page d'accueil : charge le fil de
+   * mails via le SDK Front, force QuotePanel à s'afficher avec claudeText
+   * vide, et déclenche l'extraction (qui tournera sur mailThread seul).
+   */
+  async function handleDirectQuote() {
+    console.log('[plugin] handleDirectQuote called');
+    try {
+      const messagesResponse = await context.listMessages();
+      const messages = messagesResponse.results;
+      if (!messages || messages.length === 0) {
+        claude.setError('Aucun message dans cette conversation.');
+        return;
+      }
+      const frontMessages = messages as unknown as FrontMessage[];
+      const firstIncoming = frontMessages.find((m) => m.replyTo?.handle);
+      const customerEmail = extractCustomerEmail(firstIncoming || frontMessages[0], recipient?.handle || '');
+      const customerName = extractCustomerName(firstIncoming || frontMessages[0], recipient?.name || '');
+      const builtMailThread = frontMessages
+        .map((msg) => {
+          const author = msg.author?.name || msg.author?.email || 'Inconnu';
+          const date = new Date(msg.date * 1000).toLocaleString('fr-FR');
+          const text = extractText(msg);
+          return text ? `[${date}] ${author} :\n${text}` : '';
+        })
+        .filter(Boolean)
+        .join('\n\n---\n\n');
+      setMailThread(builtMailThread);
+      setResolvedEmail(customerEmail);
+      setResolvedName(customerName);
+      setDirectQuoteMode(true);
+      setDirectQuotePending(true);
+    } catch (err) {
+      console.error('[plugin] handleDirectQuote error:', err);
+      claude.setError(err instanceof Error ? err.message : 'Erreur lors du chargement du fil');
+    }
+  }
+
   function getTemplateInstruction(): string {
     if (!selectedTemplateId) return '';
     const tpl = templates.find((t) => t.id === selectedTemplateId);
@@ -482,6 +527,28 @@ export default function PluginMain({ context }: PluginMainProps) {
 
   // QuotePanel visible dès qu'il y a au moins un message Claude
   const showQuotePanel = hasMessages && !claude.isStreaming;
+
+  // Direct mode : quand le gérant clique "Générer devis PDF" depuis la page
+  // d'accueil, on force QuotePanel à s'afficher et on déclenche son
+  // handleClick une fois monté (registerClick expose la fonction via
+  // quoteClickRef). Le pending est retry à intervalle court car
+  // onRegisterClick s'appelle après un re-render — pas garanti au 1er tick.
+  useEffect(() => {
+    if (!directQuotePending) return;
+    let attempts = 0;
+    const tick = () => {
+      if (quoteClickRef.current) {
+        quoteClickRef.current();
+        setDirectQuotePending(false);
+      } else if (attempts++ < 20) {
+        setTimeout(tick, 50);
+      } else {
+        console.warn('[plugin] directQuote: quoteClickRef never became available');
+        setDirectQuotePending(false);
+      }
+    };
+    tick();
+  }, [directQuotePending]);
 
   // Politique langue : pushLang est INITIALISÉ avec la langue de la boutique
   // (prévisible, conforme à la config du shop). La détection sur le mail du
@@ -631,7 +698,7 @@ export default function PluginMain({ context }: PluginMainProps) {
 
       {/* Page d'accueil : masquée aussi si un brouillon a été injecté via
           PaymentCheckPanel (le bloc DraftFinal s'affiche à la place). */}
-      {!hasMessages && !claude.isStreaming && !loadingHistory && !conversationCache.isPending(frontConvId) && !quoteDraftText && (
+      {!hasMessages && !claude.isStreaming && !loadingHistory && !conversationCache.isPending(frontConvId) && !quoteDraftText && !directQuoteMode && (
         <div className="plugin-actions">
           <textarea
             value={preAnalyzeNote}
@@ -645,6 +712,19 @@ export default function PluginMain({ context }: PluginMainProps) {
           />
           <button className="btn-primary" onClick={() => handleAnalyzeWithTemplate()}>
             Analyser avec Claude
+          </button>
+
+          {/* Bouton "Générer devis PDF" direct — sans passer par l'analyse
+              Claude. Utile quand le gérant sait déjà ce qu'il veut générer
+              (contexte simple, chiffrage déjà présent dans un mail antérieur)
+              et veut sauter l'étape analyse. QuotePanel s'ouvre avec
+              claudeText vide, l'extraction se fait sur mailThread seul. */}
+          <button
+            className="btn-outline"
+            style={{ fontSize: '13px', fontWeight: 600, color: '#000', marginTop: '6px', width: '100%' }}
+            onClick={() => handleDirectQuote()}
+          >
+            📄 Générer devis PDF
           </button>
 
           {/* Bouton "Vérifier virement reçu" — toujours visible en page
@@ -824,8 +904,11 @@ export default function PluginMain({ context }: PluginMainProps) {
         />
       )}
 
-      {/* QuotePanel (toujours disponible pour régénérer un devis) */}
-      {showQuotePanel && lastAssistantMsg && (
+      {/* QuotePanel (toujours disponible pour régénérer un devis).
+          Rendu aussi en directQuoteMode (clic "Générer devis PDF" depuis la
+          page d'accueil sans analyse Claude préalable) : claudeText est vide,
+          extract-quote tourne sur mailThread seul. */}
+      {((showQuotePanel && lastAssistantMsg) || directQuoteMode) && (
         <ErrorBoundary>
           <QuotePanel
             claudeText={claude.messages.filter(m => m.role === 'assistant').map(m => m.content).join('\n\n---\n\n')}

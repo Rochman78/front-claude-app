@@ -188,8 +188,10 @@ export default function QuotePanel({
       setVerifyForm({ ...f, lines: f.lines.filter((_, i) => i !== idx) });
     };
 
-    const inputStyle = { width: '100%', padding: '4px 6px', fontSize: '12px', border: '1px solid #ddd', borderRadius: '4px' };
-    const labelStyle = { fontSize: '11px', color: '#666', marginBottom: '2px', display: 'block' as const };
+    const inputStyle = { width: '100%', padding: '4px 6px', fontSize: '12px', border: '1px solid #cbd5e0', borderRadius: '4px', color: '#1a202c', background: '#fff' };
+    const labelStyle = { fontSize: '11px', color: '#2d3748', marginBottom: '2px', display: 'block' as const, fontWeight: 500 };
+    const sectionTitleStyle = { fontWeight: 700, marginBottom: '8px', fontSize: '13px', color: '#1a202c', letterSpacing: '0.02em' as const };
+    const sectionBoxStyle = { marginBottom: '10px', padding: '10px', background: '#f1f5f9', borderRadius: '6px', border: '1px solid #cbd5e0' };
     const rowStyle = { display: 'flex', gap: '8px', marginBottom: '6px' };
 
     return (
@@ -555,8 +557,8 @@ export default function QuotePanel({
         )}
 
         {/* Client */}
-        <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
-          <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '12px' }}>Client</div>
+        <div style={sectionBoxStyle}>
+          <div style={sectionTitleStyle}>Client</div>
           <div style={rowStyle}>
             <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: '4px' }}>
               <input type="radio" checked={f.clientType === 'individual'} onChange={() => upd('clientType', 'individual')} /> Particulier
@@ -617,8 +619,8 @@ export default function QuotePanel({
         </div>
 
         {/* Adresse */}
-        <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
-          <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '12px' }}>Adresse</div>
+        <div style={sectionBoxStyle}>
+          <div style={sectionTitleStyle}>Adresse</div>
           <div style={rowStyle}>
             <div style={{ flex: 1 }}><span style={labelStyle}>Rue</span><input style={inputStyle} value={f.street} onChange={(e) => upd('street', e.target.value)} /></div>
           </div>
@@ -649,8 +651,8 @@ export default function QuotePanel({
         )}
 
         {/* Produits */}
-        <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
-          <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '12px' }}>Produits</div>
+        <div style={sectionBoxStyle}>
+          <div style={sectionTitleStyle}>Produits</div>
           {f.lines.map((line, idx) => {
             const lineType = String(line.type || '').toLowerCase();
             const isTransport = lineType === 'transport' || lineType === 'transport_discount';
@@ -676,22 +678,54 @@ export default function QuotePanel({
                     <button onClick={() => removeLine(idx)} style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '16px', padding: '0 4px' }}>×</button>
                   )}
                 </div>
-                {showDescription && (
-                  <div>
-                    <span style={labelStyle}>
-                      Description
-                      <span style={{ color: '#888', fontWeight: 400, marginLeft: '4px' }}>
-                        (visible sous le produit dans le PDF — ex : « SKU : 3770030527439 » ou « Quantité : X | Total m² : Y | Délai... »)
+                {showDescription && (() => {
+                  // La description est stockée comme une seule string avec
+                  // segments séparés par " | ". Pour l'édition, on la split en
+                  // cellules distinctes (une par segment) → meilleure lecture
+                  // visuelle (SUR MESURE = 3 cellules Qté / Total m² / Délai,
+                  // STANDARD = 1 cellule SKU). L'édition d'une cellule
+                  // réassemble la string complète.
+                  const raw = line.description || '';
+                  const segments = raw.length > 0 ? raw.split(' | ') : [''];
+                  // Placeholders segment par segment selon le type de ligne
+                  const placeholders: string[] = line.unit === 'piece'
+                    ? ['SKU : xxxxxxxxxxxxx']
+                    : ['Quantité : X', 'Total m² : Y', 'Délai de production + livraison : environ 21 jours'];
+                  const updateSegment = (segIdx: number, val: string) => {
+                    const next = [...segments];
+                    next[segIdx] = val;
+                    updLine(idx, 'description', next.filter((s) => s.trim().length > 0).join(' | '));
+                  };
+                  const segStyle = {
+                    flex: 1,
+                    minWidth: '100px',
+                    padding: '4px 6px',
+                    fontSize: '11px',
+                    fontStyle: 'italic' as const,
+                    color: '#4a5568',
+                    background: '#fefce8',
+                    border: '1px solid #eab308',
+                    borderRadius: '4px',
+                  };
+                  return (
+                    <div style={{ marginTop: '4px' }}>
+                      <span style={{ ...labelStyle, fontSize: '10px', color: '#718096', fontWeight: 400, fontStyle: 'italic' as const }}>
+                        Description (visible sous le produit dans le PDF)
                       </span>
-                    </span>
-                    <input
-                      style={inputStyle}
-                      value={line.description || ''}
-                      onChange={(e) => updLine(idx, 'description', e.target.value)}
-                      placeholder={line.unit === 'piece' ? 'SKU : xxxxxxxxxxxxx' : 'Quantité : X | Total m² : Y | Délai de production + livraison : environ 21 jours'}
-                    />
-                  </div>
-                )}
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {segments.map((seg, segIdx) => (
+                          <input
+                            key={segIdx}
+                            style={segStyle}
+                            value={seg}
+                            onChange={(e) => updateSegment(segIdx, e.target.value)}
+                            placeholder={placeholders[segIdx] || ''}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -701,7 +735,7 @@ export default function QuotePanel({
         </div>
 
         {/* TVA + Livraison */}
-        <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
+        <div style={sectionBoxStyle}>
           <div style={rowStyle}>
             <div style={{ flex: 1 }}><span style={labelStyle}>TVA (%)</span><input style={inputStyle} value={f.vatPercent} onChange={(e) => upd('vatPercent', e.target.value)} /></div>
             <div style={{ flex: 1 }}><span style={labelStyle}>Remise (%)</span><input style={inputStyle} value={f.discountPercent} onChange={(e) => upd('discountPercent', e.target.value)} /></div>
@@ -710,8 +744,8 @@ export default function QuotePanel({
 
         {/* Annexes images */}
         {availableImages.length > 0 && (
-          <div style={{ marginBottom: '10px', padding: '8px', background: '#f9f9f9', borderRadius: '6px' }}>
-            <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '12px' }}>Annexes (joindre au devis PDF)</div>
+          <div style={sectionBoxStyle}>
+            <div style={sectionTitleStyle}>Annexes (joindre au devis PDF)</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
               {availableImages.map((img, idx) => (
                 <label key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
@@ -755,18 +789,28 @@ export default function QuotePanel({
           const ttcMismatch = expectedTTC !== null && Math.abs(totalTTC - expectedTTC) > 1;
           return (
             <>
-              <div style={{ marginBottom: '10px', padding: '8px', background: ttcMismatch ? '#fef2f2' : '#eef7ee', borderRadius: '6px', fontSize: '12px' }}>
+              <div style={{
+                marginBottom: '10px',
+                padding: '10px',
+                background: ttcMismatch ? '#fef2f2' : '#e6fffa',
+                borderRadius: '6px',
+                fontSize: '13px',
+                color: '#1a202c',
+                border: ttcMismatch ? '1px solid #fc8181' : '1px solid #4fd1c5',
+              }}>
                 <div>Total HT brut : <strong>{totalHTBrut.toFixed(2)} €</strong></div>
                 {discount > 0 && <div>Remise ({discount}%) : <strong>-{discountAmount.toFixed(2)} €</strong></div>}
                 {discount > 0 && <div>Total HT après remise : <strong>{totalHT.toFixed(2)} €</strong></div>}
                 {discount === 0 && <div>Total HT : <strong>{totalHT.toFixed(2)} €</strong></div>}
                 <div>TVA ({vat}%) : <strong>{r2(totalHT * vat / 100).toFixed(2)} €</strong></div>
                 <div>Total TTC : <strong>{totalTTC.toFixed(2)} €</strong></div>
-                {expectedTTC !== null && (
-                  <div style={{ marginTop: '4px', color: ttcMismatch ? '#e53e3e' : '#38a169', fontWeight: 600 }}>
-                    {ttcMismatch
-                      ? `⚠ TTC attendu (mail) : ${expectedTTC.toFixed(2)} € — écart de ${Math.abs(totalTTC - expectedTTC).toFixed(2)} €`
-                      : `✓ TTC cohérent avec le mail (${expectedTTC.toFixed(2)} €)`}
+                {/* Ligne "✓ TTC cohérent avec le mail" retirée le 02/07/2026
+                    (demande Charles : redondant avec les totaux au-dessus,
+                    encombre l'interface). Le warning ⚠ TTC mismatch reste,
+                    lui, actionnable. */}
+                {ttcMismatch && expectedTTC !== null && (
+                  <div style={{ marginTop: '4px', color: '#c53030', fontWeight: 700 }}>
+                    ⚠ TTC attendu (mail) : {expectedTTC.toFixed(2)} € — écart de {Math.abs(totalTTC - expectedTTC).toFixed(2)} €
                   </div>
                 )}
               </div>

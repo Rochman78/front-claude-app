@@ -156,7 +156,7 @@ MAIL DU CLIENT :
 ${mailContent.substring(0, 4000)}
 
 LISTE DES PRODUITS STANDARDS (format colonnes : Nom | Variante | SKU | TTC | HT par taux TVA) :
-${standardsDoc.content.substring(0, 35000)}
+${standardsDoc.content}
 
 RÈGLES :
 - La liste contient des filets standards (par couleur / matière / taille) ET des accessoires (mâts, kits de fixation, cordes, colliers, etc.). Parcourir TOUTE la liste.

@@ -973,12 +973,12 @@ export default function QuotePanel({
               <div className="quote-panel-actions">
                 <button className="btn-secondary" onClick={() => { setState('idle'); setError(null); }}>Annuler</button>
                 <button
-                  className="btn-primary"
+                  className="btn-quote"
                   onClick={() => handleCreateFromForm()}
                   disabled={!canGenerate}
                   style={{ width: 'auto', opacity: canGenerate ? 1 : 0.5 }}
                 >
-                  Générer le devis
+                  Créer devis PDF dans Pennylane
                 </button>
               </div>
             </>

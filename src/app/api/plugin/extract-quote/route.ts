@@ -206,6 +206,12 @@ Pour CHAQUE ligne avec unit="piece" (standard catalogue), tu DOIS inclure le SKU
 - Chercher le téléphone, nom, prénom, adresse dans TOUT le fil de mails (y compris le PREMIER message, souvent un formulaire de contact avec le numéro de téléphone).
 - Ne pas se limiter au dernier message.
 
+=== RÈGLE N°7 BIS : ADRESSE DE FACTURATION vs ADRESSE DE LIVRAISON ===
+- Le client PEUT avoir 2 adresses distinctes : facturation (siège social, domicile administratif) et livraison (chantier, entrepôt, second domicile). Chercher les 2 dans le fil.
+- billingAddress = OBLIGATOIRE (adresse principale, comptable). Si le client n'a donné qu'une adresse, c'est celle-là.
+- deliveryAddress = OPTIONNEL. Ne le remplir QUE si le fil mentionne EXPLICITEMENT une adresse de livraison distincte : phrases type « à livrer à », « livraison à l'adresse suivante », « pour la livraison », « chantier à », « merci de livrer chez… ». Si le client mentionne SEULEMENT une adresse ou dit « livraison à la même adresse » : deliveryAddress = null.
+- Ne PAS inventer une deliveryAddress. En cas de doute → null.
+
 === RÈGLE N°8 : OÙ EST LE CHIFFRAGE ===
 - Le « CHIFFRAGE SERVICE CLIENT » ci-dessous correspond au DERNIER message Claude, qui peut être une simple clarification, une question de relance ou une confirmation de commande SANS prix.
 - Si ce dernier message ne contient PAS de prix/taille/quantité explicite, alors le chiffrage est forcément dans un MAIL ANTÉRIEUR du fil — CHERCHER dans « MAILS » le message NOUS le plus récent qui contient les détails du devis (taille, couleur, finition, prix HT/TTC, quantité, transport, kit/accessoire éventuels).
@@ -232,7 +238,8 @@ ${claudeText || '(aucun chiffrage service client — extraire depuis le fil de m
     "type": "individual|company",
     "firstName": "", "lastName": "", "companyName": "",
     "email": "", "phone": "", "vatNumber": "",
-    "address": { "address": "", "postalCode": "", "city": "", "country": "XX" }
+    "billingAddress": { "address": "", "postalCode": "", "city": "", "country": "XX" },
+    "deliveryAddress": null
   },
   "vatPercent": 0,
   "discountPercent": 0,
@@ -240,7 +247,11 @@ ${claudeText || '(aucun chiffrage service client — extraire depuis le fil de m
   "lines": [
     { "type": "product|accessory|transport|transport_discount", "label": "", "quantity": 0, "unitPrice": 0, "unit": "m2|piece", "description": "" }
   ]
-}`;
+}
+
+Note : "deliveryAddress" doit être :
+- null (par défaut, si pas d'adresse de livraison distincte dans le fil)
+- OU un objet {"address": "...", "postalCode": "...", "city": "...", "country": "XX"} si le fil mentionne EXPLICITEMENT une livraison à une autre adresse.`;
 
     console.log(`[extract-quote] calling Claude Haiku for store=${storeCode}`);
     const t0 = Date.now();
@@ -261,6 +272,18 @@ ${claudeText || '(aucun chiffrage service client — extraire depuis le fil de m
     } catch (parseErr) {
       console.error('[extract-quote] JSON parse error:', parseErr, 'raw:', result.substring(0, 500));
       return NextResponse.json({ error: 'Réponse Claude invalide', raw: result }, { status: 500 });
+    }
+
+    // Rétrocompat : si Claude sort encore l'ancienne clé "address" au lieu
+    // de "billingAddress" (schéma pré-refacto 02/07/2026), on la mappe. Vise
+    // les appels legacy ou les cache-hits du prompt qui n'a pas encore
+    // "propagé" la nouvelle règle N°7 BIS.
+    if (parsed?.customer && !parsed.customer.billingAddress && parsed.customer.address) {
+      parsed.customer.billingAddress = parsed.customer.address;
+      delete parsed.customer.address;
+    }
+    if (parsed?.customer && parsed.customer.deliveryAddress === undefined) {
+      parsed.customer.deliveryAddress = null;
     }
 
     // Post-processing STANDARDS : convertir le TTC saisi par Claude en HT via

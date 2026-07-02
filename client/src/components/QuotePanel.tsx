@@ -66,11 +66,19 @@ interface VerifyFormData {
   email: string;
   phone: string;
   vatNumber: string;
-  // Adresse
+  // Adresse de facturation (envoyée à Pennylane comme billing_address, obligatoire)
   street: string;
   postalCode: string;
   city: string;
   country: string;
+  // Adresse de livraison (envoyée à Pennylane comme delivery_address si distincte).
+  // Si deliverySameAsBilling=true → on ignore les 4 champs delivery* et on reprend
+  // les champs de facturation ci-dessus au moment du push.
+  deliverySameAsBilling: boolean;
+  deliveryStreet: string;
+  deliveryPostalCode: string;
+  deliveryCity: string;
+  deliveryCountry: string;
   // Lignes produit (tableau)
   lines: { label: string; quantity: string; unitPrice: string; unit: string; type?: string; description?: string }[];
   // TVA
@@ -618,9 +626,9 @@ export default function QuotePanel({
           </div>
         </div>
 
-        {/* Adresse */}
+        {/* Adresse de facturation */}
         <div style={sectionBoxStyle}>
-          <div style={sectionTitleStyle}>Adresse</div>
+          <div style={sectionTitleStyle}>Adresse de facturation</div>
           <div style={rowStyle}>
             <div style={{ flex: 1 }}><span style={labelStyle}>Rue</span><input style={inputStyle} value={f.street} onChange={(e) => upd('street', e.target.value)} /></div>
           </div>
@@ -629,6 +637,36 @@ export default function QuotePanel({
             <div style={{ flex: 1 }}><span style={labelStyle}>Ville</span><input style={inputStyle} value={f.city} onChange={(e) => upd('city', e.target.value)} /></div>
             <div style={{ flex: 1 }}><span style={labelStyle}>Pays</span><input style={inputStyle} value={f.country} onChange={(e) => upd('country', e.target.value)} /></div>
           </div>
+        </div>
+
+        {/* Adresse de livraison — cachée si "identique à la facturation"
+            (cas 90 %). Décochée → 4 champs éditables. Pré-remplie depuis
+            customer.deliveryAddress si extract-quote a trouvé une adresse de
+            livraison distincte dans le fil de mails. */}
+        <div style={sectionBoxStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <div style={sectionTitleStyle}>Adresse de livraison</div>
+            <label style={{ fontSize: '11px', color: '#2d3748', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={f.deliverySameAsBilling}
+                onChange={(e) => upd('deliverySameAsBilling', e.target.checked)}
+              />
+              Identique à la facturation
+            </label>
+          </div>
+          {!f.deliverySameAsBilling && (
+            <>
+              <div style={rowStyle}>
+                <div style={{ flex: 1 }}><span style={labelStyle}>Rue</span><input style={inputStyle} value={f.deliveryStreet} onChange={(e) => upd('deliveryStreet', e.target.value)} /></div>
+              </div>
+              <div style={rowStyle}>
+                <div style={{ flex: 1 }}><span style={labelStyle}>Code postal</span><input style={inputStyle} value={f.deliveryPostalCode} onChange={(e) => upd('deliveryPostalCode', e.target.value)} /></div>
+                <div style={{ flex: 1 }}><span style={labelStyle}>Ville</span><input style={inputStyle} value={f.deliveryCity} onChange={(e) => upd('deliveryCity', e.target.value)} /></div>
+                <div style={{ flex: 1 }}><span style={labelStyle}>Pays</span><input style={inputStyle} value={f.deliveryCountry} onChange={(e) => upd('deliveryCountry', e.target.value)} /></div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Warnings serveur (cohérence catalogue SKU / TTC) — affichés au-dessus
@@ -1072,6 +1110,15 @@ export default function QuotePanel({
         : null;
       setClaudeExtractedLines(backupLines);
 
+      // Adresses : nouveau schéma customer.billingAddress + customer.deliveryAddress
+      // (rétrocompat serveur : customer.address → customer.billingAddress).
+      const billing = (customer?.billingAddress || customer?.address || {}) as Record<string, unknown>;
+      const delivery = customer?.deliveryAddress as Record<string, unknown> | null | undefined;
+      const hasDeliveryDistinct = !!delivery && (
+        String(delivery.address || '').trim().length > 0 ||
+        String(delivery.postalCode || '').trim().length > 0 ||
+        String(delivery.city || '').trim().length > 0
+      );
       setVerifyForm({
         clientType: (customer?.type === 'company' ? 'company' : 'individual'),
         firstName: String(customer?.firstName || ''),
@@ -1080,10 +1127,15 @@ export default function QuotePanel({
         email: String(customer?.email || customerEmail || ''),
         phone: String(customer?.phone || ''),
         vatNumber: String(customer?.vatNumber || ''),
-        street: String((customer?.address as Record<string, unknown>)?.address || ''),
-        postalCode: String((customer?.address as Record<string, unknown>)?.postalCode || ''),
-        city: String((customer?.address as Record<string, unknown>)?.city || ''),
-        country: String((customer?.address as Record<string, unknown>)?.country || ''),
+        street: String(billing.address || ''),
+        postalCode: String(billing.postalCode || ''),
+        city: String(billing.city || ''),
+        country: String(billing.country || ''),
+        deliverySameAsBilling: !hasDeliveryDistinct,
+        deliveryStreet: hasDeliveryDistinct ? String(delivery!.address || '') : '',
+        deliveryPostalCode: hasDeliveryDistinct ? String(delivery!.postalCode || '') : '',
+        deliveryCity: hasDeliveryDistinct ? String(delivery!.city || '') : '',
+        deliveryCountry: hasDeliveryDistinct ? String(delivery!.country || '') : '',
         lines: trapezeDetected
           // Trapèze : on FORCE une seule ligne vide pour saisie manuelle,
           // même si Claude avait produit des lignes (qui seraient probablement
@@ -1135,6 +1187,11 @@ export default function QuotePanel({
         postalCode: '',
         city: '',
         country: '',
+        deliverySameAsBilling: true,
+        deliveryStreet: '',
+        deliveryPostalCode: '',
+        deliveryCity: '',
+        deliveryCountry: '',
         lines: [{ label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product' }],
         vatPercent: '20',
         discountPercent: '0',
@@ -1399,6 +1456,20 @@ export default function QuotePanel({
         line.vatRate = vatCode;
       }
 
+      // Résoudre l'adresse de livraison finale : soit distincte, soit copie
+      // de la facturation. On envoie TOUJOURS une deliveryAddress à Pennylane
+      // (identique à billing si pas distincte) pour que le champ "delivery"
+      // apparaisse sur le PDF.
+      const deliveryDistinct = !f.deliverySameAsBilling && (
+        f.deliveryStreet.trim().length > 0 ||
+        f.deliveryPostalCode.trim().length > 0 ||
+        f.deliveryCity.trim().length > 0
+      );
+      const rawDeliveryCountry = deliveryDistinct
+        ? (f.deliveryCountry || f.country || 'FR')
+        : (f.country || 'FR');
+      const deliveryCountry = String(rawDeliveryCountry).toUpperCase().slice(0, 2);
+
       // Construire le payload
       const payload = {
         customer: {
@@ -1415,6 +1486,12 @@ export default function QuotePanel({
             city: f.city,
             country,
           } : undefined,
+          deliveryAddress: deliveryDistinct ? {
+            street: f.deliveryStreet,
+            zipCode: f.deliveryPostalCode,
+            city: f.deliveryCity,
+            country: deliveryCountry,
+          } : undefined,
         },
         lines: allLines,
         subject: f.subject,
@@ -1427,8 +1504,26 @@ export default function QuotePanel({
       // Format demandé par Charles 01/07/2026 : mention FR avec article 262 ter I CGI
       // + article 138 Directive 2006/112/CE. Injectée dans le champ
       // "ajouter une description" du devis Pennylane (pdf_invoice_free_text).
+      const freeTextLines: string[] = [];
       if (vatPercent === 0 && EU_COUNTRIES_NON_FR.includes(country) && f.vatNumber) {
-        payload.freeText = 'Exonération de TVA – Livraison intracommunautaire – article 262 ter I du CGI – article 138 de la directive 2006/112/CE.';
+        freeTextLines.push('Exonération de TVA – Livraison intracommunautaire – article 262 ter I du CGI – article 138 de la directive 2006/112/CE.');
+      }
+      // Backup lisibilité : quand l'adresse de livraison diffère de la
+      // facturation, on la répète dans le free_text pour garantir sa
+      // visibilité sur le PDF même si le template Pennylane ne rend pas le
+      // bloc delivery_address structuré (02/07/2026).
+      if (deliveryDistinct) {
+        const deliveryLine = [
+          f.deliveryStreet,
+          `${f.deliveryPostalCode} ${f.deliveryCity}`.trim(),
+          deliveryCountry,
+        ].filter((s) => s && s.trim().length > 0).join(', ');
+        if (deliveryLine) {
+          freeTextLines.push(`Livraison à : ${deliveryLine}`);
+        }
+      }
+      if (freeTextLines.length > 0) {
+        payload.freeText = freeTextLines.join('\n');
       }
 
       // Traduire labels si boutique non-FR

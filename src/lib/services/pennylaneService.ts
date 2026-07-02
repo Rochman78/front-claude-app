@@ -45,6 +45,17 @@ export async function findCustomerByEmail(email: string): Promise<{ id: string; 
   return null;
 }
 
+/** Convertit une adresse plugin (street/zipCode/city/country) au format Pennylane. */
+function toPennylaneAddress(a: Record<string, string> | undefined | null): Record<string, string> | null {
+  if (!a || !Object.values(a).some(Boolean)) return null;
+  return {
+    address: a.street || '',
+    postal_code: a.zipCode || '',
+    city: a.city || '',
+    country_alpha2: a.country || 'FR',
+  };
+}
+
 export async function createCustomer(customer: Record<string, unknown>): Promise<{ id?: string; error?: string }> {
   const type = (customer.type as string) || 'individual';
   const payload: Record<string, unknown> = {};
@@ -52,15 +63,13 @@ export async function createCustomer(customer: Record<string, unknown>): Promise
   if (customer.email) payload.emails = [customer.email];
   if (customer.phone) payload.phone = customer.phone;
 
-  const address = customer.address as Record<string, string> | undefined;
-  if (address && Object.values(address).some(Boolean)) {
-    payload.billing_address = {
-      address: address.street || '',
-      postal_code: address.zipCode || '',
-      city: address.city || '',
-      country_alpha2: address.country || 'FR',
-    };
-  }
+  const billing = toPennylaneAddress(customer.address as Record<string, string> | undefined);
+  if (billing) payload.billing_address = billing;
+
+  // Adresse de livraison distincte — envoyée à Pennylane comme delivery_address
+  // sur le customer, apparaît sur le PDF sous le bloc "Livrer à" (02/07/2026).
+  const delivery = toPennylaneAddress(customer.deliveryAddress as Record<string, string> | undefined);
+  if (delivery) payload.delivery_address = delivery;
 
   let endpoint: string;
   if (type === 'company') {
@@ -176,6 +185,7 @@ export async function resolveCustomerId(customer?: Record<string, unknown>, cust
 
   // Chercher un client existant par email
   let resolved: string | null = null;
+  let reusedExisting = false;
   if (customer.email) {
     const found = await findCustomerByEmail(customer.email as string);
     if (found) {
@@ -183,6 +193,7 @@ export async function resolveCustomerId(customer?: Record<string, unknown>, cust
       if (found.type === requestedType) {
         // Même type → réutiliser le client existant
         resolved = found.id;
+        reusedExisting = true;
       } else {
         // Type différent → créer un nouveau client du bon type
         console.log(`[pennylane] type mismatch: existing=${found.type}, requested=${requestedType} → creating new`);
@@ -196,6 +207,35 @@ export async function resolveCustomerId(customer?: Record<string, unknown>, cust
     resolved = result.id || null;
   }
   if (!resolved) throw new Error('Impossible de créer ou trouver le client');
+
+  // Client réutilisé : mettre à jour les adresses (facturation + livraison)
+  // avec les valeurs du devis courant. Charles 02/07/2026 : on écrase même
+  // si le customer existant avait déjà des adresses (l'adresse "vraie" est
+  // celle du dernier chiffrage validé). Pour un CREATE frais, ces champs
+  // sont déjà dans le POST initial → pas besoin d'un PUT en plus.
+  if (reusedExisting) {
+    const billing = toPennylaneAddress(customer.address as Record<string, string> | undefined);
+    const delivery = toPennylaneAddress(customer.deliveryAddress as Record<string, string> | undefined);
+    if (billing || delivery) {
+      const updatePayload: Record<string, unknown> = {};
+      if (billing) updatePayload.billing_address = billing;
+      if (delivery) updatePayload.delivery_address = delivery;
+      const endpoint = requestedType === 'company' ? 'company_customers' : 'individual_customers';
+      try {
+        const putRes = await fetch(`${PENNYLANE_API_URL}/${endpoint}/${resolved}`, {
+          method: 'PUT',
+          headers: pennylaneHeaders(),
+          body: JSON.stringify(updatePayload),
+        });
+        console.log(`[pennylane] updated existing customer ${resolved} addresses → ${putRes.status} (billing=${!!billing}, delivery=${!!delivery})`);
+      } catch (err) {
+        // Non bloquant : le devis peut être créé même si la mise à jour
+        // adresse échoue (fallback : freeText contient "Livraison à : X").
+        console.warn(`[pennylane] address update failed for customer ${resolved} (non-blocking):`, err);
+      }
+    }
+  }
+
   return resolved;
 }
 

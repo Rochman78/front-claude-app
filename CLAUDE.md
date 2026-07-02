@@ -75,6 +75,15 @@ front-claude-app/
 - 9 boutiques (LFC, LVO, MON, UNI, TAR, HET, RED, REDE, RETE) : 2 options brouillon = (1) site + (2) sur-mesure. COCO : 1 seule option = site (pas de sur-mesure en coco).
 - Encodé × 10 agents en BDD (remplace l'ancienne formulation "nous pouvons vous prévenir par email dès que le réassort sera disponible").
 
+### Adresse de facturation vs adresse de livraison (02/07/2026)
+- Chaque devis expose désormais **2 adresses distinctes** côté extract-quote + QuotePanel + Pennylane :
+  - `billingAddress` = adresse de facturation (obligatoire, apparaît sur le PDF Pennylane pour la comptabilité).
+  - `deliveryAddress` = adresse de livraison (optionnelle — remplie uniquement si le client mentionne EXPLICITEMENT une adresse distincte).
+- **Formulaire plugin (QuotePanel)** : bloc « Adresse de facturation » (renommé) + nouveau bloc « Adresse de livraison » avec checkbox « Identique à la facturation » cochée par défaut. Décochée → 4 champs éditables pré-remplis depuis `customer.deliveryAddress` si extract-quote a trouvé une adresse distincte.
+- **Pennylane** : `billing_address` + `delivery_address` posés sur le customer via `individual_customers` / `company_customers`. Pour un customer existant, on **écrase** les 2 adresses (Charles 02/07/2026 : l'adresse « vraie » est celle du dernier devis). Backup lisibilité : quand livraison ≠ facturation, on répète aussi dans `pdf_invoice_free_text` (« Livraison à : … ») pour garantir la visibilité PDF quel que soit le template.
+- **Brouillon client (agent instructions × 10)** : le récap coordonnées affiche TOUJOURS les 2 lignes `Adresse de facturation :` et `Adresse de livraison :`, même identiques (règle Q3 Charles — préférence explicite sur la lisibilité, quitte à être redondant). INTERDIT de fusionner en une seule ligne « Adresse : ». Encodé × 10 agents (bloc dédié « ADRESSE DE FACTURATION vs ADRESSE DE LIVRAISON » après la ligne COORDONNÉES). Backup pré-patch : `backups/adresse-facturation-livraison-20260702-232508/`.
+- **Rétrocompat extract-quote** : si Claude sort encore l'ancien `customer.address`, le serveur le mappe en `customer.billingAddress` automatiquement (transition douce).
+
 ### TVA — toujours le pays de livraison (12/06/2026)
 - TVA par défaut = TVA du **pays de livraison** du client (pas du pays de facturation).
 - Si AUCUNE adresse de livraison fournie → TVA du **pays de la boutique** (règle B2C OSS par défaut).

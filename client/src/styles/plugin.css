@@ -244,6 +244,24 @@ body {
   background: #f0f6ff;
 }
 
+/* Vérifier virement reçu : violet (distinct du navy analyser + vert devis) */
+.btn-payment {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-payment:hover {
+  background: linear-gradient(135deg, #6d28d9, #7c3aed);
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+}
+
 /* Générer / Modifier devis PDF : vert Pennylane */
 .btn-quote {
   width: 100%;

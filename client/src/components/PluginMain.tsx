@@ -718,10 +718,11 @@ export default function PluginMain({ context }: PluginMainProps) {
               Claude. Utile quand le gérant sait déjà ce qu'il veut générer
               (contexte simple, chiffrage déjà présent dans un mail antérieur)
               et veut sauter l'étape analyse. QuotePanel s'ouvre avec
-              claudeText vide, l'extraction se fait sur mailThread seul. */}
+              claudeText vide, l'extraction se fait sur mailThread seul.
+              Couleur : btn-quote (vert Pennylane, même que sticky bar). */}
           <button
-            className="btn-outline"
-            style={{ fontSize: '13px', fontWeight: 600, color: '#000', marginTop: '6px', width: '100%' }}
+            className="btn-quote"
+            style={{ marginTop: '6px' }}
             onClick={() => handleDirectQuote()}
           >
             📄 Générer devis PDF
@@ -729,10 +730,12 @@ export default function PluginMain({ context }: PluginMainProps) {
 
           {/* Bouton "Vérifier virement reçu" — toujours visible en page
               d'accueil. Le panel propose la saisie manuelle du n° de devis
-              si la conv n'en a pas en BDD (cas devis créé hors plugin). */}
+              si la conv n'en a pas en BDD (cas devis créé hors plugin).
+              Couleur : btn-payment (violet, distinct navy analyser + vert
+              devis, même sur sticky bar). */}
           <button
-            className="btn-outline"
-            style={{ fontSize: '13px', fontWeight: 600, color: '#000', marginTop: '6px', width: '100%' }}
+            className="btn-payment"
+            style={{ marginTop: '6px' }}
             onClick={() => setShowPaymentCheck(true)}
           >
             💳 Vérifier virement reçu
@@ -1269,10 +1272,10 @@ export default function PluginMain({ context }: PluginMainProps) {
 
           {/* Vérifier virement reçu — toujours visible. Le panel gère le cas
               "pas de devis en BDD" en proposant la saisie manuelle du n° de
-              devis (utile pour les devis créés hors plugin). */}
+              devis (utile pour les devis créés hors plugin). Couleur : violet
+              (btn-payment), même que sur la page d'accueil. */}
           <button
-            className="btn-outline"
-            style={{ fontSize: '13px', fontWeight: 600, color: '#000' }}
+            className="btn-payment"
             onClick={() => setShowPaymentCheck(true)}
           >
             💳 Vérifier virement reçu

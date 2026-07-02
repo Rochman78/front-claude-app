@@ -3,7 +3,7 @@ import pool, { initDB } from '@/lib/db';
 import { createChatStream } from '@/lib/services/claudeService';
 import { buildDocumentsText } from '@/lib/documentSelector';
 import { getStoreByCode } from '@/lib/stores';
-import { getConversationImages } from '@/lib/services/frontappService';
+import { getConversationAttachments } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
 import { callClaude } from '@/lib/services/claudeService';
 import { dedupeRepeatedBlocks } from '@/lib/mailDedup';
@@ -334,12 +334,35 @@ Signale ces SKU en QUESTIONS au gérant et ne tranche pas (chiffre catalogue par
       systemPrompt += `\n\n═══════════════════════════════════════\nMODE CHAT (CONVERSATION EN DIRECT)\n═══════════════════════════════════════\n\nCette conversation vient du CHAT EN DIRECT (pas d'un email). Adapte ton style :\n- Réponses COURTES et DIRECTES, comme un chat en temps réel\n- Pas de formules longues ni de paragraphes développés\n- Tutoiement ou vouvoiement selon ce que le client utilise\n- Commence par "Bonjour [Prénom]," puis va droit au but\n- Pas de "Nous vous remercions pour votre message" ni de formules d'introduction longues\n- Maximum 3-4 phrases par réponse sauf si un chiffrage détaillé est nécessaire\n- Ton conversationnel, chaleureux mais efficace`;
     }
 
-    // Récupérer les images depuis l'API Front (côté backend, plus fiable que le SDK client)
+    // Récupérer les images ET les PJ oversized depuis l'API Front.
+    // Une PJ > 22 MB (PDF) ou > 5 MB (image) ne peut pas être envoyée à l'API
+    // Anthropic (limite 32 MB base64 par bloc document). On l'exclut et on
+    // signale au plugin pour que le gérant fournisse la description via
+    // Claude Desktop (cf marker __PJ_TOO_LARGE__ plus bas).
     let imageBlocks: { data: string; mediaType: string; name: string }[] = [];
+    let oversized: { name: string; sizeBytes: number; type: 'pdf' | 'image' }[] = [];
     try {
-      imageBlocks = await getConversationImages(frontConversationId);
+      const attachments = await getConversationAttachments(frontConversationId);
+      imageBlocks = attachments.images;
+      oversized = attachments.oversized;
     } catch (err) {
       console.warn('[plugin/analyze] image extraction failed:', err);
+    }
+
+    // Court-circuit : si au moins une PJ dépasse la limite Anthropic, on ne
+    // lance PAS Claude — on renvoie un marker que le plugin reconnaît pour
+    // afficher un bandeau orange demandant au gérant de coller la description
+    // (workflow Q1=B validé le 02/07/2026).
+    if (oversized.length > 0) {
+      const payload = JSON.stringify({ attachments: oversized });
+      console.log(`[plugin/analyze] court-circuit PJ_TOO_LARGE (${oversized.length} PJ) — attente description du gérant`);
+      return new Response(`__PJ_TOO_LARGE__${payload}`, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Content-Type-Options': 'nosniff',
+          'Cache-Control': 'no-cache, no-transform',
+        },
+      });
     }
 
     console.log(`[plugin/analyze] === CLAUDE API CALL ===`);

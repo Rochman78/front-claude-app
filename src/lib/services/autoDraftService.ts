@@ -307,6 +307,31 @@ ${fullBody}`;
       return { conversationId, status: 'error', reason: 'analyze __ERROR__' };
     }
 
+    // 5b. Court-circuit PJ trop volumineuse : /analyze a renvoyé un marker
+    // au lieu d'un brouillon (au moins une PJ > 22 MB PDF ou > 5 MB image →
+    // dépasse la limite Anthropic 32 MB base64 par bloc). Décision humaine
+    // requise via le plugin (le gérant décrit la PJ via Claude Desktop puis
+    // colle la description en chat). Pas de brouillon posé, commentaire sur
+    // la conv.
+    if (rawDraft.startsWith('__PJ_TOO_LARGE__')) {
+      let pjList: { name: string; sizeBytes: number }[] = [];
+      try {
+        const payload = JSON.parse(rawDraft.slice('__PJ_TOO_LARGE__'.length));
+        if (Array.isArray(payload?.attachments)) pjList = payload.attachments;
+      } catch { /* payload malformé — on continue avec liste vide */ }
+      const pjSummary = pjList.length > 0
+        ? pjList.map((a) => `${a.name} (${(a.sizeBytes / 1024 / 1024).toFixed(1)} MB)`).join(', ')
+        : 'PJ non détaillée';
+      const why = `PJ trop volumineuse pour l'API Anthropic : ${pjSummary} — nécessite intervention manuelle via plugin`;
+      console.log(`[auto-draft] ${conversationId} ${why}`);
+      await record(conversationId, store.code, 'skipped', why);
+      await postComment(
+        conversationId,
+        `⚠️ Auto-draft Claude BLOQUÉ : ${pjSummary} — PJ trop volumineuse pour l'API. À traiter via le plugin : le bandeau orange proposera de décrire la PJ via Claude Desktop.`
+      );
+      return { conversationId, status: 'skipped', reason: why };
+    }
+
     // 6. Nettoyage → corps mail client (sans questions ni notes internes)
     const emailText = cleanDraft(rawDraft);
     if (!emailText || emailText.length < 20) {

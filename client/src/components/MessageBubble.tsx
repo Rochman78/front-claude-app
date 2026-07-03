@@ -2,6 +2,11 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** ISO 8601 timestamp du BDD claude_messages.created_at.
+   *  Optionnel : les messages fraîchement générés côté client (streaming)
+   *  n'en ont pas. Utilisé par la détection auto-reset (nouveau mail
+   *  client arrivé après notre dernier brouillon). */
+  createdAt?: string;
 }
 
 interface MessageBubbleProps {

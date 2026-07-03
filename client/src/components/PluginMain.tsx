@@ -277,6 +277,21 @@ export default function PluginMain({ context }: PluginMainProps) {
   // de la langue de la boutique).
   const [detectedLang, setDetectedLang] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  // Auto-reset landing quand un nouveau mail client est arrivé APRÈS notre
+  // dernier brouillon poussé (Charles 03/07/2026). Détection :
+  //  - lastInboundAt (Front) > lastAssistantAt (Claude BDD)  [client a répondu depuis]
+  //  - lastOutboundAt (Front) > lastAssistantAt (Claude BDD) [on a bien poussé notre brouillon]
+  //  - lastInboundAt > lastOutboundAt                        [le client a répondu APRÈS notre push]
+  // Si toutes remplies : on retombe sur la landing + bandeau info.
+  // L'historique BDD est préservé, accessible via "Voir l'historique précédent".
+  const [newInboundDetected, setNewInboundDetected] = useState(false);
+  const [showPreviousHistory, setShowPreviousHistory] = useState(false);
+  // Messages Claude préservés au moment du reset auto-landing, exposés au
+  // gérant via le bouton "Voir l'historique précédent" du bandeau.
+  const [previousHistory, setPreviousHistory] = useState<import('./MessageBubble').Message[]>([]);
+  // Compteur de rounds Claude sur la conv (nb d'analyses / suites générées).
+  // Affiché en badge pour rappeler qu'on est au tour N.
+  const [roundCount, setRoundCount] = useState(1);
   const prevConvId = useRef<string>('');
   const justSwitchedRef = useRef<boolean>(false);
   const pushDraft = usePushDraft(context);
@@ -304,6 +319,8 @@ export default function PluginMain({ context }: PluginMainProps) {
     setPushLang('auto');
     setDirectQuoteMode(false);
     setDirectQuotePending(false);
+    setNewInboundDetected(false);
+    setShowPreviousHistory(false);
 
     // Restaurer les infos devis depuis le cache mémoire ou la BDD
     const cachedQuote = conversationCache.getQuoteFromCache(frontConvId);
@@ -333,38 +350,92 @@ export default function PluginMain({ context }: PluginMainProps) {
       }
     }
 
-    // Résoudre l'email/nom client depuis le SDK (replyTo.handle) à chaque conversation
-    (async () => {
+    // Résoudre l'email/nom client + précalculer les timestamps Front
+    // (lastInbound / lastOutbound) pour la détection auto-reset.
+    let lastInboundAt = 0;
+    let lastOutboundAt = 0;
+    const frontReady = (async () => {
       try {
         const msgsRes = await context.listMessages();
-        const msgs = msgsRes.results as unknown as FrontMessage[];
+        const msgs = msgsRes.results as unknown as (FrontMessage & { date?: number; is_inbound?: boolean })[];
         const firstIncoming = msgs.find((m) => m.replyTo?.handle);
         const email = extractCustomerEmail(firstIncoming || msgs[0], recipient?.handle || '');
         const name = extractCustomerName(firstIncoming || msgs[0], recipient?.name || '');
         console.log('[plugin] resolved email from replyTo:', email);
         setResolvedEmail(email);
         setResolvedName(name);
+        // Timestamps : Front SDK renvoie date en secondes (Unix). On garde ms.
+        for (const m of msgs) {
+          const t = typeof m.date === 'number' ? m.date * 1000 : 0;
+          if (!t) continue;
+          if (m.is_inbound === true && t > lastInboundAt) lastInboundAt = t;
+          else if (m.is_inbound === false && t > lastOutboundAt) lastOutboundAt = t;
+        }
       } catch { /* fallback aux valeurs du recipient */ }
     })();
+
+    // Décide si on doit restore (cache/BDD) ou reset (auto-landing).
+    //  RESET si notre dernier brouillon a été poussé ET le client a répondu
+    //  APRÈS. Sinon RESTORE normal.
+    const decideAndLoad = (
+      messages: import('./MessageBubble').Message[] | null,
+      convId: string | null,
+    ) => {
+      if (frontConvId !== prevConvId.current) return; // switched again
+      const assistantMsgs = (messages || []).filter((m) => m.role === 'assistant' && m.createdAt);
+      const lastAssistantAt = assistantMsgs.reduce((max, m) => {
+        const t = m.createdAt ? new Date(m.createdAt).getTime() : 0;
+        return t > max ? t : max;
+      }, 0);
+      // Rounds = nb d'occurrences [Analyse demandée] ou [Suite de la conv]
+      // dans les messages user (chaque marker = un tour de génération).
+      const userMarkers = (messages || []).filter((m) =>
+        m.role === 'user' && (m.content.startsWith('[Analyse demandée]') || m.content.startsWith('[Suite de la conversation]'))
+      );
+      const rounds = Math.max(1, userMarkers.length);
+
+      const shouldReset = messages && lastAssistantAt > 0
+        && lastOutboundAt > lastAssistantAt      // notre brouillon a été poussé
+        && lastInboundAt > lastAssistantAt        // le client a répondu depuis
+        && lastInboundAt > lastOutboundAt;        // le client a répondu APRÈS notre push
+
+      if (shouldReset) {
+        console.log(`[plugin] auto-reset landing : nouveau mail client (${new Date(lastInboundAt).toISOString()}) après notre dernier push (${new Date(lastOutboundAt).toISOString()}) — brouillon Claude du ${new Date(lastAssistantAt).toISOString()} obsolète`);
+        setNewInboundDetected(true);
+        setRoundCount(rounds + 1);
+        setPreviousHistory(messages || []);
+        claude.reset(frontConvId);
+        return;
+      }
+      setPreviousHistory([]);
+      // Sinon restore normal
+      if (messages && convId) {
+        console.log(`[plugin] restore ${messages.length} msgs, round=${rounds}`);
+        setRoundCount(rounds);
+        claude.restore(messages, convId, frontConvId);
+      } else {
+        setRoundCount(1);
+        claude.reset(frontConvId);
+      }
+    };
 
     // 1. Vérifier le cache mémoire
     const cached = conversationCache.getFromCache(frontConvId);
     if (cached) {
       console.log(`[plugin] cache hit for ${frontConvId}: ${cached.messages.length} msgs`);
-      claude.restore(cached.messages, cached.conversationId, frontConvId);
+      frontReady.then(() => decideAndLoad(cached.messages, cached.conversationId));
       return;
     }
 
     // 2. Charger depuis la BDD
     if (!store) return;
     setLoadingHistory(true);
-    conversationCache.loadFromDB(frontConvId, store.code).then((result) => {
-      if (result && frontConvId === prevConvId.current) {
-        console.log(`[plugin] DB hit for ${frontConvId}: ${result.messages.length} msgs`);
-        claude.restore(result.messages, result.conversationId, frontConvId);
-      } else if (frontConvId === prevConvId.current) {
-        // Pas d'historique → reset
-        claude.reset(frontConvId);
+    Promise.all([
+      conversationCache.loadFromDB(frontConvId, store.code),
+      frontReady,
+    ]).then(([result]) => {
+      if (frontConvId === prevConvId.current) {
+        decideAndLoad(result?.messages || null, result?.conversationId || null);
       }
       setLoadingHistory(false);
     });
@@ -729,6 +800,20 @@ export default function PluginMain({ context }: PluginMainProps) {
           subject={subject}
         />
 
+        {/* Compteur Round Claude — visible dès qu'il y a plus d'un tour ou
+            qu'une nouvelle réponse client a été détectée. Rappel visuel de
+            l'itération en cours dans la conv (Charles 03/07/2026). */}
+        {(roundCount > 1 || newInboundDetected) && (
+          <div style={{
+            display: 'inline-block', margin: '4px 0 8px 0', padding: '2px 8px',
+            fontSize: '11px', fontWeight: 700,
+            background: '#e6fffa', color: '#234e52',
+            border: '1px solid #4fd1c5', borderRadius: '10px',
+          }}>
+            Round #{roundCount}
+          </div>
+        )}
+
       {/* Template selector — toujours visible */}
       {templates.length > 0 && !claude.isStreaming && (
         <div style={{ padding: '6px 0' }}>
@@ -790,6 +875,62 @@ export default function PluginMain({ context }: PluginMainProps) {
 
       {!hasMessages && !pjTooLarge && !claude.isStreaming && !loadingHistory && conversationCache.isPending(frontConvId) && (
         <LoadingState message="Analyse en cours sur ce mail..." />
+      )}
+
+      {/* Bandeau "Nouvel échange client détecté" — affiché sur la landing
+          quand la détection auto-reset a joué (client a répondu après notre
+          dernier push). Historique interne conservé, expandable via bouton
+          "Voir l'historique précédent". */}
+      {!hasMessages && newInboundDetected && !claude.isStreaming && !loadingHistory && (
+        <div
+          style={{
+            margin: '8px 0 10px 0',
+            padding: '12px 14px',
+            background: '#e6fffa',
+            border: '1px solid #4fd1c5',
+            borderRadius: '8px',
+            fontSize: '12px',
+            color: '#234e52',
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: '4px', fontSize: '13px' }}>
+            ✨ Nouvel échange client détecté — Round #{roundCount}
+          </div>
+          <div style={{ marginBottom: '8px', lineHeight: 1.4 }}>
+            Le client a répondu depuis ton dernier envoi. Historique interne conservé, clique <strong>Analyser avec Claude</strong> pour un nouveau brouillon adapté à sa réponse.
+          </div>
+          <button
+            onClick={() => setShowPreviousHistory((v) => !v)}
+            style={{
+              padding: '4px 8px', fontSize: '11px', fontWeight: 600,
+              background: 'white', color: '#234e52', border: '1px solid #4fd1c5',
+              borderRadius: '4px', cursor: 'pointer',
+            }}
+          >
+            {showPreviousHistory ? '▲ Masquer l\'historique précédent' : `▼ Voir l'historique précédent (${previousHistory.filter((m) => m.role === 'assistant').length} brouillon(s))`}
+          </button>
+          {showPreviousHistory && previousHistory.length > 0 && (
+            <div
+              style={{
+                marginTop: '10px', maxHeight: '300px', overflowY: 'auto',
+                background: 'white', border: '1px solid #cbd5e0', borderRadius: '6px',
+                padding: '8px', fontSize: '11px', color: '#2d3748', lineHeight: 1.4,
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {previousHistory
+                .filter((m) => m.role === 'assistant' && !m.content.includes('@media screen'))
+                .map((m, idx) => (
+                  <div key={m.id} style={{ marginBottom: idx < previousHistory.length - 1 ? '12px' : 0, paddingBottom: idx < previousHistory.length - 1 ? '12px' : 0, borderBottom: idx < previousHistory.length - 1 ? '1px dashed #cbd5e0' : 'none' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#4a5568', marginBottom: '4px' }}>
+                      Brouillon #{idx + 1}{m.createdAt ? ` — ${new Date(m.createdAt).toLocaleString('fr-FR')}` : ''}
+                    </div>
+                    {m.content}
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Page d'accueil : masquée aussi si un brouillon a été injecté via

@@ -118,10 +118,15 @@ export async function GET(req: NextRequest) {
       conversationId: conversation.id,
       frontConversationId: conversation.front_conversation_id,
       subject: conversation.subject,
+      // updated_at = date du dernier brouillon Claude / dernier échange.
+      // Utilisé côté plugin pour détecter si un nouveau mail client est
+      // arrivé APRÈS notre dernier travail (auto-reset landing).
+      updatedAt: conversation.updated_at,
       messages: messages.map((m) => ({
         id: m.id,
         role: m.role,
         content: m.content,
+        createdAt: m.created_at,
       })),
     });
   } catch (err) {

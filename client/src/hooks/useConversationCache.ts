@@ -66,10 +66,11 @@ export function useConversationCache() {
             !m.content.includes('@media screen') &&
             !(m.role === 'user' && m.content.startsWith('[Analyse demandée'))
           )
-          .map((m: { id: string; role: string; content: string }) => ({
+          .map((m: { id: string; role: string; content: string; createdAt?: string }) => ({
             id: m.id,
             role: m.role as 'user' | 'assistant',
             content: m.content,
+            createdAt: m.createdAt,
           })),
       };
 

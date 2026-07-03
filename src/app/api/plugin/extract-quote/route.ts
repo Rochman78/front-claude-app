@@ -205,6 +205,7 @@ Pour CHAQUE ligne avec unit="piece" (standard catalogue), tu DOIS inclure le SKU
 === RÈGLE N°7 : COORDONNÉES CLIENT ===
 - Chercher le téléphone, nom, prénom, adresse dans TOUT le fil de mails (y compris le PREMIER message, souvent un formulaire de contact avec le numéro de téléphone).
 - Ne pas se limiter au dernier message.
+- ENTREPRISE FRANÇAISE : chercher aussi le SIRET (14 chiffres, souvent en signature, en pied de mail, ou dans un mail administratif). Le n° TVA intra FR est distinct du SIRET (le n° TVA FR est 13 caractères FRxxxxxxxxxxx et contient 11 chiffres du SIRET après la clé, mais on saisit les 2 séparément). Format attendu : suite de 14 chiffres consécutifs (avec ou sans espaces à retirer). Si non trouvé, laisser vide — on ne l'invente pas.
 
 === RÈGLE N°7 BIS : ADRESSE DE FACTURATION vs ADRESSE DE LIVRAISON ===
 - Le client PEUT avoir 2 adresses distinctes : facturation (siège social, domicile administratif) et livraison (chantier, entrepôt, second domicile). Chercher les 2 dans le fil.
@@ -237,7 +238,7 @@ ${claudeText || '(aucun chiffrage service client — extraire depuis le fil de m
   "customer": {
     "type": "individual|company",
     "firstName": "", "lastName": "", "companyName": "",
-    "email": "", "phone": "", "vatNumber": "",
+    "email": "", "phone": "", "vatNumber": "", "siret": "",
     "billingAddress": { "address": "", "postalCode": "", "city": "", "country": "XX" },
     "deliveryAddress": null
   },

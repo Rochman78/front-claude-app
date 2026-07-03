@@ -84,13 +84,14 @@ front-claude-app/
 - **Brouillon client (agent instructions × 10)** : le récap coordonnées affiche TOUJOURS les 2 lignes `Adresse de facturation :` et `Adresse de livraison :`, même identiques (règle Q3 Charles — préférence explicite sur la lisibilité, quitte à être redondant). INTERDIT de fusionner en une seule ligne « Adresse : ». Encodé × 10 agents (bloc dédié « ADRESSE DE FACTURATION vs ADRESSE DE LIVRAISON » après la ligne COORDONNÉES). Backup pré-patch : `backups/adresse-facturation-livraison-20260702-232508/`.
 - **Rétrocompat extract-quote** : si Claude sort encore l'ancien `customer.address`, le serveur le mappe en `customer.billingAddress` automatiquement (transition douce).
 
-### TVA — toujours le pays de livraison (12/06/2026)
+### TVA — toujours le pays de livraison (12/06/2026, anti-flag 03/07/2026)
 - TVA par défaut = TVA du **pays de livraison** du client (pas du pays de facturation).
 - Si AUCUNE adresse de livraison fournie → TVA du **pays de la boutique** (règle B2C OSS par défaut).
 - **JAMAIS demander au client** quelle TVA appliquer — c'est imposé par la loi.
 - Taux : FR 20 / DE 19 / NL 21 / BE 21 / ES 21 / PT 23 / IT 22 / LU 17 / AT 20 / GB 20 / hors UE 0 (à confirmer).
 - Exception B2B intra (n° TVA UE valide hors pays boutique) → 0 % + Article 138 (déjà géré côté code Pennylane).
 - Cas Saracco 12/06/2026 (`cnv_1lmrvoev`, RED) : cliente espagnole (Javea), agent a appliqué TVA 20 % (FR) au lieu de 21 % (ES). Encodé × 10 agents.
+- **Anti-flag QUESTIONS inutile (03/07/2026)** : l'agent ne doit PAS émettre de flag 🟠/🔴 sur la TVA quand la situation est sans ambiguïté. Cas déclencheur `cnv_1ls66p1z` — client FR + livraison FR + n° TVA intra FR fourni → TVA 20 % correcte MAIS l'agent a flagué « 🟠 ATTENTION — TVA à 20 % appliquée malgré le n° TVA intra fourni. Confirmes-tu ? ». Aucune ambiguïté, pollue les QUESTIONS. Règle encodée × 10 agents : PAS de flag pour livraison FR (client français), livraison locale (client pays boutique), LIC standard (UE hors pays boutique avec n° intra), hors UE. Flag légitime uniquement si adresse ambiguë / client pro sans n° intra ayant mentionné vouloir le régime. Backup : `backups/tva-fr-livraison-fr-pas-de-flag-20260703-103348/`.
 
 ### Jamais de prix vides dans un brouillon (12/06/2026)
 - Si une info essentielle manque pour chiffrer (couleur, finition, dimensions, taux TVA, etc.) → **NE PAS générer le tableau de prix**. Mail court qui pose les questions, sans tableau.

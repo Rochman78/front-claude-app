@@ -83,7 +83,7 @@ export default function QuoteBlock({ quoteData, inboxName }: QuoteBlockProps) {
 
       {!result && (
         <button
-          className="btn-primary"
+          className="btn-quote"
           onClick={handleCreate}
           disabled={creating}
           style={{ marginTop: '10px' }}

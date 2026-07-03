@@ -165,6 +165,14 @@ body {
 }
 
 /* Pousser dans Front App : violet Front App */
+/* === PALETTE PLUGIN — Charles 03/07/2026 ===
+ * Codification stricte partout :
+ *  - BLEU  (#1565D8) : tout ce qui est Claude (dialogue, brouillon, analyse)
+ *  - VERT  (#2ea267) : tout ce qui est devis Pennylane (créer / modifier / éditer)
+ *  - VIOLET (#6B47ED) : tout ce qui est Front App (push mail, virement, envoi client)
+ */
+
+/* Pousser dans Front App (sans PDF) — violet Front pur */
 .btn-push {
   width: 100%;
   padding: 12px 16px;
@@ -187,22 +195,25 @@ body {
   box-shadow: none;
 }
 
-/* Pousser avec PDF : dégradé violet Front → vert Pennylane */
+/* Pousser avec PDF joint : même violet Front. Auparavant gradient
+ * violet → vert Pennylane pour signaler la PJ PDF, retiré 03/07/2026
+ * pour respecter la codification stricte (Front = violet monochrome).
+ * L'info "avec PDF" est portée par le libellé du bouton, pas la couleur. */
 .btn-push-pdf {
   width: 100%;
   padding: 12px 16px;
   font-size: 13px;
   font-weight: 600;
   color: #ffffff;
-  background: linear-gradient(135deg, #6B47ED, #2ea267);
+  background: #6B47ED;
   border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 .btn-push-pdf:hover {
-  background: linear-gradient(135deg, #5A3AD8, #258f59);
-  box-shadow: 0 2px 8px rgba(107, 71, 237, 0.25);
+  background: #5A3AD8;
+  box-shadow: 0 2px 8px rgba(107, 71, 237, 0.3);
 }
 .btn-push-pdf:disabled {
   opacity: 0.5;
@@ -244,22 +255,24 @@ body {
   background: #f0f6ff;
 }
 
-/* Vérifier virement reçu : violet (distinct du navy analyser + vert devis) */
+/* Vérifier virement reçu : même violet Front que btn-push (unifié
+ * 03/07/2026). Le panel prépare in fine un mail brouillon qui part
+ * dans Front → couleur cohérente avec la famille Front. */
 .btn-payment {
   width: 100%;
   padding: 12px 16px;
   font-size: 13px;
   font-weight: 600;
   color: #ffffff;
-  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  background: #6B47ED;
   border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 .btn-payment:hover {
-  background: linear-gradient(135deg, #6d28d9, #7c3aed);
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+  background: #5A3AD8;
+  box-shadow: 0 2px 8px rgba(107, 71, 237, 0.3);
 }
 
 /* Générer / Modifier devis PDF : vert Pennylane */
@@ -280,14 +293,39 @@ body {
   box-shadow: 0 2px 8px rgba(46, 162, 103, 0.3);
 }
 
-/* === Buttons === */
+/* Analyser avec Claude / Envoyer chat / Envoyer réponses modale :
+ * bleu Claude solide (03/07/2026 — codification stricte). */
+.btn-claude {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: #1565D8;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-claude:hover {
+  background: #114fb1;
+  box-shadow: 0 2px 8px rgba(21, 101, 216, 0.3);
+}
+.btn-claude:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* .btn-primary — legacy navy. Conservé pour rétrocompat mais désormais
+ * aligné sur le bleu Claude (03/07/2026). À retirer progressivement. */
 .btn-primary {
   width: 100%;
   padding: 10px 16px;
   font-size: 13px;
   font-weight: 600;
   color: #ffffff;
-  background: #1a3a5c;
+  background: #1565D8;
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -295,7 +333,7 @@ body {
 }
 
 .btn-primary:hover {
-  background: #152e4a;
+  background: #114fb1;
 }
 
 .btn-primary:disabled {

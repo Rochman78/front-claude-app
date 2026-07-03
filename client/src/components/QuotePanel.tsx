@@ -579,13 +579,18 @@ export default function QuotePanel({
             </label>
           </div>
           {f.clientType === 'company' && (() => {
-            // Le n° TVA intra est obligatoire si client pro hors France avec
-            // TVA 0 %. On rend le label + l'input visuellement saillants
-            // (rouge) quand obligatoire et vide.
+            // Le n° TVA intra est obligatoire pour une livraison en UE hors
+            // France (régime LIC, TVA 0 %). Il N'EST PAS applicable pour :
+            //  - FR (TVA 20 % locale)
+            //  - Hors UE (Andorre AD, Suisse CH, GB, hors UE→0 % export
+            //    sans besoin de TVA intra)
+            // Cas déclencheur cnv_1lqbn1w7 (03/07/2026) : Natur Hotels SL
+            // AD (Andorre) → le form obligeait le n° TVA intra à tort.
+            // Fix : n'exiger le n° QUE quand pays ∈ UE (hors FR).
             const countryUpper = (f.country || '').trim().toUpperCase();
             const vatPercentNum = parseFloat(f.vatPercent || '0');
             const vatNumberRequired =
-              vatPercentNum === 0 && countryUpper !== 'FR' && countryUpper !== '';
+              vatPercentNum === 0 && EU_COUNTRIES_NON_FR.includes(countryUpper);
             const vatNumberEmpty = !f.vatNumber.trim();
             const vatNumberError = vatNumberRequired && vatNumberEmpty;
             const vatLabelStyle = vatNumberError

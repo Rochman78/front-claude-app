@@ -289,6 +289,13 @@ export default function PluginMain({ context }: PluginMainProps) {
   // Messages Claude préservés au moment du reset auto-landing, exposés au
   // gérant via le bouton "Voir l'historique précédent" du bandeau.
   const [previousHistory, setPreviousHistory] = useState<import('./MessageBubble').Message[]>([]);
+  // Timestamps des pushs dans Front App (messages outbound) — utilisé
+  // par la timeline expand pour matérialiser 📤 les envois passés.
+  const [frontOutboundDates, setFrontOutboundDates] = useState<number[]>([]);
+  // Info devis PDF créé pour cette conv (unique par conv, cf. endpoint
+  // /api/plugin/quote-history). Chargé une fois quand le gérant expand
+  // la timeline pour éviter un fetch inutile en cas normal.
+  const [timelineQuote, setTimelineQuote] = useState<{ quote_number: string; pennylane_url: string; amount: string; created_at: string } | null>(null);
   // Compteur de rounds Claude sur la conv (nb d'analyses / suites générées).
   // Affiché en badge pour rappeler qu'on est au tour N.
   const [roundCount, setRoundCount] = useState(1);
@@ -365,12 +372,17 @@ export default function PluginMain({ context }: PluginMainProps) {
         setResolvedEmail(email);
         setResolvedName(name);
         // Timestamps : Front SDK renvoie date en secondes (Unix). On garde ms.
+        const outbounds: number[] = [];
         for (const m of msgs) {
           const t = typeof m.date === 'number' ? m.date * 1000 : 0;
           if (!t) continue;
           if (m.is_inbound === true && t > lastInboundAt) lastInboundAt = t;
-          else if (m.is_inbound === false && t > lastOutboundAt) lastOutboundAt = t;
+          else if (m.is_inbound === false) {
+            outbounds.push(t);
+            if (t > lastOutboundAt) lastOutboundAt = t;
+          }
         }
+        setFrontOutboundDates(outbounds.sort((a, b) => a - b));
       } catch { /* fallback aux valeurs du recipient */ }
     })();
 
@@ -900,36 +912,135 @@ export default function PluginMain({ context }: PluginMainProps) {
             Le client a répondu depuis ton dernier envoi. Historique interne conservé, clique <strong>Analyser avec Claude</strong> pour un nouveau brouillon adapté à sa réponse.
           </div>
           <button
-            onClick={() => setShowPreviousHistory((v) => !v)}
+            onClick={async () => {
+              const next = !showPreviousHistory;
+              setShowPreviousHistory(next);
+              // Lazy fetch du devis lié à la conv la première fois qu'on
+              // expand la timeline (évite un fetch pour rien en cas normal).
+              if (next && !timelineQuote && store) {
+                try {
+                  const r = await fetch(`${window.location.origin}/api/plugin/quote-history?front_conversation_id=${encodeURIComponent(frontConvId)}&store_code=${encodeURIComponent(store.code)}`);
+                  const d = await r.json();
+                  if (d && d.quote_number) setTimelineQuote(d);
+                } catch { /* silent */ }
+              }
+            }}
             style={{
               padding: '4px 8px', fontSize: '11px', fontWeight: 600,
               background: 'white', color: '#234e52', border: '1px solid #4fd1c5',
               borderRadius: '4px', cursor: 'pointer',
             }}
           >
-            {showPreviousHistory ? '▲ Masquer l\'historique précédent' : `▼ Voir l'historique précédent (${previousHistory.filter((m) => m.role === 'assistant').length} brouillon(s))`}
+            {showPreviousHistory ? '▲ Masquer l\'historique interne' : '▼ Voir l\'historique interne'}
           </button>
-          {showPreviousHistory && previousHistory.length > 0 && (
-            <div
-              style={{
-                marginTop: '10px', maxHeight: '300px', overflowY: 'auto',
-                background: 'white', border: '1px solid #cbd5e0', borderRadius: '6px',
-                padding: '8px', fontSize: '11px', color: '#2d3748', lineHeight: 1.4,
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {previousHistory
-                .filter((m) => m.role === 'assistant' && !m.content.includes('@media screen'))
-                .map((m, idx) => (
-                  <div key={m.id} style={{ marginBottom: idx < previousHistory.length - 1 ? '12px' : 0, paddingBottom: idx < previousHistory.length - 1 ? '12px' : 0, borderBottom: idx < previousHistory.length - 1 ? '1px dashed #cbd5e0' : 'none' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#4a5568', marginBottom: '4px' }}>
-                      Brouillon #{idx + 1}{m.createdAt ? ` — ${new Date(m.createdAt).toLocaleString('fr-FR')}` : ''}
+          {showPreviousHistory && (() => {
+            // Timeline : merge de tous les événements chronologiques —
+            // messages Claude (analyse / brouillon / questions), notes du
+            // gérant en chat, devis PDF créé, pushs dans Front.
+            type Entry =
+              | { at: number; kind: 'analyse'; content: string; index: number }
+              | { at: number; kind: 'note-gerant'; content: string }
+              | { at: number; kind: 'devis'; quoteNumber: string; url: string; amount: string }
+              | { at: number; kind: 'push'; };
+            const entries: Entry[] = [];
+            let analyseCounter = 0;
+            for (const m of previousHistory) {
+              if (m.content.includes('@media screen')) continue;
+              const t = m.createdAt ? new Date(m.createdAt).getTime() : 0;
+              if (!t) continue;
+              if (m.role === 'assistant') {
+                analyseCounter += 1;
+                entries.push({ at: t, kind: 'analyse', content: m.content, index: analyseCounter });
+              } else if (m.role === 'user') {
+                // Filtre les messages techniques d'analyse — on ne garde
+                // que les vraies notes / consignes du gérant.
+                const stripPrefix = m.content
+                  .replace(/^\[Analyse demandée\][\s\S]*?(?=\n\n|$)/i, '')
+                  .replace(/^\[Suite de la conversation\][\s\S]*?(?=\n\n|$)/i, '')
+                  .trim();
+                if (stripPrefix.length > 0 && stripPrefix.length < 2000) {
+                  entries.push({ at: t, kind: 'note-gerant', content: stripPrefix });
+                }
+              }
+            }
+            if (timelineQuote) {
+              const t = new Date(timelineQuote.created_at).getTime();
+              if (t) entries.push({ at: t, kind: 'devis', quoteNumber: timelineQuote.quote_number, url: timelineQuote.pennylane_url, amount: timelineQuote.amount });
+            }
+            for (const t of frontOutboundDates) {
+              entries.push({ at: t, kind: 'push' });
+            }
+            entries.sort((a, b) => a.at - b.at);
+
+            if (entries.length === 0) {
+              return (
+                <div style={{ marginTop: '10px', padding: '10px', fontSize: '11px', color: '#4a5568', fontStyle: 'italic' }}>
+                  Aucun historique interne disponible.
+                </div>
+              );
+            }
+
+            return (
+              <div
+                style={{
+                  marginTop: '10px', maxHeight: '360px', overflowY: 'auto',
+                  background: 'white', border: '1px solid #cbd5e0', borderRadius: '6px',
+                  padding: '10px', fontSize: '11px', color: '#2d3748', lineHeight: 1.45,
+                }}
+              >
+                {entries.map((e, i) => {
+                  const dateStr = new Date(e.at).toLocaleString('fr-FR');
+                  const border = i < entries.length - 1 ? '1px dashed #cbd5e0' : 'none';
+                  if (e.kind === 'analyse') {
+                    return (
+                      <div key={i} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: border }}>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#1565D8', marginBottom: '4px' }}>
+                          🧠 Analyse Claude #{e.index} — {dateStr}
+                        </div>
+                        <div style={{ whiteSpace: 'pre-wrap', fontSize: '11px' }}>{e.content}</div>
+                      </div>
+                    );
+                  }
+                  if (e.kind === 'note-gerant') {
+                    return (
+                      <div key={i} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: border }}>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#4a5568', marginBottom: '4px' }}>
+                          💬 Note gérant — {dateStr}
+                        </div>
+                        <div style={{ whiteSpace: 'pre-wrap', fontSize: '11px', fontStyle: 'italic' }}>{e.content}</div>
+                      </div>
+                    );
+                  }
+                  if (e.kind === 'devis') {
+                    return (
+                      <div key={i} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: border }}>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#2ea267', marginBottom: '4px' }}>
+                          📄 Devis PDF créé — {dateStr}
+                        </div>
+                        <div style={{ fontSize: '11px' }}>
+                          N° <strong>{e.quoteNumber}</strong>{e.amount ? ` — ${e.amount} €` : ''}
+                          {e.url && (
+                            <>
+                              {' — '}
+                              <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ color: '#2ea267' }}>Voir sur Pennylane</a>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+                  // push
+                  return (
+                    <div key={i} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: border }}>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: '#6B47ED', marginBottom: '4px' }}>
+                        📤 Poussé dans Front App — {dateStr}
+                      </div>
                     </div>
-                    {m.content}
-                  </div>
-                ))}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

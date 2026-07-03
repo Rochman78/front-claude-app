@@ -128,6 +128,13 @@ export default function QuotePanel({
   // Popup "croquis manquant" bloquant pour les formes non rectangle/carré
   // sans aucune image annexée.
   const [showMissingSketchPopup, setShowMissingSketchPopup] = useState(false);
+  // 2-click confirmation pour bypass croquis (window.confirm est bloqué
+  // dans la sandbox iframe Front App, cf. cnv observée 03/07/2026 —
+  // Charles rapporte "bouton ne fait rien"). Faux par défaut, passe à
+  // true au 1er clic → le bouton change de libellé, le 2e clic exécute.
+  const [sketchBypassArmed, setSketchBypassArmed] = useState(false);
+  const [vatBypassArmed, setVatBypassArmed] = useState(false);
+  const [vatZeroBypassArmed, setVatZeroBypassArmed] = useState(false);
   const [askSketchStatus, setAskSketchStatus] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
   const [askSketchError, setAskSketchError] = useState<string | null>(null);
   // Popup "n° TVA intra manquant" bloquant pour les entreprises UE hors FR
@@ -349,27 +356,33 @@ export default function QuotePanel({
 
               <button
                 onClick={() => {
-                  const ok = window.confirm(
-                    'Es-tu sûr ? Aucun croquis annexé au devis PDF. '
-                    + "L'atelier n'aura pas la vue de dessus ni les cotes précises pour fabriquer."
-                  );
-                  if (ok) {
-                    setShowMissingSketchPopup(false);
-                    handleCreateFromForm(true);
+                  // 2-click pattern (window.confirm bloqué en iframe Front).
+                  // 1er clic → arme la confirmation, le bouton change de
+                  // libellé. 2e clic → exécute le bypass.
+                  if (!sketchBypassArmed) {
+                    setSketchBypassArmed(true);
+                    return;
                   }
+                  setSketchBypassArmed(false);
+                  setShowMissingSketchPopup(false);
+                  handleCreateFromForm(true);
                 }}
                 style={{
                   width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
-                  border: '1px solid #cbd5e0', borderRadius: '6px',
-                  background: 'white', color: '#dd6b20', cursor: 'pointer',
+                  border: sketchBypassArmed ? '1.5px solid #dd6b20' : '1px solid #cbd5e0',
+                  borderRadius: '6px',
+                  background: sketchBypassArmed ? '#fff7ed' : 'white',
+                  color: '#dd6b20', cursor: 'pointer',
                   marginBottom: '8px',
                 }}
               >
-                Générer sans croquis (à confirmer)
+                {sketchBypassArmed
+                  ? '⚠ Cliquer à nouveau pour confirmer'
+                  : 'Générer sans croquis (à confirmer)'}
               </button>
 
               <button
-                onClick={() => setShowMissingSketchPopup(false)}
+                onClick={() => { setSketchBypassArmed(false); setShowMissingSketchPopup(false); }}
                 style={{
                   width: '100%', padding: '8px 16px', fontSize: '12.5px', fontWeight: 500,
                   border: 'none', borderRadius: '6px',
@@ -443,31 +456,28 @@ export default function QuotePanel({
 
               <button
                 onClick={() => {
-                  const ok = window.confirm(
-                    'Es-tu sûr ? Le devis sera généré avec TVA française 20 % '
-                    + '(pas de facturation en exonération intracommunautaire).'
-                  );
-                  if (ok) {
-                    setShowMissingVatPopup(false);
-                    // On bypass la TVA MAIS on garde le check croquis (déjà passé
-                    // avant l'affichage du popup TVA, donc ok). On rappelle avec
-                    // (bypassSketch=true, bypassVat=true) pour skip les 2 checks
-                    // au retour.
-                    handleCreateFromForm(true, true);
-                  }
+                  // 2-click confirmation (window.confirm bloqué en iframe).
+                  if (!vatBypassArmed) { setVatBypassArmed(true); return; }
+                  setVatBypassArmed(false);
+                  setShowMissingVatPopup(false);
+                  handleCreateFromForm(true, true);
                 }}
                 style={{
                   width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
-                  border: '1px solid #cbd5e0', borderRadius: '6px',
-                  background: 'white', color: '#dd6b20', cursor: 'pointer',
+                  border: vatBypassArmed ? '1.5px solid #dd6b20' : '1px solid #cbd5e0',
+                  borderRadius: '6px',
+                  background: vatBypassArmed ? '#fff7ed' : 'white',
+                  color: '#dd6b20', cursor: 'pointer',
                   marginBottom: '8px',
                 }}
               >
-                Générer avec TVA française 20 % (à confirmer)
+                {vatBypassArmed
+                  ? '⚠ Cliquer à nouveau pour confirmer'
+                  : 'Générer avec TVA française 20 % (à confirmer)'}
               </button>
 
               <button
-                onClick={() => setShowMissingVatPopup(false)}
+                onClick={() => { setVatBypassArmed(false); setShowMissingVatPopup(false); }}
                 style={{
                   width: '100%', padding: '8px 16px', fontSize: '12.5px', fontWeight: 500,
                   border: 'none', borderRadius: '6px',
@@ -539,27 +549,28 @@ export default function QuotePanel({
 
                 <button
                   onClick={() => {
-                    const ok = window.confirm(
-                      `Es-tu sûr ? Le devis partira avec TVA ${currentVat} % au lieu de 0 %. `
-                      + "Vérifie que le client n'a pas déjà vu un montant TTC annoncé — sinon le vrai TTC en LIC sera différent."
-                    );
-                    if (ok) {
-                      setShowVatShouldBeZeroPopup(false);
-                      handleCreateFromForm(true, true, true);
-                    }
+                    // 2-click confirmation (window.confirm bloqué en iframe).
+                    if (!vatZeroBypassArmed) { setVatZeroBypassArmed(true); return; }
+                    setVatZeroBypassArmed(false);
+                    setShowVatShouldBeZeroPopup(false);
+                    handleCreateFromForm(true, true, true);
                   }}
                   style={{
                     width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
-                    border: '1px solid #cbd5e0', borderRadius: '6px',
-                    background: 'white', color: '#dd6b20', cursor: 'pointer',
+                    border: vatZeroBypassArmed ? '1.5px solid #dd6b20' : '1px solid #cbd5e0',
+                    borderRadius: '6px',
+                    background: vatZeroBypassArmed ? '#fff7ed' : 'white',
+                    color: '#dd6b20', cursor: 'pointer',
                     marginBottom: '8px',
                   }}
                 >
-                  Générer quand même avec TVA {currentVat} % (à confirmer)
+                  {vatZeroBypassArmed
+                    ? '⚠ Cliquer à nouveau pour confirmer'
+                    : `Générer quand même avec TVA ${currentVat} % (à confirmer)`}
                 </button>
 
                 <button
-                  onClick={() => setShowVatShouldBeZeroPopup(false)}
+                  onClick={() => { setVatZeroBypassArmed(false); setShowVatShouldBeZeroPopup(false); }}
                   style={{
                     width: '100%', padding: '8px 16px', fontSize: '12.5px', fontWeight: 500,
                     border: 'none', borderRadius: '6px',
@@ -1276,20 +1287,58 @@ export default function QuotePanel({
     setAskSketchStatus('sending');
     setAskSketchError(null);
     try {
-      const prenom = verifyForm?.firstName?.trim() || '';
       const forme = detectComplexShape() || 'forme complexe';
-      const bodyFr = [
-        `Bonjour${prenom ? ' ' + prenom : ''},`,
-        '',
-        `Merci pour votre demande. Pour vous établir un chiffrage précis sur la forme demandée (${forme}), nous aurions besoin d'un croquis à main levée de votre zone, avec :`,
-        '',
-        '- Les cotes exactes de chaque côté (au dixième de mètre près)',
-        '- Une vue de dessus de la zone à couvrir',
-        '',
-        'Une simple photo prise au smartphone d\'un croquis papier suffit.',
-        '',
-        'Dès réception, nous vous transmettons le chiffrage complet.',
-      ].join('\n');
+      // Templates spécifiques par forme (règle "CROQUIS SELON LA FORME"
+      // des agents.instructions × 10 boutiques, cf. PR #178) :
+      //  - Triangle    : 3 côtés, JAMAIS d'angle (SSS → Héron suffit)
+      //  - Trapèze     : 4 côtés + confirmation parallélisme des bases
+      //  - Quadrilatère : 4 côtés + 1 diagonale (permet la découpe)
+      // Salutation "Bonjour," seul (règle PR #185, plus de prénom).
+      // "vu du dessus (donc maillage de renfort orienté vers le haut)"
+      // intégré à la phrase d'intro pour lisibilité.
+      const intro = `Merci pour votre demande. Pour vous établir un chiffrage précis sur la forme demandée (${forme}), nous aurions besoin d'un croquis à main levée de votre zone, vu du dessus (donc maillage de renfort orienté vers le haut)`;
+      const outro = "Une simple photo prise au smartphone d'un croquis papier suffit.\n\nDès réception, nous vous transmettons le chiffrage complet.";
+      let bodyFr: string;
+      if (forme === 'triangle') {
+        bodyFr = [
+          'Bonjour,',
+          '',
+          `${intro}, avec les cotes exactes de chaque côté au dixième de mètre près.`,
+          '',
+          outro,
+        ].join('\n');
+      } else if (forme === 'trapèze') {
+        bodyFr = [
+          'Bonjour,',
+          '',
+          `${intro}, avec :`,
+          '- les cotes exactes de chaque côté (au dixième de mètre près),',
+          '- la confirmation que les 2 bases (côtés opposés) sont bien parallèles.',
+          '',
+          outro,
+        ].join('\n');
+      } else if (forme === 'quadrilatère') {
+        bodyFr = [
+          'Bonjour,',
+          '',
+          `${intro}, avec :`,
+          '- les cotes exactes de chaque côté (au dixième de mètre près),',
+          "- la longueur d'UNE diagonale (d'un coin à son coin opposé — vous tendez le mètre en travers, d'un angle à l'angle en face).",
+          '',
+          'Cette diagonale nous permet de découper votre zone en 2 triangles et donc de calculer la surface exacte et le plan de découpe du filet.',
+          '',
+          outro,
+        ].join('\n');
+      } else {
+        // Fallback pour sur-mesure / forme complexe non catégorisée
+        bodyFr = [
+          'Bonjour,',
+          '',
+          `${intro}, avec les cotes exactes de chaque côté au dixième de mètre près.`,
+          '',
+          outro,
+        ].join('\n');
+      }
 
       // Traduire si boutique non-FR (même logique que DraftFinal)
       const storeLang = STORE_LANG[storeCode] || 'fr';
@@ -1310,10 +1359,14 @@ export default function QuotePanel({
         }
       }
 
-      // Convertir en HTML simple (paragraphes séparés par des sauts de ligne)
+      // Convertir en HTML : split sur double retour ligne = paragraphe,
+      // simple retour ligne à l'intérieur = <br>. Évite les <p>&nbsp;</p>
+      // qui produisaient des interlignes énormes (bug affichage Front
+      // 03/07/2026 — le mail avait 3× l'espacement normal entre lignes).
+      const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const html = bodyFinal
-        .split('\n')
-        .map((l) => (l.trim() ? `<p>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>` : '<p>&nbsp;</p>'))
+        .split(/\n\n+/)
+        .map((para) => `<p>${escape(para).replace(/\n/g, '<br>')}</p>`)
         .join('');
 
       const res = await fetch(`${API_BASE}/api/plugin/push-draft`, {

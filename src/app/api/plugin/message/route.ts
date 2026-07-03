@@ -36,6 +36,7 @@ import { buildDocumentsText } from '@/lib/documentSelector';
 import { getConversationImages } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
 import { callClaude } from '@/lib/services/claudeService';
+import { parseStandardsRows, findFamilySkus, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 
 /**
  * POST /api/plugin/message
@@ -179,14 +180,48 @@ RÈGLES :
             console.log(`[plugin/message] checking stock for ${skus.length} SKUs`);
             const stockData = await getStockBySkuList(skus);
             const stockLines: string[] = [];
+            const ruptureSkus: string[] = [];
             for (const sku of skus) {
               const available = stockData[sku];
               const info = skuMap[sku];
               stockLines.push(available !== undefined
                 ? `  SKU ${sku} | ${info.name} | demandé: ${info.qtyDemanded} | en stock: ${available}`
                 : `  SKU ${sku} | ${info.name} | demandé: ${info.qtyDemanded} | stock: non trouvé`);
+              if (available === 0) ruptureSkus.push(sku);
             }
-            stockInfo = `\n\n[STOCK OCTOPIA — données temps réel — USAGE INTERNE UNIQUEMENT]\n${stockLines.join('\n')}\nMentionne ces infos dans la section QUESTIONS, pas dans le brouillon client.`;
+            // Élargissement famille sur rupture (mêmes règles que /analyze,
+            // cf. commentaire là-bas). En /message on garde le format court
+            // : une seule liste ALTERNATIVES avec ✅ / ❌ / ⚠️ inline.
+            let altBlock = '';
+            if (ruptureSkus.length > 0) {
+              const catalogRows = parseStandardsRows(standardsDoc.content);
+              const alreadyChecked = new Set(skus);
+              const familySkuMap: Record<string, CatalogRow> = {};
+              for (const rSku of ruptureSkus) {
+                const baseRow = catalogRows.find((r) => r.sku === rSku);
+                if (!baseRow) continue;
+                const alts = findFamilySkus(catalogRows, baseRow, alreadyChecked, 12);
+                for (const a of alts) {
+                  if (!familySkuMap[a.sku]) familySkuMap[a.sku] = a;
+                  alreadyChecked.add(a.sku);
+                }
+              }
+              const familySkus = Object.keys(familySkuMap);
+              if (familySkus.length > 0) {
+                console.log(`[plugin/message] rupture → check stock ${familySkus.length} alternatives famille`);
+                const altStock = await getStockBySkuList(familySkus);
+                const altLines: string[] = [];
+                for (const sku of familySkus) {
+                  const av = altStock[sku];
+                  const label = familySkuMap[sku].label;
+                  const mark = av === undefined ? '⚠️' : av > 0 ? '✅' : '❌';
+                  const stockStr = av === undefined ? 'stock: non trouvé' : `stock: ${av}`;
+                  altLines.push(`  ${mark} SKU ${sku} | ${label} | ${stockStr}`);
+                }
+                altBlock = `\n\n[ALTERNATIVES FAMILLE (rupture pré-checkée)]\n${altLines.join('\n')}\nSi tu proposes des alternatives au client, propose UNIQUEMENT les ✅. Ne mentionne pas les ❌ / ⚠️.`;
+              }
+            }
+            stockInfo = `\n\n[STOCK OCTOPIA — données temps réel — USAGE INTERNE UNIQUEMENT]\n${stockLines.join('\n')}\nMentionne ces infos dans la section QUESTIONS, pas dans le brouillon client.${altBlock}`;
           }
         }
       }

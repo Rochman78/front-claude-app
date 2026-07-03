@@ -7,6 +7,7 @@ import { getConversationAttachments } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
 import { callClaude } from '@/lib/services/claudeService';
 import { dedupeRepeatedBlocks } from '@/lib/mailDedup';
+import { parseStandardsRows, findFamilySkus, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 
 // Rappel final ajouté en queue de message user, juste avant que Claude
 // rédige. Position dictée par le "recency bias" des LLM : les instructions
@@ -231,6 +232,44 @@ Exemple de réponse :
             const sufficient = rows.filter((r) => r.available !== null && r.available >= r.qtyDemanded);
             const unknown = rows.filter((r) => r.available === null);
 
+            // Élargissement famille sur rupture (03/07/2026) : si un SKU
+            // est à stock=0, on pré-check les alternatives catalogue de la
+            // même famille (mêmes typologie+forme+matière, tailles ou
+            // couleurs différentes) pour que Claude ait le stock réel des
+            // alternatives et puisse les proposer directement dans le
+            // brouillon sans flag QUESTIONS « je ne connais pas le stock ».
+            // Latence : Octopia limite à 500ms entre calls → ~5-6 s en cas
+            // de rupture, 0 s en cas normal (aucune rupture).
+            type AltStockRow = { sku: string; label: string; available: number | null };
+            const familyAlternatives: AltStockRow[] = [];
+            if (ruptures.length > 0) {
+              const catalogRows = parseStandardsRows(standardsDoc.content);
+              const alreadyChecked = new Set(rows.map((r) => r.sku));
+              const familySkuMap: Record<string, CatalogRow> = {};
+              for (const rupture of ruptures) {
+                const baseRow = catalogRows.find((r) => r.sku === rupture.sku);
+                if (!baseRow) continue;
+                const alts = findFamilySkus(catalogRows, baseRow, alreadyChecked, 12);
+                for (const a of alts) {
+                  if (!familySkuMap[a.sku]) familySkuMap[a.sku] = a;
+                  alreadyChecked.add(a.sku);
+                }
+              }
+              const familySkus = Object.keys(familySkuMap);
+              if (familySkus.length > 0) {
+                console.log(`[plugin/analyze] rupture détectée → check stock ${familySkus.length} alternatives famille`);
+                const altStock = await getStockBySkuList(familySkus);
+                for (const sku of familySkus) {
+                  const av = altStock[sku];
+                  familyAlternatives.push({
+                    sku,
+                    label: familySkuMap[sku].label,
+                    available: typeof av === 'number' ? av : null,
+                  });
+                }
+              }
+            }
+
             const blocks: string[] = [];
 
             if (ruptures.length > 0) {
@@ -294,8 +333,40 @@ Signale ces SKU en QUESTIONS au gérant et ne tranche pas (chiffre catalogue par
               );
             }
 
+            // Bloc alternatives famille — présenté à Claude comme un pool
+            // d'options déjà stock-checkées. Groupé par dispo pour l'aider
+            // à trancher : (a) alternatives en stock à proposer directement,
+            // (b) alternatives en rupture aussi (pour ne pas les proposer),
+            // (c) alternatives stock inconnu (à signaler prudemment).
+            if (familyAlternatives.length > 0) {
+              const altAvailable = familyAlternatives.filter((a) => a.available !== null && a.available > 0);
+              const altRupture = familyAlternatives.filter((a) => a.available === 0);
+              const altUnknown = familyAlternatives.filter((a) => a.available === null);
+              blocks.push(
+                `══════════════════════════════════════════════════════
+🔄 ALTERNATIVES FAMILLE (rupture détectée — stock pré-vérifié pour toi)
+
+Pour t'éviter de flagger « je ne connais pas le stock des alternatives » en QUESTIONS, on a checké le stock Octopia des SKU de la même famille catalogue (mêmes typologie/forme/matière, autres tailles OU autres couleurs).
+
+${altAvailable.length > 0 ? `✅ ALTERNATIVES EN STOCK — tu peux les proposer directement dans le brouillon :
+${altAvailable.map((a) => `  • SKU ${a.sku} | ${a.label} | stock : ${a.available}`).join('\n')}
+
+` : ''}${altRupture.length > 0 ? `❌ ALTERNATIVES EN RUPTURE — ne PAS proposer :
+${altRupture.map((a) => `  • SKU ${a.sku} | ${a.label} | stock : 0`).join('\n')}
+
+` : ''}${altUnknown.length > 0 ? `⚠️ ALTERNATIVES STOCK INCONNU (Octopia n'a pas répondu) :
+${altUnknown.map((a) => `  • SKU ${a.sku} | ${a.label}`).join('\n')}
+
+` : ''}TU DOIS :
+1. Dans le brouillon, proposer UNIQUEMENT les alternatives listées ✅ EN STOCK ci-dessus (mentionner leur taille/couleur + prix TTC catalogue).
+2. Ne PAS mentionner les alternatives en rupture ni les stock-inconnu au client.
+3. NE PAS flagger en QUESTIONS « je ne connais pas le stock des alternatives » — tu l'as maintenant.
+══════════════════════════════════════════════════════`
+              );
+            }
+
             stockInfo = `\n\n${blocks.join('\n\n')}`;
-            console.log(`[plugin/analyze] stock blocks: rupture=${ruptures.length} partial=${partials.length} sufficient=${sufficient.length} unknown=${unknown.length}`);
+            console.log(`[plugin/analyze] stock blocks: rupture=${ruptures.length} partial=${partials.length} sufficient=${sufficient.length} unknown=${unknown.length} family_alt=${familyAlternatives.length}`);
           }
         } else {
           console.log('[plugin/analyze] Haiku: no catalogue SKUs identified (custom/quote request)');

@@ -26,6 +26,9 @@ Libellés étrangers → équivalent FR OBLIGATOIRE dans TON brouillon :
 
 INTERDIT ABSOLU dans ton brouillon : « Eenheidsprijs », « Btw », « Korting », « Verschuldigd bedrag », « Precio unitario », « Descuento », « Importe », « Prezzo », « Sconto », « Preis », « MwSt », « Rabatt », « Preço », « Desconto », « Unit price », « Discount », « Amount due ». Aucun de ces mots ne doit apparaître.
 
+SALUTATION — TOUJOURS « Bonjour, » SEUL, JAMAIS DE PRÉNOM :
+Ton brouillon commence par « Bonjour, » et rien d'autre. AUCUN prénom, nom, titre ou fonction après. INTERDIT : « Bonjour Ricarda, », « Bonjour Jean, », « Bonjour Mme Dupont, », « Bonjour Direction, ». Même si les anciens brouillons de cette conversation utilisaient un prénom, tu N'IMITES PAS ce pattern — tu appliques la nouvelle règle : « Bonjour, » seul. La traduction adapte automatiquement au push (Hallo, / Goedendag, / Buenos días, / Buongiorno, / Bom dia,).
+
 La traduction sera faite automatiquement par le code au moment du push dans Front App.
 ══════════════════════════════════════════════════════`;
 

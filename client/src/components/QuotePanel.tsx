@@ -168,7 +168,7 @@ export default function QuotePanel({
           Le devis {result.quoteNumber} a bien été généré depuis Pennylane.
         </p>
         <a href={result.pennylaneUrl} target="_blank" rel="noopener noreferrer"
-          className="btn-primary" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '10px' }}>
+          className="btn-quote" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', marginTop: '10px' }}>
           Modifier le devis PDF
         </a>
       </div>

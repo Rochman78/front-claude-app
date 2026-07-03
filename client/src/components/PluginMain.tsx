@@ -118,11 +118,40 @@ interface FrontAttachment {
 
 interface FrontMessage {
   id: string;
-  date: number;
+  // Front SDK v2 : `date` est un objet Date, PAS un nombre. Legacy code
+  // qui faisait `date * 1000` produisait des années 58329 (Date * 1000 =
+  // ms × 1000 → far future). Fix helper getFrontMs() ci-dessous.
+  date: Date | number;
+  // Front SDK v2 : `status: 'inbound' | 'outbound'`. Le champ historique
+  // `is_inbound` n'existe pas dans la SDK v2 (04/07/2026). L'auto-reset
+  // (PR #194) l'utilisait à tort → détection cassée.
+  status?: 'inbound' | 'outbound';
+  is_inbound?: boolean; // legacy fallback si autre SDK
   type?: string;
   content?: { body?: string; type?: string; attachments?: FrontAttachment[] };
   author?: { name?: string; email?: string };
   replyTo?: { handle?: string; contact?: { name?: string } };
+}
+
+/** Retourne le timestamp en ms d'un message Front SDK, quel que soit le
+ *  format du champ `date` (v2 Date object / legacy seconds). */
+function getFrontMs(m: FrontMessage): number {
+  const d = m.date;
+  if (d instanceof Date) return d.getTime();
+  if (typeof d === 'number' && d > 0) {
+    // Heuristique : si < 10^12 c'est en secondes (1970-2001 en ms), donc
+    // c'est en fait des secondes Unix → × 1000. Sinon c'est déjà en ms.
+    return d < 1e12 ? d * 1000 : d;
+  }
+  return 0;
+}
+
+/** Vrai si le message vient du client (inbound). Compat SDK v2 (`status`)
+ *  et fallback historique (`is_inbound`). */
+function isInbound(m: FrontMessage): boolean {
+  if (m.status === 'inbound') return true;
+  if (m.status === 'outbound') return false;
+  return m.is_inbound === true;
 }
 
 /** Extrait le texte brut d'un message Front SDK. Nettoie le HTML Shopify. */
@@ -364,25 +393,28 @@ export default function PluginMain({ context }: PluginMainProps) {
     const frontReady = (async () => {
       try {
         const msgsRes = await context.listMessages();
-        const msgs = msgsRes.results as unknown as (FrontMessage & { date?: number; is_inbound?: boolean })[];
+        const msgs = msgsRes.results as unknown as FrontMessage[];
         const firstIncoming = msgs.find((m) => m.replyTo?.handle);
         const email = extractCustomerEmail(firstIncoming || msgs[0], recipient?.handle || '');
         const name = extractCustomerName(firstIncoming || msgs[0], recipient?.name || '');
         console.log('[plugin] resolved email from replyTo:', email);
         setResolvedEmail(email);
         setResolvedName(name);
-        // Timestamps : Front SDK renvoie date en secondes (Unix). On garde ms.
+        // Front SDK v2 : `status: 'inbound' | 'outbound'`, `date: Date`.
+        // Helpers getFrontMs / isInbound gèrent aussi le legacy.
         const outbounds: number[] = [];
         for (const m of msgs) {
-          const t = typeof m.date === 'number' ? m.date * 1000 : 0;
+          const t = getFrontMs(m);
           if (!t) continue;
-          if (m.is_inbound === true && t > lastInboundAt) lastInboundAt = t;
-          else if (m.is_inbound === false) {
+          if (isInbound(m)) {
+            if (t > lastInboundAt) lastInboundAt = t;
+          } else {
             outbounds.push(t);
             if (t > lastOutboundAt) lastOutboundAt = t;
           }
         }
         setFrontOutboundDates(outbounds.sort((a, b) => a - b));
+        console.log(`[plugin] Front timestamps: lastInbound=${lastInboundAt ? new Date(lastInboundAt).toISOString() : 'aucun'} / lastOutbound=${lastOutboundAt ? new Date(lastOutboundAt).toISOString() : 'aucun'}`);
       } catch { /* fallback aux valeurs du recipient */ }
     })();
 
@@ -530,7 +562,7 @@ export default function PluginMain({ context }: PluginMainProps) {
       const mailContent = frontMessages
         .map((msg) => {
           const author = msg.author?.name || msg.author?.email || 'Inconnu';
-          const date = new Date(msg.date * 1000).toLocaleString('fr-FR');
+          const date = new Date(getFrontMs(msg)).toLocaleString('fr-FR');
           const text = extractText(msg);
           return text ? `[${date}] ${author} :\n${text}` : '';
         })
@@ -614,7 +646,7 @@ export default function PluginMain({ context }: PluginMainProps) {
       const builtMailThread = frontMessages
         .map((msg) => {
           const author = msg.author?.name || msg.author?.email || 'Inconnu';
-          const date = new Date(msg.date * 1000).toLocaleString('fr-FR');
+          const date = new Date(getFrontMs(msg)).toLocaleString('fr-FR');
           const text = extractText(msg);
           return text ? `[${date}] ${author} :\n${text}` : '';
         })

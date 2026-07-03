@@ -136,6 +136,12 @@ export default function QuotePanel({
   // Warnings serveur (ex: TTC saisi ≠ TTC catalogue, SKU absent, etc.)
   // remontés depuis /api/plugin/extract-quote. Affichés en orange dans le panel.
   const [extractWarnings, setExtractWarnings] = useState<string[]>([]);
+  // Erreur d'extraction (call /extract-quote KO, Claude a renvoyé du JSON
+  // mal formé, timeout, etc.). Affichée en rouge tout en haut du form avec
+  // un bouton Réessayer, au lieu de tomber silencieusement sur un form
+  // vide qui laisse le gérant sans info. Cas déclencheur cnv_1lqwbyl3
+  // (TAR, 03/07/2026).
+  const [extractError, setExtractError] = useState<string | null>(null);
 
   // Exposer handleClick au parent
   useEffect(() => {
@@ -690,6 +696,27 @@ export default function QuotePanel({
           )}
         </div>
 
+        {/* Erreur d'extraction (Claude a tout raté OU répondu vide). Rouge
+            + bouton Réessayer pour relancer handleClick. */}
+        {extractError && (
+          <div style={{
+            background: '#fef2f2', border: '1px solid #fc8181', borderRadius: '6px',
+            padding: '10px 12px', margin: '6px 0 10px 0', fontSize: '12px', color: '#7a1f1f',
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: '6px' }}>⚠ Extraction incomplète</div>
+            <div style={{ marginBottom: '8px', lineHeight: 1.4 }}>{extractError}</div>
+            <button
+              onClick={() => { setExtractError(null); handleClick(); }}
+              style={{
+                padding: '6px 12px', background: '#c53030', color: 'white', border: 'none',
+                borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              🔄 Réessayer l'extraction
+            </button>
+          </div>
+        )}
+
         {/* Warnings serveur (cohérence catalogue SKU / TTC) — affichés au-dessus
             des lignes produit, en orange (non bloquant, l'utilisateur peut
             corriger à la main ou valider). */}
@@ -1068,6 +1095,7 @@ export default function QuotePanel({
       });
 
       let parsed: Record<string, unknown> | null = null;
+      setExtractError(null);
       if (response.ok) {
         parsed = await response.json();
         console.log('[QuotePanel] extract-quote result:', parsed);
@@ -1077,10 +1105,23 @@ export default function QuotePanel({
         if (w.length > 0) {
           console.warn('[QuotePanel] extract-quote warnings:', w);
         }
+        // Sonnet peut renvoyer un objet quasi vide sur des convs multilingues
+        // avec citations imbriquées (cas cnv_1lqwbyl3). On détecte l'échec
+        // silencieux : ni customer utile, ni ligne produit → prévient le
+        // gérant qu'il peut soit remplir à la main, soit réessayer.
+        const linesParsed = (parsed?.lines as Record<string, unknown>[] | undefined) || [];
+        const customerParsed = parsed?.customer as Record<string, unknown> | undefined;
+        const usefulCustomer = !!(customerParsed && (customerParsed.firstName || customerParsed.lastName || customerParsed.companyName));
+        const usefulLines = linesParsed.some((l) => String(l?.label || '').trim().length > 0);
+        if (!usefulCustomer && !usefulLines) {
+          console.warn('[QuotePanel] extract-quote returned empty structured data');
+          setExtractError('Extraction incomplète : Claude n\'a pas pu extraire de données utilisables du fil de mails (contexte multilingue ou complexe). Complète à la main, ou clique Réessayer.');
+        }
       } else {
         const err = await response.json().catch(() => ({ error: 'Erreur extraction' }));
         console.warn('[QuotePanel] extract-quote failed:', err);
         setExtractWarnings([]);
+        setExtractError(`Extraction échouée : ${err.error || 'erreur serveur'}. Complète à la main, ou clique Réessayer.`);
       }
 
       // Sauver le TTC attendu (extrait du mail)

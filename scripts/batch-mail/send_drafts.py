@@ -83,44 +83,77 @@ def front_request(method, path, payload=None, max_retries=3):
 
 def send_one(row):
     draft_id = row['draft_id']
+    conv_id = row.get('conv_id', '')
     channel_id = row['channel_id']
     if not draft_id or not channel_id:
         return {'status': 'error', 'error': 'draft_id ou channel_id manquant dans log.csv'}
 
-    # 1. GET du draft — 404 = supprimé par le gérant = "ne pas envoyer"
-    status, draft = front_request('GET', f'/drafts/{draft_id}')
+    # 1. GET du "draft" — Front API v2 : les drafts créés via
+    # POST /channels/{ch}/drafts sont accessibles comme MESSAGES via
+    # /messages/{msg_id}, PAS /drafts/{id} (retourne 404 "No such route",
+    # bug fix 03/07/2026). Si 404 → le gérant l'a supprimé.
+    status, msg = front_request('GET', f'/messages/{draft_id}')
     if status == 404:
         return {'status': 'skip-deleted', 'error': 'draft supprimé côté Front (gérant a rejeté)'}
     if status not in (200, 201):
-        return {'status': 'error', 'error': f'GET draft HTTP {status}: {json.dumps(draft)[:200]}'}
+        return {'status': 'error', 'error': f'GET message HTTP {status}: {json.dumps(msg)[:200]}'}
 
-    # 2. Extraire le contenu ACTUEL (gérant a pu éditer)
-    recipients = draft.get('recipients', [])
+    # 2. Extraire le contenu ACTUEL (gérant a pu éditer via Front UI)
+    recipients = msg.get('recipients', [])
     to = [r['handle'] for r in recipients if r.get('role') == 'to']
-    subject = draft.get('subject', '')
-    body = draft.get('body', '')
+    subject = msg.get('subject', '')
+    body = msg.get('body', '')
     if not to or not body:
         return {'status': 'error', 'error': 'draft sans to/body — inattendu'}
 
-    # 3. POST /channels/{ch}/messages — envoi direct
+    # 3. Envoi via /api/plugin/send-batch-mail déployé sur Render — endpoint
+    # dédié qui fait POST /channels/{ch}/messages avec FRONT_API_TOKEN_SEND
+    # (scope messages:send). Nos drafts sont dans des convs vides
+    # (pas de last_message client) → /api/plugin/send-message tomberait sur
+    # "No last message" 404 vs /conversations/{id}/messages.
+    render_url = 'https://front-claude-app.onrender.com/api/plugin/send-batch-mail'
     payload = {
+        'channelId': channel_id,
         'to': to,
         'subject': subject,
         'body': body,
-        'options': {'archive': False, 'tags': []},
     }
-    status, sent = front_request('POST', f'/channels/{channel_id}/messages', payload)
-    if status not in (200, 201, 202):
-        return {'status': 'error', 'error': f'POST messages HTTP {status}: {json.dumps(sent)[:200]}'}
-    sent_conv_id = ''
-    links = sent.get('_links', {}).get('related', {})
-    if 'conversation' in links:
-        sent_conv_id = links['conversation'].rstrip('/').split('/')[-1]
+    data = json.dumps(payload).encode('utf-8')
+    delay = 1.0
+    sent_ok = False
+    err_msg = ''
+    for attempt in range(4):
+        req = urllib.request.Request(
+            render_url, data=data, method='POST',
+            headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                if resp.status in (200, 201, 202):
+                    sent_ok = True
+                    break
+                err_msg = f'HTTP {resp.status}'
+        except urllib.error.HTTPError as e:
+            body_err = e.read().decode('utf-8', errors='replace')[:300]
+            if e.code in (429, 500, 502, 503, 504) and attempt < 3:
+                print(f'    HTTP {e.code} → retry dans {delay:.1f}s', file=sys.stderr)
+                time.sleep(delay); delay *= 2
+                continue
+            err_msg = f'HTTP {e.code}: {body_err}'
+            break
+        except Exception as e:
+            if attempt < 3:
+                time.sleep(delay); delay *= 2
+                continue
+            err_msg = str(e)
+            break
+    if not sent_ok:
+        return {'status': 'error', 'error': f'send-message KO: {err_msg}'}
 
-    # 4. DELETE du draft d'origine (cleanup)
-    front_request('DELETE', f'/drafts/{draft_id}')
+    # 4. Supprimer le draft d'origine (best-effort — non bloquant si KO).
+    front_request('DELETE', f'/messages/{draft_id}')
 
-    return {'status': 'sent', 'sent_conv_id': sent_conv_id}
+    return {'status': 'sent', 'sent_conv_id': conv_id}
 
 
 def main():

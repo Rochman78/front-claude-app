@@ -325,6 +325,10 @@ export default function PluginMain({ context }: PluginMainProps) {
   // /api/plugin/quote-history). Chargé une fois quand le gérant expand
   // la timeline pour éviter un fetch inutile en cas normal.
   const [timelineQuote, setTimelineQuote] = useState<{ quote_number: string; pennylane_url: string; amount: string; created_at: string } | null>(null);
+  // Événements gérant loggés (push, draft-validated, quote-created,
+  // payment-check) pour l'audit trail de la timeline. Chargé lazy à
+  // l'expand du bandeau, comme timelineQuote.
+  const [timelineActionEvents, setTimelineActionEvents] = useState<{ actionType: string; teammateName: string | null; teammateEmail: string | null; metadata: Record<string, unknown> | null; createdAt: string }[]>([]);
   // Compteur de rounds Claude sur la conv (nb d'analyses / suites générées).
   // Affiché en badge pour rappeler qu'on est au tour N.
   const [roundCount, setRoundCount] = useState(1);
@@ -337,6 +341,33 @@ export default function PluginMain({ context }: PluginMainProps) {
   const recipient = context.conversation.recipient;
   const subject = context.conversation.subject;
   const frontConvId = context.conversation.id;
+
+  // Teammate Front actuellement connecté (audit trail des actions
+  // plugin). Utilisé par logAction() pour attribuer chaque event à
+  // "Roniah", "Murella", etc.
+  const teammate = context.teammate;
+
+  /** Log une action gérant (push, validation brouillon, création devis,
+   *  virement vérifié…) dans la table plugin_action_events pour audit
+   *  trail dans la timeline. Non-bloquant : on tire-and-forget, aucun
+   *  await, erreurs silencieuses (l'action métier réussit indépendamment). */
+  function logAction(
+    actionType: 'push' | 'draft-validated' | 'quote-created' | 'payment-check',
+    metadata?: Record<string, unknown>,
+  ) {
+    fetch(`${window.location.origin}/api/plugin/action-event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        frontConversationId: frontConvId,
+        storeCode: store?.code,
+        actionType,
+        teammateName: teammate?.name,
+        teammateEmail: teammate?.email,
+        metadata: metadata || null,
+      }),
+    }).catch(() => { /* non-bloquant */ });
+  }
 
   // Quand la conversation Front change → charger l'historique depuis le cache ou la BDD
   useEffect(() => {
@@ -947,14 +978,24 @@ export default function PluginMain({ context }: PluginMainProps) {
             onClick={async () => {
               const next = !showPreviousHistory;
               setShowPreviousHistory(next);
-              // Lazy fetch du devis lié à la conv la première fois qu'on
-              // expand la timeline (évite un fetch pour rien en cas normal).
-              if (next && !timelineQuote && store) {
-                try {
-                  const r = await fetch(`${window.location.origin}/api/plugin/quote-history?front_conversation_id=${encodeURIComponent(frontConvId)}&store_code=${encodeURIComponent(store.code)}`);
-                  const d = await r.json();
-                  if (d && d.quote_number) setTimelineQuote(d);
-                } catch { /* silent */ }
+              // Lazy fetch de tout ce qui enrichit la timeline la 1re fois
+              // qu'on expand (devis + events d'audit). Évite un fetch pour
+              // rien en cas normal.
+              if (next && store) {
+                if (!timelineQuote) {
+                  try {
+                    const r = await fetch(`${window.location.origin}/api/plugin/quote-history?front_conversation_id=${encodeURIComponent(frontConvId)}&store_code=${encodeURIComponent(store.code)}`);
+                    const d = await r.json();
+                    if (d && d.quote_number) setTimelineQuote(d);
+                  } catch { /* silent */ }
+                }
+                if (timelineActionEvents.length === 0) {
+                  try {
+                    const r = await fetch(`${window.location.origin}/api/plugin/action-event?front_conversation_id=${encodeURIComponent(frontConvId)}`);
+                    const d = await r.json();
+                    if (d?.events) setTimelineActionEvents(d.events);
+                  } catch { /* silent */ }
+                }
               }
             }}
             style={{
@@ -966,14 +1007,18 @@ export default function PluginMain({ context }: PluginMainProps) {
             {showPreviousHistory ? '▲ Masquer l\'historique interne' : '▼ Voir l\'historique interne'}
           </button>
           {showPreviousHistory && (() => {
-            // Timeline : merge de tous les événements chronologiques —
-            // messages Claude (analyse / brouillon / questions), notes du
-            // gérant en chat, devis PDF créé, pushs dans Front.
+            // Timeline : merge chronologique de toutes les sources —
+            // messages Claude, notes gérant en chat, devis PDF créé,
+            // pushes Front, et surtout events d'audit (validation
+            // brouillon, création devis, push, virement) avec le nom du
+            // gérant qui a fait chaque action (SDK context.teammate).
             type Entry =
               | { at: number; kind: 'analyse'; content: string; index: number }
               | { at: number; kind: 'note-gerant'; content: string }
-              | { at: number; kind: 'devis'; quoteNumber: string; url: string; amount: string }
-              | { at: number; kind: 'push'; };
+              | { at: number; kind: 'devis'; quoteNumber: string; url: string; amount: string; by?: string }
+              | { at: number; kind: 'push'; by?: string; lang?: string; withPdf?: boolean }
+              | { at: number; kind: 'draft-validated'; by?: string }
+              | { at: number; kind: 'payment-check'; by?: string; quoteNumber?: string };
             const entries: Entry[] = [];
             let analyseCounter = 0;
             for (const m of previousHistory) {
@@ -984,8 +1029,6 @@ export default function PluginMain({ context }: PluginMainProps) {
                 analyseCounter += 1;
                 entries.push({ at: t, kind: 'analyse', content: m.content, index: analyseCounter });
               } else if (m.role === 'user') {
-                // Filtre les messages techniques d'analyse — on ne garde
-                // que les vraies notes / consignes du gérant.
                 const stripPrefix = m.content
                   .replace(/^\[Analyse demandée\][\s\S]*?(?=\n\n|$)/i, '')
                   .replace(/^\[Suite de la conversation\][\s\S]*?(?=\n\n|$)/i, '')
@@ -999,8 +1042,49 @@ export default function PluginMain({ context }: PluginMainProps) {
               const t = new Date(timelineQuote.created_at).getTime();
               if (t) entries.push({ at: t, kind: 'devis', quoteNumber: timelineQuote.quote_number, url: timelineQuote.pennylane_url, amount: timelineQuote.amount });
             }
+            // Pushes Front (dérivés des outbound messages). Enrichis
+            // ensuite avec les action events si match temporel.
             for (const t of frontOutboundDates) {
               entries.push({ at: t, kind: 'push' });
+            }
+            // Action events d'audit — enrichissent avec le nom teammate.
+            // Pour push et devis : si un event est temporellement proche
+            // (< 60 s) d'une entrée existante, on la fusionne (attache
+            // le by=). Sinon on ajoute l'event comme entrée autonome.
+            const PROX_MS = 60_000;
+            for (const ev of timelineActionEvents) {
+              const t = new Date(ev.createdAt).getTime();
+              if (!t) continue;
+              const by = ev.teammateName || undefined;
+              const meta = (ev.metadata as Record<string, unknown> | null) || {};
+              if (ev.actionType === 'push') {
+                // Trouver l'entrée push la plus proche pour fusion
+                const closest = entries.find((e) => e.kind === 'push' && Math.abs(e.at - t) < PROX_MS);
+                if (closest && closest.kind === 'push') {
+                  closest.by = by;
+                  closest.lang = typeof meta.language === 'string' ? meta.language : undefined;
+                  closest.withPdf = meta.withPdf === true;
+                } else {
+                  entries.push({ at: t, kind: 'push', by, lang: typeof meta.language === 'string' ? meta.language : undefined, withPdf: meta.withPdf === true });
+                }
+              } else if (ev.actionType === 'quote-created') {
+                const closest = entries.find((e) => e.kind === 'devis' && Math.abs(e.at - t) < PROX_MS);
+                if (closest && closest.kind === 'devis') {
+                  closest.by = by;
+                } else {
+                  entries.push({
+                    at: t, kind: 'devis',
+                    quoteNumber: (meta.quoteNumber as string) || '',
+                    url: (meta.pennylaneUrl as string) || '',
+                    amount: meta.amountTTC != null ? String(meta.amountTTC) : '',
+                    by,
+                  });
+                }
+              } else if (ev.actionType === 'draft-validated') {
+                entries.push({ at: t, kind: 'draft-validated', by });
+              } else if (ev.actionType === 'payment-check') {
+                entries.push({ at: t, kind: 'payment-check', by, quoteNumber: (meta.quoteNumber as string) || undefined });
+              }
             }
             entries.sort((a, b) => a.at - b.at);
 
@@ -1047,7 +1131,7 @@ export default function PluginMain({ context }: PluginMainProps) {
                     return (
                       <div key={i} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: border }}>
                         <div style={{ fontSize: '10px', fontWeight: 700, color: '#2ea267', marginBottom: '4px' }}>
-                          📄 Devis PDF créé — {dateStr}
+                          📄 Devis PDF créé{e.by ? ` par ${e.by}` : ''} — {dateStr}
                         </div>
                         <div style={{ fontSize: '11px' }}>
                           N° <strong>{e.quoteNumber}</strong>{e.amount ? ` — ${e.amount} €` : ''}
@@ -1061,11 +1145,34 @@ export default function PluginMain({ context }: PluginMainProps) {
                       </div>
                     );
                   }
+                  if (e.kind === 'draft-validated') {
+                    return (
+                      <div key={i} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: border }}>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#1565D8', marginBottom: '4px' }}>
+                          ✅ Brouillon validé{e.by ? ` par ${e.by}` : ''} — {dateStr}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (e.kind === 'payment-check') {
+                    return (
+                      <div key={i} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: border }}>
+                        <div style={{ fontSize: '10px', fontWeight: 700, color: '#d97706', marginBottom: '4px' }}>
+                          💳 Virement vérifié{e.by ? ` par ${e.by}` : ''} — {dateStr}
+                        </div>
+                        {e.quoteNumber && (
+                          <div style={{ fontSize: '11px' }}>Devis N° <strong>{e.quoteNumber}</strong></div>
+                        )}
+                      </div>
+                    );
+                  }
                   // push
                   return (
                     <div key={i} style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: border }}>
                       <div style={{ fontSize: '10px', fontWeight: 700, color: '#6B47ED', marginBottom: '4px' }}>
-                        📤 Poussé dans Front App — {dateStr}
+                        📤 Poussé dans Front App{e.by ? ` par ${e.by}` : ''}
+                        {e.withPdf ? ' (avec PDF)' : ''}
+                        {e.lang ? ` [${e.lang.toUpperCase()}]` : ''} — {dateStr}
                       </div>
                     </div>
                   );
@@ -1311,6 +1418,8 @@ export default function PluginMain({ context }: PluginMainProps) {
               setQuotePennylaneUrl(pennylaneUrl);
               setManualValidation(true);
               setDraftInvalidated(false);
+              // Audit trail — log qui a créé le devis + son n° et son TTC
+              logAction('quote-created', { quoteNumber: qNumber, amountTTC: totalTTC, pennylaneUrl });
               // Sauvegarder dans le cache pour persistance
               conversationCache.setQuoteInCache(frontConvId, { pdfUrl, quoteNumber: qNumber, pennylaneUrl });
               // Persister en BDD pour retrouver le devis plus tard.
@@ -1630,6 +1739,15 @@ export default function PluginMain({ context }: PluginMainProps) {
                       );
                       chosenLang = ok ? detectedLang : pushLang;
                     }
+                    // Audit trail — log qui pousse + la langue choisie et
+                    // si un PDF est attaché. Fait AVANT handlePush : si le
+                    // push échoue on aura quand même la trace de la
+                    // tentative (utile pour debug).
+                    logAction('push', {
+                      language: chosenLang === 'auto' ? null : chosenLang,
+                      withPdf: !!quotePdfUrl,
+                      quoteNumber: quoteNumber || null,
+                    });
                     pushDraft.handlePush(cleaned, quotePdfUrl || undefined, quoteNumber || undefined, mailThread, store?.code, chosenLang === 'auto' ? undefined : chosenLang, templateAttachmentUrl || undefined);
                   }}
                   disabled={pushDraft.pushing}
@@ -1666,7 +1784,7 @@ export default function PluginMain({ context }: PluginMainProps) {
 
           {/* Brouillon pas validé */}
           {!showDraft && hasDraft && (
-            <button className="btn-validate" onClick={() => { setManualValidation(true); setDraftInvalidated(false); }}>
+            <button className="btn-validate" onClick={() => { setManualValidation(true); setDraftInvalidated(false); logAction('draft-validated'); }}>
               Valider le brouillon
             </button>
           )}
@@ -1744,6 +1862,9 @@ export default function PluginMain({ context }: PluginMainProps) {
             setDraftInvalidated(false);
             // Le PDF du devis n'est PAS attaché à ce brouillon de confirmation
             setQuotePdfUrl(null);
+            // Audit trail — le gérant a matché un virement à un devis
+            // (le panel prépare le brouillon de confirmation client).
+            logAction('payment-check', { quoteNumber: quoteNumber || null });
           }}
         />
       )}

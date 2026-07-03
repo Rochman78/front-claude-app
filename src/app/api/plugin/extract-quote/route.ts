@@ -299,6 +299,41 @@ Note : "deliveryAddress" doit être :
     //    le HT catalogue (catalogue prioritaire) + warning
     //  - Taux TVA absent des 12 colonnes du fichier → fallback
     const warnings: string[] = [];
+
+    // Post-processing SUR-MESURE : la règle CLAUDE.md impose surface au dixième
+    // de m² (« DIMENSIONS : on travaille UNIQUEMENT au dixième de mètre, jamais
+    // plus fin »). Le prompt N°1 demande à Claude de calculer nombre × largeur
+    // × hauteur → renvoie 19.24 pour 3.7×5.2 par exemple. Le mail que le
+    // service client a envoyé au client, LUI, affiche 19,2 (arrondi). Le devis
+    // PDF DOIT reprendre la valeur du mail sinon on décale de quelques cents
+    // sur le Total HT (cas cnv_1lrf14if : mail 19,2×15,50=297,60 ; form
+    // 19,24×15,50=298,22 → +0,62 € non annoncé).
+    //
+    // Fix serveur (déterministe) : pour chaque ligne unit=m2, arrondir
+    // quantity au dixième + mettre à jour la description « Total m² : X ».
+    if (Array.isArray(parsed?.lines)) {
+      for (const line of parsed.lines) {
+        if (line?.unit !== 'm2') continue;
+        const rawQty = Number(line.quantity);
+        if (!Number.isFinite(rawQty) || rawQty <= 0) continue;
+        const roundedQty = Math.round(rawQty * 10) / 10;
+        if (Math.abs(roundedQty - rawQty) > 0.001) {
+          line.quantity = roundedQty;
+          console.log(`[extract-quote] surface arrondie au dixième : ${rawQty} → ${roundedQty} m² (ligne "${(line.label || '').substring(0, 40)}")`);
+        }
+        // Réécrire "Total m² : XXX" dans la description avec la valeur
+        // arrondie. Regex insensible aux séparateurs (virgule/point) et
+        // aux chiffres après la virgule d'origine. Format sortie français
+        // (virgule) pour cohérence avec l'affichage mail.
+        const desc = String(line.description || '');
+        const totalRe = /(Total m²\s*:\s*)([\d.,]+)/i;
+        if (totalRe.test(desc)) {
+          const fmt = roundedQty.toFixed(1).replace('.', ',');
+          line.description = desc.replace(totalRe, `$1${fmt}`);
+        }
+      }
+    }
+
     try {
       if (storeCode && Array.isArray(parsed?.lines)) {
         const catalog = await loadPriceCatalog(storeCode);

@@ -254,6 +254,11 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [showResumePopup, setShowResumePopup] = useState(false);
   const [resumeNote, setResumeNote] = useState<string>('');
   const [showPaymentCheck, setShowPaymentCheck] = useState(false);
+  // État interne du QuotePanel (idle / extracting / verify / creating /
+  // done) reporté par onStateChange. Sert à masquer la sticky bar quand
+  // le "masque devis PDF" est plein écran (règle Charles 03/07/2026).
+  const [quotePanelState, setQuotePanelState] = useState<'idle' | 'extracting' | 'verify' | 'creating' | 'done'>('idle');
+  const quotePanelActive = quotePanelState === 'verify' || quotePanelState === 'extracting' || quotePanelState === 'creating';
   // Modal "Répondre à l'agent" — permet au gérant de répondre item par item
   // aux questions posées par Claude dans la section QUESTIONS du brouillon.
   const [showAnswerModal, setShowAnswerModal] = useState(false);
@@ -1015,6 +1020,7 @@ export default function PluginMain({ context }: PluginMainProps) {
             onSendMessage={claude.sendMessage}
             onListMessages={() => context.listMessages()}
             onRegisterClick={(fn) => { quoteClickRef.current = fn; }}
+            onStateChange={setQuotePanelState}
             onQuoteCreated={(pdfUrl, qNumber, pennylaneUrl, totalTTC) => {
               setQuotePdfUrl(pdfUrl);
               setQuoteNumber(qNumber);
@@ -1287,8 +1293,12 @@ export default function PluginMain({ context }: PluginMainProps) {
       </div>
       {/* ═══ CONTAINER BOUTONS FIXE EN BAS ═══ */}
       {/* Visible aussi si on a un quoteDraftText (cas brouillon injecté par
-          PaymentCheckPanel sans passer par "Analyser avec Claude") */}
-      {(hasMessages || quoteDraftText) && !claude.isStreaming && (
+          PaymentCheckPanel sans passer par "Analyser avec Claude").
+          MASQUÉE quand le masque devis PDF est actif (QuotePanel en état
+          verify / extracting / creating) : le form doit avoir toute la
+          hauteur pour être lisible, et seuls Annuler / Créer devis PDF
+          dans Pennylane doivent apparaître (règle Charles 03/07/2026). */}
+      {(hasMessages || quoteDraftText) && !claude.isStreaming && !quotePanelActive && (
         <div className="actions-container">
           {/* Brouillon validé */}
           {showDraft && (

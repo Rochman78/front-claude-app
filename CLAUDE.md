@@ -75,6 +75,12 @@ front-claude-app/
 - 9 boutiques (LFC, LVO, MON, UNI, TAR, HET, RED, REDE, RETE) : 2 options brouillon = (1) site + (2) sur-mesure. COCO : 1 seule option = site (pas de sur-mesure en coco).
 - Encodé × 10 agents en BDD (remplace l'ancienne formulation "nous pouvons vous prévenir par email dès que le réassort sera disponible").
 
+### Mention légale exonération TVA — 2 cas distincts (03/07/2026)
+- Le champ `pdf_invoice_free_text` du devis Pennylane porte la mention légale d'exonération quand la TVA est à 0 %. **Mais 2 cas différents** avec 2 mentions différentes :
+  1. **LIC intracommunautaire** (UE hors FR + n° TVA intra fourni) → « Exonération de TVA – Livraison intracommunautaire – article 262 ter I du CGI – article 138 de la directive 2006/112/CE. »
+  2. **Exportation hors UE** (Andorre, Suisse, Royaume-Uni, USA, etc.) → « Exonération de TVA – exportation – article 262 I du CGI. » (une seule référence, pas de directive UE puisque le client est hors UE). **Aucun n° TVA intra requis** pour cette exo.
+- Bascule automatique dans QuotePanel selon le pays de facturation détecté (test `EU_COUNTRIES_NON_FR.includes(country)` vs hors UE).
+
 ### SIRET client entreprise (03/07/2026)
 - Nouveau champ **N° SIRET** dans le masque devis PDF (bloc Client entreprise uniquement). 14 chiffres, format libre à la saisie (espaces auto-strippés).
 - Extraction : extract-quote lit `customer.siret` depuis le fil de mails (signature, pied de mail administratif, etc.). Si non trouvé → laissé vide, jamais inventé.

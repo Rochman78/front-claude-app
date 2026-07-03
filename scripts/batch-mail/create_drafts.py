@@ -105,6 +105,10 @@ def create_one_draft(order, email, translations):
         'body': body_html,
         # signature par défaut du canal (auto-attachée par Front)
         'should_add_default_signature': True,
+        # mode 'shared' → visible dans la liste des Drafts de l'inbox
+        # pour tous les teammates. 'private' (défaut API) = invisible à
+        # tous sauf au bot API → bug observé 03/07/2026.
+        'mode': 'shared',
     }
     status, data = front_post(f"/channels/{store['channel_id']}/drafts", payload)
     if status not in (200, 201, 202):
@@ -129,6 +133,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--limit', type=int, default=None, help='Limite N lignes (test)')
     parser.add_argument('--dry-run', action='store_true', help='N\'écrit rien dans Front, affiche seulement')
+    parser.add_argument('--one-per-store', action='store_true',
+                        help='Crée un seul draft par store (échantillon pour validation Charles)')
     args = parser.parse_args()
 
     translations = load_translations()
@@ -136,6 +142,10 @@ def main():
     print(f'{len(done)} drafts déjà créés (log.csv) — seront skippés.', file=sys.stderr)
 
     total, ok, skipped, errors = 0, 0, 0, 0
+    # Mode "1 par store" : on marque comme "déjà traité" tous les préfixes
+    # dont on a déjà créé un draft dans CE run, pour n'en garder qu'un par
+    # store. Les runs suivants ignorent le flag (idempotence par log.csv).
+    seen_stores_this_run = set()
     for order, email in excel_rows():
         total += 1
         if args.limit and total > args.limit:
@@ -145,6 +155,14 @@ def main():
             skipped += 1
             print(f'  [{total}] SKIP (déjà fait) {order} {email}', file=sys.stderr)
             continue
+        if args.one_per_store:
+            prefix = parse_prefix(order)
+            store_code = PREFIX_TO_STORE.get(prefix, {}).get('store_code')
+            if store_code in seen_stores_this_run:
+                skipped += 1
+                continue
+            if store_code:
+                seen_stores_this_run.add(store_code)
         print(f'  [{total}] {order} → {email}...', end=' ', file=sys.stderr, flush=True)
         if args.dry_run:
             prefix = parse_prefix(order)

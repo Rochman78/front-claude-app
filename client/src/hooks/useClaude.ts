@@ -157,7 +157,11 @@ export function useClaude(): UseClaudeReturn {
 
       if (controller.signal.aborted) return;
 
-      const resultMessages: Message[] = [{ id: nextId(), role: 'assistant', content: fullText }];
+      // createdAt côté client à la fin du stream — sert à la détection
+      // auto-reset landing (PluginMain) quand la conv est chargée depuis
+      // le cache mémoire sans repasser par BDD. Sinon lastAssistantAt=0
+      // et le reset ne se déclenche jamais après une session récente.
+      const resultMessages: Message[] = [{ id: nextId(), role: 'assistant', content: fullText, createdAt: new Date().toISOString() }];
 
       if (frontConvIdRef.current === myFrontConvId) {
         // Toujours sur le même mail → mettre à jour l'UI
@@ -193,7 +197,9 @@ export function useClaude(): UseClaudeReturn {
     abortRef.current = controller;
 
     // Ajouter le message user immédiatement
-    const userMsg: Message = { id: nextId(), role: 'user', content: message };
+    // createdAt côté client — cf. commentaire dans analyze() sur le
+     // besoin pour la détection auto-reset.
+    const userMsg: Message = { id: nextId(), role: 'user', content: message, createdAt: new Date().toISOString() };
     setMessages((prev) => [...prev, userMsg]);
     setIsStreaming(true);
     setStreamingContent('');
@@ -220,7 +226,7 @@ export function useClaude(): UseClaudeReturn {
 
       if (controller.signal.aborted) return;
 
-      const assistantMsg: Message = { id: nextId(), role: 'assistant', content: fullText };
+      const assistantMsg: Message = { id: nextId(), role: 'assistant', content: fullText, createdAt: new Date().toISOString() };
 
       if (frontConvIdRef.current === myFrontConvId) {
         // Toujours sur le même mail → mettre à jour l'UI

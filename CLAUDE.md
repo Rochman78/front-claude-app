@@ -154,6 +154,13 @@ front-claude-app/
 - Le code est **généré par le gérant dans Shopify** (1 usage, lié à l'email client) — l'agent annonce dans le mail et flagge dans QUESTIONS pour que le gérant crée le code.
 - Encodé dans `agents.instructions` (9 boutiques, remplace l'ancienne règle « PAS DE CODE RÉDUCTION ») + dans `template-echange-erreur-client.txt`.
 
+### Croquis selon la forme — ce qu'il faut demander (et ne pas demander) (03/07/2026)
+- **Rectangle/carré** : 2 dimensions, pas de croquis nécessaire. Aucun angle, aucune diagonale.
+- **Triangle** : 3 côtés uniquement (SSS → Héron). Croquis vue du dessus utile pour valider la disposition mais **JAMAIS demander les angles** — un triangle est entièrement défini par ses 3 côtés. Demander un angle à un client qui a déjà donné a/b/c le fait douter.
+- **Trapèze bases parallèles strictes** : 4 côtés + confirmation du parallélisme, pas d'angle.
+- **Quadrilatère quelconque** : 4 côtés + 1 diagonale (cf. bloc dédié). Jamais les angles depuis 02/07/2026.
+- Cas déclencheur — `cnv_1lrf14if` (LFC, Christine Lefebvre, 02/07/2026) : cliente ayant un triangle 4×4×5 (donné dès le devis initial, validé, payé). Claude a demandé « dimensions de chaque côté + angles approximatifs » → cliente perplexe. Encodé × 10 agents (bloc dédié « CROQUIS SELON LA FORME » placé juste avant QUADRILATÈRE QUELCONQUE). Backup : `backups/croquis-triangle-pas-angles-20260703-093545/`.
+
 ### Quadrilatère quelconque — forme acceptée, exige croquis 4 côtés + 1 diagonale (18/06/2026, refacto 02/07/2026)
 - L'atelier sait fabriquer **4 catégories** sur-mesure : rectangle/carré, triangle, trapèze (bases parallèles), **quadrilatère quelconque** (4 côtés sans contrainte de parallélisme). Même tarif que Triangle-Trapèze (mêmes lignes dans `prix-ht-sur-mesure.txt`).
 - 4 côtés seuls ne suffisent JAMAIS à calculer la surface d'un quadrilatère quelconque (forme non rigide — s'ouvre ou s'aplatit comme un parallélogramme articulé, la surface varie ~20 %). **Donnée obligatoire à demander : 4 côtés + 1 diagonale** (d'un coin à son coin opposé). La diagonale triangularise la zone → 2 triangles à côtés complets → Héron × 2 = surface exacte + forme réelle pour la découpe.

@@ -216,8 +216,15 @@ Pour CHAQUE ligne avec unit="piece" (standard catalogue), tu DOIS inclure le SKU
 === RÈGLE N°8 : OÙ EST LE CHIFFRAGE ===
 - Le « CHIFFRAGE SERVICE CLIENT » ci-dessous correspond au DERNIER message Claude, qui peut être une simple clarification, une question de relance ou une confirmation de commande SANS prix.
 - Si ce dernier message ne contient PAS de prix/taille/quantité explicite, alors le chiffrage est forcément dans un MAIL ANTÉRIEUR du fil — CHERCHER dans « MAILS » le message NOUS le plus récent qui contient les détails du devis (taille, couleur, finition, prix HT/TTC, quantité, transport, kit/accessoire éventuels).
-- Si le client a demandé une modification depuis ce devis (changement de couleur, ajout d'accessoire, code promo…), appliquer ces modifications au chiffrage extrait.
-- Ne JAMAIS retourner un JSON vide en disant "rien trouvé" si le fil de mails contient un devis : extraire ce devis et appliquer les modifications mentionnées.
+
+- **RÈGLE ABSOLUE — reflète EXACTEMENT le dernier chiffrage QUE NOUS AVONS ENVOYÉ au client**, sans ajouter les demandes en attente de validation :
+  * Si le client a demandé une remise, un code promo, un ajout d'accessoire, un changement de couleur, un rabais commercial APRÈS notre dernier chiffrage, et que NOUS N'AVONS PAS RÉPONDU en validant cette modification dans un nouveau chiffrage → tu n'appliques PAS la demande. Le devis PDF doit refléter fidèlement le dernier chiffrage envoyé au client (montant TTC identique).
+  * discountPercent = 0 dans ce cas (aucune remise), même si le client a fait la demande. C'est au gérant de trancher côté service client, pas à toi côté extraction.
+  * En revanche : si le client a demandé une modification ET nous lui avons ENVOYÉ un nouveau chiffrage validant cette modif → tu prends bien ce nouveau chiffrage validé (avec la remise/le code/le nouvel accessoire chiffré).
+
+- Ne JAMAIS retourner un JSON vide en disant "rien trouvé" si le fil de mails contient un devis : extraire ce devis tel que nous l'avons envoyé au client.
+
+Cas déclencheur (à NE PAS reproduire) : cnv_1lrsjtnb (LFC, 03/07/2026) — Isabelle Boxelé. Notre dernier chiffrage envoyé : Filet 3,0×2,5 m HT 161,93 € + TVA 20 % = 194,31 € TTC, PAS de remise. La cliente répond en demandant « une remise de 15 % que vous avez mentionnée dans un précédent mail, est-elle encore valable ? ». Cette demande N'A PAS ÉTÉ VALIDÉE par notre service client. Le devis PDF doit sortir avec Total TTC = 194,31 € (comme notre mail), pas 165,17 € (mail moins 15 %). discountPercent = 0. Le gérant décidera manuellement s'il applique la remise dans un second temps.
 
 Réponds UNIQUEMENT avec le JSON, sans texte ni backticks.`;
 

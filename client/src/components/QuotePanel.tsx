@@ -1510,13 +1510,24 @@ export default function QuotePanel({
         inboxName,
       };
 
-      // Mention légale obligatoire pour l'intracommunautaire (UE hors France, TVA 0%, n° TVA intra)
-      // Format demandé par Charles 01/07/2026 : mention FR avec article 262 ter I CGI
-      // + article 138 Directive 2006/112/CE. Injectée dans le champ
-      // "ajouter une description" du devis Pennylane (pdf_invoice_free_text).
+      // Mentions légales d'exonération de TVA — injectées dans le champ
+      // pdf_invoice_free_text du devis Pennylane (celui qui apparaît sur
+      // le PDF, cf. « ajouter une description »).
+      // 2 cas d'exonération distincts, mentions différentes :
+      //  A. LIC intracommunautaire : UE hors France + n° TVA intra fourni.
+      //     Mention Charles 01/07/2026 : art. 262 ter I CGI + art. 138
+      //     Directive 2006/112/CE.
+      //  B. Exportation hors UE : pays hors UE (AD, CH, GB, US, etc.).
+      //     Mention Charles 03/07/2026 : art. 262 I CGI (une seule
+      //     référence, pas de directive UE puisque le client est hors UE).
+      //     Aucun n° TVA intra requis pour cette exo.
       const freeTextLines: string[] = [];
-      if (vatPercent === 0 && EU_COUNTRIES_NON_FR.includes(country) && f.vatNumber) {
+      const isEuNonFr = EU_COUNTRIES_NON_FR.includes(country);
+      const isHorsUE = country !== 'FR' && !isEuNonFr && country.length > 0;
+      if (vatPercent === 0 && isEuNonFr && f.vatNumber) {
         freeTextLines.push('Exonération de TVA – Livraison intracommunautaire – article 262 ter I du CGI – article 138 de la directive 2006/112/CE.');
+      } else if (vatPercent === 0 && isHorsUE) {
+        freeTextLines.push('Exonération de TVA – exportation – article 262 I du CGI.');
       }
       // Backup lisibilité : quand l'adresse de livraison diffère de la
       // facturation, on la répète dans le free_text pour garantir sa

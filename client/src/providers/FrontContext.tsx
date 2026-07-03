@@ -12,6 +12,10 @@ export interface FrontSingleConversationContext {
     recipient?: { handle: string; name?: string };
     inboxes?: { id: string; name: string; address?: string }[];
   };
+  /** Teammate Front actuellement connecté au plugin (SDK v2).
+   *  Utilisé par la timeline "Voir l'historique interne" pour tracer
+   *  qui a poussé / validé / créé un devis / vérifié un virement. */
+  teammate?: { id: string; name?: string; email?: string };
   listMessages: () => Promise<{ results: { id: string; body?: string; text?: string; content?: string; author?: { name?: string; email?: string }; date: number }[] }>;
   downloadAttachment: (messageId: string, attachmentId: string) => Promise<File | undefined>;
   createDraft: (options: {

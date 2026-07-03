@@ -261,25 +261,82 @@ Note : "deliveryAddress" doit être :
 - null (par défaut, si pas d'adresse de livraison distincte dans le fil)
 - OU un objet {"address": "...", "postalCode": "...", "city": "...", "country": "XX"} si le fil mentionne EXPLICITEMENT une livraison à une autre adresse.`;
 
-    console.log(`[extract-quote] calling Claude Haiku for store=${storeCode}`);
+    console.log(`[extract-quote] calling Claude Sonnet for store=${storeCode}`);
     const t0 = Date.now();
 
-    const result = await callClaude(
+    // maxTokens bumped 2000 → 4000 : sur un devis multi-produit + adresses
+    // + description sur-mesure + SKU, le JSON peut dépasser 2000 tokens et
+    // se retrouver tronqué → parse KO (cas cnv_1lrhbkif 03/07/2026 Melanie
+    // Bulfon, "Réponse Claude invalide" après plusieurs tentatives).
+    let result = await callClaude(
       [{ role: 'user', content: userMessage }],
-      { model: 'claude-sonnet-4-6', maxTokens: 2000, system: systemPrompt }
+      { model: 'claude-sonnet-4-6', maxTokens: 4000, system: systemPrompt }
     );
 
     console.log(`[extract-quote] done in ${Date.now() - t0}ms, result length=${result.length}`);
 
-    // Parser le JSON retourné par Claude
-    let parsed;
-    try {
-      // Nettoyer au cas où Claude ajoute des backticks
-      const cleaned = result.replace(/^```json\s*\n?/, '').replace(/\n?\s*```$/, '').trim();
-      parsed = JSON.parse(cleaned);
-    } catch (parseErr) {
-      console.error('[extract-quote] JSON parse error:', parseErr, 'raw:', result.substring(0, 500));
-      return NextResponse.json({ error: 'Réponse Claude invalide', raw: result }, { status: 500 });
+    /**
+     * Parse robuste du JSON Claude. Sonnet ajoute parfois un préambule
+     * ("Voici le JSON extrait :"), des backticks ```json …```, ou un
+     * postambule ("N'hésitez pas si…"). On tente plusieurs stratégies :
+     *   1. Retirer wrappers ```json/``` puis JSON.parse direct.
+     *   2. Localiser le premier '{' et le dernier '}' balanced, extraire
+     *      la sous-chaîne, JSON.parse.
+     *   3. Retry auto avec une instruction stricte "JSON only, no other
+     *      text" si l'étape 2 échoue.
+     */
+    const tryParseFlexible = (raw: string): unknown | null => {
+      const cleaned = raw
+        .replace(/^```json\s*\n?/i, '')
+        .replace(/^```\s*\n?/i, '')
+        .replace(/\n?\s*```$/i, '')
+        .trim();
+      try { return JSON.parse(cleaned); } catch { /* try next strategy */ }
+      // Trouver le premier { et scanner à la recherche de la } équilibrée
+      const start = cleaned.indexOf('{');
+      if (start < 0) return null;
+      let depth = 0;
+      let end = -1;
+      let inString = false;
+      let escape = false;
+      for (let i = start; i < cleaned.length; i++) {
+        const c = cleaned[i];
+        if (inString) {
+          if (escape) { escape = false; continue; }
+          if (c === '\\') { escape = true; continue; }
+          if (c === '"') inString = false;
+          continue;
+        }
+        if (c === '"') { inString = true; continue; }
+        if (c === '{') depth++;
+        else if (c === '}') {
+          depth--;
+          if (depth === 0) { end = i; break; }
+        }
+      }
+      if (end < 0) return null;
+      const blob = cleaned.substring(start, end + 1);
+      try { return JSON.parse(blob); } catch { return null; }
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let parsed: any = tryParseFlexible(result);
+
+    // Retry auto avec instruction JSON-only si le premier appel a produit
+    // un texte non parseable (Sonnet peut se laisser aller à commenter).
+    if (!parsed) {
+      console.warn('[extract-quote] premier parse KO — retry avec instruction JSON-only');
+      const strictSystem = systemPrompt + '\n\nATTENTION : ta réponse DOIT être UNIQUEMENT le JSON, sans texte avant ni après, sans backticks, sans commentaire. Commence directement par { et termine par }. Aucune exception.';
+      result = await callClaude(
+        [{ role: 'user', content: userMessage }],
+        { model: 'claude-sonnet-4-6', maxTokens: 4000, system: strictSystem }
+      );
+      parsed = tryParseFlexible(result);
+    }
+
+    if (!parsed) {
+      console.error('[extract-quote] JSON parse KO même après retry — raw sample:', result.substring(0, 500));
+      return NextResponse.json({ error: 'Réponse Claude invalide (JSON non parseable après retry)', raw: result.substring(0, 1000) }, { status: 500 });
     }
 
     // Rétrocompat : si Claude sort encore l'ancienne clé "address" au lieu

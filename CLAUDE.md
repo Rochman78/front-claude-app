@@ -75,6 +75,11 @@ front-claude-app/
 - 9 boutiques (LFC, LVO, MON, UNI, TAR, HET, RED, REDE, RETE) : 2 options brouillon = (1) site + (2) sur-mesure. COCO : 1 seule option = site (pas de sur-mesure en coco).
 - Encodé × 10 agents en BDD (remplace l'ancienne formulation "nous pouvons vous prévenir par email dès que le réassort sera disponible").
 
+### Salutation — TOUJOURS « Bonjour, » seul (03/07/2026)
+- Charles : « ne mets plus le prénom après le bonjour sur toutes les boutiques, ya trop d'erreur, tu peux mettre juste bonjour ». Trop d'erreurs récurrentes : confusion prénom/nom, contamination inter-messages, boîte de service prise pour un prénom, casse/accents erronés.
+- Règle stricte agents × 10 boutiques : **TOUJOURS « Bonjour, » seul**. Jamais de prénom, nom, titre, fonction. La traduction au push adapte automatiquement (« Hallo, » DE / « Goedendag, » NL / « Buenos días, » ES / « Buongiorno, » IT / « Bom dia, » PT).
+- Patch BDD 10/10 boutiques via `scripts/patch_bonjour_sans_prenom.py` : nouvelle règle META + tous les templates « Bonjour [Prénom], » → « Bonjour, » (~9 remplacements par boutique). Backup : `backups/bonjour-sans-prenom-20260703-110217/`.
+
 ### Mention légale exonération TVA — 2 cas distincts (03/07/2026)
 - Le champ `pdf_invoice_free_text` du devis Pennylane porte la mention légale d'exonération quand la TVA est à 0 %. **Mais 2 cas différents** avec 2 mentions différentes :
   1. **LIC intracommunautaire** (UE hors FR + n° TVA intra fourni) → « Exonération de TVA – Livraison intracommunautaire – article 262 ter I du CGI – article 138 de la directive 2006/112/CE. »

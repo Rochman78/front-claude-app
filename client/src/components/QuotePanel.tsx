@@ -66,6 +66,9 @@ interface VerifyFormData {
   email: string;
   phone: string;
   vatNumber: string;
+  // SIRET (14 chiffres) — pour les entreprises françaises. Mappé à
+  // registration_number côté Pennylane pour apparaître sur le PDF légal.
+  siret: string;
   // Adresse de facturation (envoyée à Pennylane comme billing_address, obligatoire)
   street: string;
   postalCode: string;
@@ -616,6 +619,19 @@ export default function QuotePanel({
               </div>
             );
           })()}
+          {f.clientType === 'company' && (
+            <div style={rowStyle}>
+              <div style={{ flex: 1 }}>
+                <span style={labelStyle}>N° SIRET</span>
+                <input
+                  style={inputStyle}
+                  value={f.siret}
+                  placeholder="14 chiffres (ex : 21310555400012)"
+                  onChange={(e) => upd('siret', e.target.value)}
+                />
+              </div>
+            </div>
+          )}
           <div style={rowStyle}>
             <div style={{ flex: 1 }}><span style={labelStyle}>Prénom</span><input style={inputStyle} value={f.firstName} onChange={(e) => upd('firstName', e.target.value)} /></div>
             <div style={{ flex: 1 }}><span style={labelStyle}>Nom</span><input style={inputStyle} value={f.lastName} onChange={(e) => upd('lastName', e.target.value)} /></div>
@@ -1113,6 +1129,7 @@ export default function QuotePanel({
         email: String(customer?.email || customerEmail || ''),
         phone: String(customer?.phone || ''),
         vatNumber: String(customer?.vatNumber || ''),
+        siret: String(customer?.siret || ''),
         street: String(billing.address || ''),
         postalCode: String(billing.postalCode || ''),
         city: String(billing.city || ''),
@@ -1169,6 +1186,7 @@ export default function QuotePanel({
         email: customerEmail || '',
         phone: '',
         vatNumber: '',
+        siret: '',
         street: '',
         postalCode: '',
         city: '',
@@ -1466,6 +1484,7 @@ export default function QuotePanel({
           email: f.email,
           phone: f.phone,
           vatNumber: f.clientType === 'company' ? f.vatNumber : undefined,
+          siret: f.clientType === 'company' && f.siret.trim() ? f.siret.replace(/\s+/g, '') : undefined,
           address: (f.street || f.postalCode || f.city) ? {
             street: f.street,
             zipCode: f.postalCode,

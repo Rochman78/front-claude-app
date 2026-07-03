@@ -75,6 +75,12 @@ front-claude-app/
 - 9 boutiques (LFC, LVO, MON, UNI, TAR, HET, RED, REDE, RETE) : 2 options brouillon = (1) site + (2) sur-mesure. COCO : 1 seule option = site (pas de sur-mesure en coco).
 - Encodé × 10 agents en BDD (remplace l'ancienne formulation "nous pouvons vous prévenir par email dès que le réassort sera disponible").
 
+### SIRET client entreprise (03/07/2026)
+- Nouveau champ **N° SIRET** dans le masque devis PDF (bloc Client entreprise uniquement). 14 chiffres, format libre à la saisie (espaces auto-strippés).
+- Extraction : extract-quote lit `customer.siret` depuis le fil de mails (signature, pied de mail administratif, etc.). Si non trouvé → laissé vide, jamais inventé.
+- Pennylane : mappé au champ `registration_number` du `company_customers` → apparaît sur le PDF légal du devis / de la facture.
+- Écrase les customers Pennylane existants (même politique que billing/delivery address, cf. section précédente).
+
 ### Adresse de facturation vs adresse de livraison (02/07/2026)
 - Chaque devis expose désormais **2 adresses distinctes** côté extract-quote + QuotePanel + Pennylane :
   - `billingAddress` = adresse de facturation (obligatoire, apparaît sur le PDF Pennylane pour la comptabilité).

@@ -1348,8 +1348,12 @@ export default function PluginMain({ context }: PluginMainProps) {
 
           {/* Répondre aux questions Claude — visible tant qu'il y a des
               questions actionnables (🔴/🟠, hors 🟢 INFO). Reste dispo pour
-              des allers-retours multiples (règle Charles 03/07/2026). */}
-          {actionableQuestions.length > 0 && !claude.isStreaming && (
+              des allers-retours multiples (règle Charles 03/07/2026).
+              Masqué en mode brouillon validé (showDraft) — cf. règle
+              navigation Charles 03/07/2026 : quand on a validé, on ne
+              revient plus dialoguer avec l'agent (il faut cliquer
+              "Modifier le brouillon" pour retomber en mode dialogue). */}
+          {actionableQuestions.length > 0 && !claude.isStreaming && !showDraft && (
             <button
               className="btn-outline"
               style={{ fontWeight: 600 }}
@@ -1373,24 +1377,29 @@ export default function PluginMain({ context }: PluginMainProps) {
             </button>
           )}
 
-          {/* Devis PDF : toujours permettre de (re)générer */}
-          {showQuotePanel && lastAssistantMsg && (
+          {/* Devis PDF : permet de (re)générer TANT QUE le brouillon n'est
+              pas validé. En mode brouillon validé, on masque : le gérant
+              doit soit "Modifier le brouillon" pour revenir, soit pousser
+              tel quel dans Front. */}
+          {showQuotePanel && lastAssistantMsg && !showDraft && (
             <button className="btn-quote" onClick={() => quoteClickRef.current?.()}>
               📄
               Générer devis PDF
             </button>
           )}
 
-          {/* Vérifier virement reçu — toujours visible. Le panel gère le cas
-              "pas de devis en BDD" en proposant la saisie manuelle du n° de
-              devis (utile pour les devis créés hors plugin). Couleur : violet
-              (btn-payment), même que sur la page d'accueil. */}
-          <button
-            className="btn-payment"
-            onClick={() => setShowPaymentCheck(true)}
-          >
-            💳 Vérifier virement reçu
-          </button>
+          {/* Vérifier virement reçu — masqué en mode brouillon validé pour
+              la même raison (règle Charles 03/07/2026 : après validation,
+              seuls Modifier + Pousser + Reprendre restent). Couleur :
+              violet (btn-payment), même que sur la page d'accueil. */}
+          {!showDraft && (
+            <button
+              className="btn-payment"
+              onClick={() => setShowPaymentCheck(true)}
+            >
+              💳 Vérifier virement reçu
+            </button>
+          )}
 
           {/* Boutons secondaires : Reprendre avec Claude + Reprendre à 0 */}
           <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>

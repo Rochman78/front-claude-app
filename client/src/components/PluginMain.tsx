@@ -16,6 +16,83 @@ import { isDraftReady } from '../utils/cleanDraft';
 /** Prompt à copier par le gérant pour décrire une PJ trop volumineuse via Claude Desktop. */
 const PJ_DESCRIBE_PROMPT = 'Décris moi l\'image pour claude api frontapp';
 
+/** Placeholder pour les cases vides du modal "Répondre à l'agent". */
+const ANSWER_DEFAULT = 'à toi de décider';
+
+/**
+ * Extrait la section QUESTIONS d'un message assistant Claude.
+ * Retourne le contenu de la section (sans le titre "QUESTIONS"), ou null.
+ * Le format Claude typique :
+ *   ...brouillon...
+ *   ---
+ *   QUESTIONS
+ *   1. 🔴 BLOQUANT — ...
+ *   2. 🟠 ATTENTION — ...
+ *   3. 🟢 INFO — ...
+ */
+function extractQuestionsSection(content: string): string | null {
+  const m = content.match(/QUESTIONS\s*(?:GÉRANT)?\s*(?:\(.*?\))?\s*[\n\r]+([\s\S]*?)(?:\n---|\nMAIL FINAL|$)/i);
+  return m ? m[1].trim() : null;
+}
+
+/**
+ * Parse la section QUESTIONS en items numérotés, filtre les 🟢 INFO (pas
+ * de vraie question à répondre), renumérote les items restants (BONUS
+ * demande Charles 03/07/2026 : "ne garde que les vraies questions").
+ * Retourne [{ num, text }] où text = corps de la question sans le préfixe
+ * technique 🔴/🟠 BLOQUANT/ATTENTION —.
+ */
+function parseActionableQuestions(content: string): { num: number; text: string }[] {
+  const section = extractQuestionsSection(content);
+  if (!section) return [];
+  // Split sur "\n\n1. " ou début, capturer chaque item numéroté
+  const items: { num: number; text: string }[] = [];
+  const itemRe = /^\s*\d+\.\s+(.+?)(?=\n\s*\d+\.\s|\n{2,}[A-ZÀ-Ü]|$)/gms;
+  let match;
+  while ((match = itemRe.exec(section)) !== null) {
+    const rawItem = match[1].trim();
+    // Skip 🟢 INFO — pas une vraie question à répondre
+    if (/^🟢\s*INFO\b/i.test(rawItem)) continue;
+    // Retirer le préfixe technique 🔴 BLOQUANT — / 🟠 ATTENTION — pour la
+    // question posée au gérant dans le modal (plus lisible).
+    const clean = rawItem
+      .replace(/^(🔴|🟠)\s*(BLOQUANT|ATTENTION)\s*(?:—|-)\s*/i, '')
+      .trim();
+    items.push({ num: items.length + 1, text: clean });
+  }
+  return items;
+}
+
+/**
+ * Filtre les lignes 🟢 INFO de la section QUESTIONS d'un message assistant
+ * pour l'affichage dans la ClaudeChat (BONUS Charles 03/07/2026 : les
+ * items "🟢 INFO — ..." n'appellent pas d'action, ils polluent la vue).
+ * Renumérote les items restants (1., 2., 3.).
+ */
+function filterInfoFromQuestions(content: string): string {
+  const section = extractQuestionsSection(content);
+  if (!section) return content;
+  // Rebuild QUESTIONS section without 🟢 INFO items, with renumbering
+  const itemRe = /^\s*\d+\.\s+(.+?)(?=\n\s*\d+\.\s|\n{2,}[A-ZÀ-Ü]|$)/gms;
+  const kept: string[] = [];
+  let match;
+  while ((match = itemRe.exec(section)) !== null) {
+    const rawItem = match[1].trim();
+    if (/^🟢\s*INFO\b/i.test(rawItem)) continue;
+    kept.push(rawItem);
+  }
+  if (kept.length === 0) {
+    // Toute la section QUESTIONS est de l'INFO → on retire la section entière
+    return content.replace(/(\n---\s*\n\s*QUESTIONS\b[\s\S]*)$/i, '').trim();
+  }
+  const renumbered = kept.map((it, i) => `${i + 1}. ${it}`).join('\n\n');
+  // Remplacer la section originale par la renumérotée
+  return content.replace(
+    /QUESTIONS(\s*(?:GÉRANT)?\s*(?:\(.*?\))?\s*[\n\r]+)([\s\S]*?)(?=\n---|\nMAIL FINAL|$)/i,
+    (_full, header, _body) => `QUESTIONS${header}${renumbered}`,
+  );
+}
+
 /** Détecte le marker de PJ trop volumineuse renvoyé par /api/plugin/analyze. */
 const PJ_MARKER = '__PJ_TOO_LARGE__';
 
@@ -177,6 +254,11 @@ export default function PluginMain({ context }: PluginMainProps) {
   const [showResumePopup, setShowResumePopup] = useState(false);
   const [resumeNote, setResumeNote] = useState<string>('');
   const [showPaymentCheck, setShowPaymentCheck] = useState(false);
+  // Modal "Répondre à l'agent" — permet au gérant de répondre item par item
+  // aux questions posées par Claude dans la section QUESTIONS du brouillon.
+  const [showAnswerModal, setShowAnswerModal] = useState(false);
+  const [answerInputs, setAnswerInputs] = useState<Record<number, string>>({});
+  const [answerOther, setAnswerOther] = useState('');
   // Mode "Générer devis PDF direct" depuis la page d'accueil, sans passer par
   // Analyser avec Claude. Fait apparaître QuotePanel avec claudeText vide et
   // déclenche l'extraction depuis le mailThread seul.
@@ -501,12 +583,18 @@ export default function PluginMain({ context }: PluginMainProps) {
   const pjTooLargeFromMsg = parsePjMarker(claude.messages.find((m) => m.role === 'assistant')?.content);
   const pjTooLarge = pjTooLargeFromStream || pjTooLargeFromMsg;
 
-  // Messages exposés à ClaudeChat et à toute la logique brouillon : on filtre
-  // le message marker pour qu'il n'apparaisse jamais en tant que "réponse
-  // Claude" ni ne déclenche hasDraft / QuotePanel.
-  const visibleMessages = pjTooLargeFromMsg
+  // Messages exposés à ClaudeChat et à toute la logique brouillon :
+  //  - on filtre le message marker PJ trop volumineuse
+  //  - on épure les lignes 🟢 INFO de la section QUESTIONS des messages
+  //    assistant (BONUS Charles 03/07/2026 : "ne garde dans la partie
+  //    question que les vrais questions"). Renumérote les items restants.
+  const visibleMessages = (pjTooLargeFromMsg
     ? claude.messages.filter((m) => !parsePjMarker(m.content))
-    : claude.messages;
+    : claude.messages
+  ).map((m) => m.role === 'assistant'
+    ? { ...m, content: filterInfoFromQuestions(m.content) }
+    : m
+  );
 
   // État initial : pas encore d'analyse
   const hasMessages = visibleMessages.length > 0;
@@ -519,6 +607,9 @@ export default function PluginMain({ context }: PluginMainProps) {
   // le panel "Vérifier virement reçu" pour injecter un brouillon préparé sans
   // nouveau passage par Claude.
   const hasDraft = ((quoteDraftText?.includes('Bonjour')) || lastAssistantMsg?.content.includes('Bonjour')) ?? false;
+  // Questions actionnables (🔴/🟠 uniquement, hors 🟢 INFO) extraites du
+  // dernier brouillon Claude. Sert au bouton "💬 Répondre à l'agent".
+  const actionableQuestions = lastAssistantMsg ? parseActionableQuestions(lastAssistantMsg.content) : [];
   // Un quoteDraftText injecté est considéré comme prêt d'office (passé par
   // le flow QuotePanel ou PaymentCheckPanel — pas besoin de relire un msg
   // Claude pour décider).
@@ -1255,6 +1346,26 @@ export default function PluginMain({ context }: PluginMainProps) {
             </>
           )}
 
+          {/* Répondre aux questions Claude — visible tant qu'il y a des
+              questions actionnables (🔴/🟠, hors 🟢 INFO). Reste dispo pour
+              des allers-retours multiples (règle Charles 03/07/2026). */}
+          {actionableQuestions.length > 0 && !claude.isStreaming && (
+            <button
+              className="btn-outline"
+              style={{ fontWeight: 600 }}
+              onClick={() => {
+                // Réinitialise les inputs avec "à toi de décider" par défaut
+                const init: Record<number, string> = {};
+                actionableQuestions.forEach((q) => { init[q.num] = ANSWER_DEFAULT; });
+                setAnswerInputs(init);
+                setAnswerOther('');
+                setShowAnswerModal(true);
+              }}
+            >
+              💬 Répondre à l'agent ({actionableQuestions.length})
+            </button>
+          )}
+
           {/* Brouillon pas validé */}
           {!showDraft && hasDraft && (
             <button className="btn-validate" onClick={() => { setManualValidation(true); setDraftInvalidated(false); }}>
@@ -1332,6 +1443,120 @@ export default function PluginMain({ context }: PluginMainProps) {
             setQuotePdfUrl(null);
           }}
         />
+      )}
+
+      {/* Modal "Répondre à l'agent" — un textarea par question actionnable
+          (🔴/🟠, hors 🟢 INFO) + une zone libre "Autre remarque". Chaque
+          case pré-remplie avec « à toi de décider » en gris clair pour
+          signifier au gérant qu'il peut soit laisser ainsi (Claude
+          décidera) soit remplacer par sa réponse. Envoie le tout à Claude
+          via /message. */}
+      {showAnswerModal && (
+        <div
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2100 }}
+          onClick={() => setShowAnswerModal(false)}
+        >
+          <div
+            style={{ background: 'white', borderRadius: '12px', padding: '18px', maxWidth: '520px', width: '92%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '12px', color: '#1a202c' }}>
+              💬 Répondre à l'agent
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#4a5568', marginBottom: '14px', lineHeight: 1.4 }}>
+              Réponds question par question. Laisse « à toi de décider » si tu veux que Claude tranche lui-même.
+            </div>
+            {actionableQuestions.map((q) => {
+              const val = answerInputs[q.num] ?? ANSWER_DEFAULT;
+              const isDefault = val === ANSWER_DEFAULT;
+              return (
+                <div key={q.num} style={{ marginBottom: '12px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#1a202c', marginBottom: '4px', lineHeight: 1.4 }}>
+                    {q.num}. {q.text}
+                  </div>
+                  <textarea
+                    value={val}
+                    onFocus={(e) => {
+                      if (e.target.value === ANSWER_DEFAULT) e.target.select();
+                    }}
+                    onChange={(e) => setAnswerInputs((prev) => ({ ...prev, [q.num]: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      minHeight: '48px',
+                      maxHeight: '160px',
+                      padding: '6px 8px',
+                      fontSize: '12px',
+                      border: '1px solid #cbd5e0',
+                      borderRadius: '4px',
+                      color: isDefault ? '#a0aec0' : '#1a202c',
+                      fontStyle: isDefault ? 'italic' as const : 'normal' as const,
+                      background: '#fff',
+                      resize: 'vertical' as const,
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                </div>
+              );
+            })}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#1a202c', marginBottom: '4px' }}>
+                Autre remarque (optionnel)
+              </div>
+              <textarea
+                value={answerOther}
+                onChange={(e) => setAnswerOther(e.target.value)}
+                placeholder="Précision libre à ajouter au message envoyé à Claude..."
+                style={{
+                  width: '100%',
+                  minHeight: '48px',
+                  maxHeight: '160px',
+                  padding: '6px 8px',
+                  fontSize: '12px',
+                  border: '1px solid #cbd5e0',
+                  borderRadius: '4px',
+                  color: '#1a202c',
+                  background: '#fff',
+                  resize: 'vertical' as const,
+                  fontFamily: 'inherit',
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                className="btn-secondary"
+                style={{ flex: 1 }}
+                onClick={() => setShowAnswerModal(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="btn-primary"
+                style={{ flex: 2 }}
+                onClick={() => {
+                  // Construire le message à envoyer à Claude. Chaque question
+                  // reprend son numéro et sa réponse (ou "à toi de décider"
+                  // si laissée par défaut). Autre remarque optionnelle.
+                  const lines: string[] = ['Voici mes réponses à tes questions :', ''];
+                  actionableQuestions.forEach((q) => {
+                    const raw = (answerInputs[q.num] ?? ANSWER_DEFAULT).trim();
+                    const val = raw.length > 0 ? raw : ANSWER_DEFAULT;
+                    lines.push(`${q.num}. ${val}`);
+                  });
+                  const other = answerOther.trim();
+                  if (other) {
+                    lines.push('');
+                    lines.push(`Autre : ${other}`);
+                  }
+                  const message = lines.join('\n');
+                  claude.sendMessage(message);
+                  setShowAnswerModal(false);
+                }}
+              >
+                Envoyer à Claude
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Popup résumé template — z-index élevé, au-dessus de tout */}

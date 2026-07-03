@@ -48,6 +48,11 @@ interface QuotePanelProps {
   onQuoteCreated?: (pdfUrl: string, quoteNumber: string, pennylaneUrl: string, totalTTC: number) => void;
   onRegisterClick?: (fn: () => void) => void;
   onListMessages?: () => Promise<{ results: unknown[] }>;
+  /** Notifie le parent (PluginMain) des transitions d'état interne
+   *  (idle / extracting / verify / creating / done). Utilisé pour
+   *  masquer la sticky bar du plugin quand le form devis est actif
+   *  (« masque devis PDF » plein écran, cf. Charles 03/07/2026). */
+  onStateChange?: (state: 'idle' | 'extracting' | 'verify' | 'creating' | 'done') => void;
 }
 
 interface QuoteResult {
@@ -97,7 +102,7 @@ interface VerifyFormData {
 type PanelState = 'idle' | 'extracting' | 'verify' | 'creating' | 'done';
 
 export default function QuotePanel({
-  claudeText, mailThread, customerEmail, customerName, storeCode, inboxName, frontConversationId, onSendMessage: _onSendMessage, onQuoteCreated, onRegisterClick, onListMessages,
+  claudeText, mailThread, customerEmail, customerName, storeCode, inboxName, frontConversationId, onSendMessage: _onSendMessage, onQuoteCreated, onRegisterClick, onListMessages, onStateChange,
 }: QuotePanelProps) {
   const [state, setState] = useState<PanelState>('idle');
   const [result, setResult] = useState<QuoteResult | null>(null);
@@ -147,6 +152,13 @@ export default function QuotePanel({
   useEffect(() => {
     onRegisterClick?.(handleClick);
   });
+
+  // Notifier le parent des transitions d'état pour qu'il puisse adapter
+  // son layout (ex : PluginMain masque la sticky bar quand state=verify
+  // pour laisser toute la place au form devis).
+  useEffect(() => {
+    onStateChange?.(state);
+  }, [state, onStateChange]);
 
   // ─── Devis créé ───
   if (state === 'done' && result) {

@@ -12,6 +12,10 @@ interface PostBody {
    *  de gérer les devis créés hors plugin (Pennylane direct, ancienne Flask,
    *  etc.) qui n'ont pas d'entrée dans conversation_quotes. */
   quoteNumber?: string;
+  /** Date du virement matché ("15 juin 2026"), formatée côté PaymentCheckPanel
+   *  à partir de la transaction bancaire sélectionnée. Interpolée via
+   *  [DATE_VIREMENT] dans le template. Ajouté 06/07/2026 (règle Charles). */
+  paymentDate?: string;
 }
 
 /**
@@ -28,7 +32,7 @@ interface PostBody {
 export async function POST(req: NextRequest) {
   try {
     await initDB();
-    const { frontConversationId, storeCode, customerFirstName = '', quoteNumber: customQuoteNumber }: PostBody = await req.json();
+    const { frontConversationId, storeCode, customerFirstName = '', quoteNumber: customQuoteNumber, paymentDate = '' }: PostBody = await req.json();
 
     if (!frontConversationId || !storeCode) {
       return NextResponse.json(
@@ -59,7 +63,7 @@ export async function POST(req: NextRequest) {
     }
     const templateFr: string = tplRows[0].content;
 
-    // 3. Interpolation [PRENOM] / [NUM_DEVIS]
+    // 3. Interpolation [PRENOM] / [NUM_DEVIS] / [DATE_VIREMENT]
     const firstName = (customerFirstName || '').trim();
     let interpolated = templateFr.replace(/\[PRENOM\]/g, firstName);
     if (quoteNumber) {
@@ -70,6 +74,18 @@ export async function POST(req: NextRequest) {
       interpolated = interpolated
         .replace(/pour le devis n°\[NUM_DEVIS\]/gi, 'pour votre commande')
         .replace(/\[NUM_DEVIS\]/g, '');
+    }
+    // Interpolation [DATE_VIREMENT] — avec fallback propre si absent (le
+    // paymentDate est toujours envoyé par PaymentCheckPanel, mais si un
+    // consommateur externe omet le champ, on tombe sur "votre virement"
+    // sans date au lieu d'un placeholder brut).
+    const date = (paymentDate || '').trim();
+    if (date) {
+      interpolated = interpolated.replace(/\[DATE_VIREMENT\]/g, date);
+    } else {
+      interpolated = interpolated
+        .replace(/de votre virement du \[DATE_VIREMENT\]/gi, 'de votre virement')
+        .replace(/\[DATE_VIREMENT\]/g, '');
     }
     // Nettoyer "Bonjour ," si pas de prénom
     interpolated = interpolated.replace(/^Bonjour\s*,/m, 'Bonjour,');

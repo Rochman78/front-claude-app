@@ -144,6 +144,16 @@ export default function PaymentCheckPanel({
     setConfirming(true);
     setConfirmResult(null);
     const url = `${API_BASE}/api/plugin/payment-confirmed-preview`;
+    // Formate la date du virement sélectionné en "15 juin 2026" pour
+    // insertion dans le mail de confirmation. selected.date est un
+    // ISO string type "2026-06-15" venant du bridge bancaire.
+    let paymentDate = '';
+    if (selected?.date) {
+      const d = new Date(selected.date);
+      if (!isNaN(d.getTime())) {
+        paymentDate = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+      }
+    }
     const payload = {
       frontConversationId,
       storeCode,
@@ -151,6 +161,9 @@ export default function PaymentCheckPanel({
       // n° de devis custom : utilisé si la conv n'a pas de devis en BDD ou si
       // le collab veut explicitement utiliser un autre numéro.
       quoteNumber: editQuoteNumber.trim() || undefined,
+      // Date du virement matché — insérée dans le mail de confirmation
+      // via placeholder [DATE_VIREMENT] (règle Charles 06/07/2026).
+      paymentDate,
     };
     console.log('[PaymentCheckPanel] POST payment-confirmed-preview:', payload);
     try {

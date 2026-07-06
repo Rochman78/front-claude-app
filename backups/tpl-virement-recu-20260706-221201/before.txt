@@ -1,0 +1,7 @@
+Bonjour [PRENOM],
+
+Nous accusons bonne réception de votre virement pour le devis n°[NUM_DEVIS].
+
+Votre commande passe dès maintenant en production. Nous reviendrons vers vous dès que votre filet sera prêt à être expédié.
+
+Pour toute question, n''hésitez pas à nous écrire — nous sommes à votre disposition.

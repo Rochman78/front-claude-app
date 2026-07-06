@@ -469,13 +469,27 @@ export default function PluginMain({ context }: PluginMainProps) {
       );
       const rounds = Math.max(1, userMarkers.length);
 
-      const shouldReset = messages && lastAssistantAt > 0
+      // Décision de reset — 2 modes :
+      // 1. BDD saine (lastAssistantAt > 0) : le check strict à 3 conditions
+      //    (notre brouillon a été poussé ET client a répondu depuis ET
+      //    reply postérieure au push). C'est le mode nominal.
+      // 2. BDD sans assistant (lastAssistantAt = 0, bug de persistance
+      //    connu — cas cnv_1lidp2l3 le 02/07/2026 : 6 user markers, 0
+      //    assistant) : on retombe sur du 100% Front — si le client a
+      //    répondu APRÈS notre dernier push et qu'il y a des messages
+      //    en BDD, on reset. Sinon (BDD vide ET Front vide), première
+      //    ouverture → restore normal (pas de reset).
+      const clientRepliedAfterLastPush = lastOutboundAt > 0 && lastInboundAt > lastOutboundAt;
+      const shouldResetStrict = messages && lastAssistantAt > 0
         && lastOutboundAt > lastAssistantAt      // notre brouillon a été poussé
         && lastInboundAt > lastAssistantAt        // le client a répondu depuis
         && lastInboundAt > lastOutboundAt;        // le client a répondu APRÈS notre push
+      const shouldResetFallback = messages && lastAssistantAt === 0 && clientRepliedAfterLastPush;
+      const shouldReset = shouldResetStrict || shouldResetFallback;
 
       if (shouldReset) {
-        console.log(`[plugin] auto-reset landing : nouveau mail client (${new Date(lastInboundAt).toISOString()}) après notre dernier push (${new Date(lastOutboundAt).toISOString()}) — brouillon Claude du ${new Date(lastAssistantAt).toISOString()} obsolète`);
+        const mode = shouldResetStrict ? 'strict' : 'fallback-front';
+        console.log(`[plugin] auto-reset landing (${mode}) : nouveau mail client (${new Date(lastInboundAt).toISOString()}) après notre dernier push (${new Date(lastOutboundAt).toISOString()}) — brouillon Claude ${lastAssistantAt ? 'du ' + new Date(lastAssistantAt).toISOString() : '(non-persisté BDD)'} obsolète`);
         setNewInboundDetected(true);
         setRoundCount(rounds + 1);
         setPreviousHistory(messages || []);

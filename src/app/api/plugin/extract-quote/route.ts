@@ -396,6 +396,34 @@ Note : "deliveryAddress" doit être :
           const fmt = roundedQty.toFixed(1).replace('.', ',');
           line.description = desc.replace(totalRe, `$1${fmt}`);
         }
+        // Arrondir aussi les DIMENSIONS dans le label : « 2,49 × 3,84 m »
+        // → « 2,5 × 3,8 m ». Même règle CLAUDE.md que la surface : on
+        // travaille au dixième de mètre pour éviter les fausses précisions
+        // (le filet est fabriqué à ±5 cm de toute façon).
+        // Formats acceptés en entrée :
+        //   « 2.49 x 3.84 m », « 2,49x3,84 m », « 2,49 × 3,84 m »,
+        //   « 6,9 x 6,9 x 3,8 m » (triangle 3 côtés)
+        const label = String(line.label || '');
+        const dimRe = /(\d+[.,]\d+)(\s*[x×X]\s*)(\d+[.,]\d+)(\s*[x×X]\s*(\d+[.,]\d+))?(\s*m\b)/;
+        const dm = label.match(dimRe);
+        if (dm) {
+          const roundToStr = (s: string) => {
+            const n = parseFloat(s.replace(',', '.'));
+            if (!Number.isFinite(n)) return s;
+            const sep = s.includes(',') ? ',' : '.';
+            return (Math.round(n * 10) / 10).toFixed(1).replace('.', sep);
+          };
+          const a = roundToStr(dm[1]);
+          const b = roundToStr(dm[3]);
+          const c = dm[5] ? roundToStr(dm[5]) : null;
+          const rebuilt = c
+            ? `${a}${dm[2]}${b}${dm[4]!.replace(/(\d+[.,]\d+)/, c)}${dm[6]}`
+            : `${a}${dm[2]}${b}${dm[6]}`;
+          if (rebuilt !== dm[0]) {
+            line.label = label.replace(dimRe, rebuilt);
+            console.log(`[extract-quote] dimensions arrondies au dixième : "${dm[0]}" → "${rebuilt}"`);
+          }
+        }
       }
     }
 

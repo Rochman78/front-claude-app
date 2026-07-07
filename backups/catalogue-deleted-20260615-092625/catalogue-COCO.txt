@@ -1,0 +1,67 @@
+CATALOGUE PRODUITS — MA TOILE COCO
+====================================
+(Export Shopify — Prix TTC)
+
+
+BRISE-VUE / RIDEAU EN FIBRE DE COCO
+--------------------------------------
+Handle                    Dimensions    SKU               Prix TTC
+brise-vue-coco            2x2           3760388679218      98,90 €
+brise-vue-coco            2x4           3760388679201     189,90 €
+rideau-en-fibre-de-coco   2x2           3760388679218      98,90 €
+rideau-en-fibre-de-coco   2x4           3760388679201     189,90 €
+
+
+TOILE DE COCO PERGOLA (= VOILE D'OMBRAGE FIBRE DE COCO)
+---------------------------------------------------------
+Handle                         Forme        Dimensions    SKU               Prix TTC
+toile-de-coco-pergola          Carré        2x2           3760388678358     109,90 €
+toile-de-coco-pergola          Carré        3x3           3760388678341     229,90 €
+toile-de-coco-pergola          Carré        3.5x3.5       3760388678334     299,90 €
+toile-de-coco-pergola          Carré        4x4           3760388678327     399,90 €
+toile-de-coco-pergola          Rectangle    2x3           3760388678310     149,90 €
+toile-de-coco-pergola          Rectangle    2x4           3760388678303     199,90 €
+toile-de-coco-pergola          Rectangle    2x5           3760388678297     249,90 €
+toile-de-coco-pergola          Rectangle    2x6           3760388678280     299,90 €
+toile-de-coco-pergola          Rectangle    3x4           3760388678273     299,90 €
+toile-de-coco-pergola          Rectangle    3x5           3760388678266     369,90 €
+toile-de-coco-pergola          Rectangle    3x6           3760388678259     449,90 €
+toile-de-coco-pergola          Rectangle    3x7           3760388678242     519,90 €
+toile-de-coco-pergola          Rectangle    4x5           3760388678235     499,90 €
+toile-de-coco-pergola          Rectangle    4x6           3760388678228     599,90 €
+
+
+VOILE D'OMBRAGE FIBRE DE COCO — TRIANGLES
+------------------------------------------
+Handle                          Forme       Dimensions      SKU               Prix TTC
+voile-dombrage-fibre-de-coco    Triangle    2x2x2           3760388678419      89,90 €
+voile-dombrage-fibre-de-coco    Triangle    3x3x3           3760388678402     129,90 €
+voile-dombrage-fibre-de-coco    Triangle    3.5x3.5x3.5     3760388678396     169,90 €
+voile-dombrage-fibre-de-coco    Triangle    3x4x5           3760388678389     189,90 €
+voile-dombrage-fibre-de-coco    Triangle    4x4x4           3760388678372     219,90 €
+voile-dombrage-fibre-de-coco    Triangle    5x5x5           3760388678365     339,90 €
+
+
+VOILE D'OMBRAGE FIBRE DE COCO — CARRÉS & RECTANGLES
+------------------------------------------------------
+Handle                          Forme       Dimensions    SKU               Prix TTC
+voile-dombrage-fibre-de-coco    Carré       2x2           3760388678358     109,90 €
+voile-dombrage-fibre-de-coco    Carré       3x3           3760388678341     229,90 €
+voile-dombrage-fibre-de-coco    Carré       3.5x3.5       3760388678334     299,90 €
+voile-dombrage-fibre-de-coco    Carré       4x4           3760388678327     399,90 €
+voile-dombrage-fibre-de-coco    Rectangle   2x3           3760388678310     149,90 €
+voile-dombrage-fibre-de-coco    Rectangle   2x4           3760388678303     199,90 €
+voile-dombrage-fibre-de-coco    Rectangle   2x5           3760388678297     249,90 €
+voile-dombrage-fibre-de-coco    Rectangle   2x6           3760388678280     299,90 €
+voile-dombrage-fibre-de-coco    Rectangle   3x4           3760388678273     299,90 €
+voile-dombrage-fibre-de-coco    Rectangle   3x5           3760388678266     369,90 €
+voile-dombrage-fibre-de-coco    Rectangle   3x6           3760388678259     449,90 €
+voile-dombrage-fibre-de-coco    Rectangle   3x7           3760388678242     519,90 €
+voile-dombrage-fibre-de-coco    Rectangle   4x5           3760388678235     499,90 €
+voile-dombrage-fibre-de-coco    Rectangle   4x6           3760388678228     599,90 €
+
+
+ACCESSOIRES
+------------
+Handle                    Options           SKU               Prix TTC
+corde-en-fibre-de-coco    Default Title     3760388678426      19,90 €

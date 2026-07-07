@@ -1,0 +1,197 @@
+ 
+CONDITIONS GÉNÉRALES DE VENTE
+SAS ZEPHYR O.S.C — ma-toile-coco.fr
+Version mise à jour le 03 juillet 2026
+SAS ZEPHYR O.S.C – Société par actions simplifiée au capital de 10 000 €
+Siège social : 5 rue Fénelon, 33000 Bordeaux
+RCS Bordeaux : 899 544 704 – SIRET : 899 544 704 00039
+TVA intracommunautaire : FR34899544704
+Président : M. Quemeneur
+Contact : contact@ma-toile-coco.fr
+Hébergeur : Shopify Inc., 126 York St., Ottawa, ON K1N 5T5, Canada
+Article 1 – Préambule et champ d'application
+La société SAS ZEPHYR O.S.C (ci-après « la Société » ou « Ma Toile Coco ») édite et exploite le site internet https://ma-toile-coco.fr (ci-après « le Site »), lequel commercialise des toiles en fibre de coco et accessoires.
+Les présentes Conditions Générales de Vente (ci-après « CGV ») régissent l'ensemble des relations contractuelles entre la Société et toute personne effectuant un achat sur le Site (ci-après « le Client »).
+Toute commande passée sur le Site implique l'acceptation préalable, entière et sans réserve des présentes CGV dans leur version en vigueur au jour de la commande.
+La Société se réserve le droit de modifier les présentes CGV à tout moment. Les modifications ne s'appliquent pas aux commandes déjà validées. Le Client est invité à consulter régulièrement la dernière version en vigueur sur le Site.
+Article 2 – Définitions
+« Client » : désigne toute personne physique ou morale qui effectue une commande sur le Site.
+« Consommateur » : désigne tout Client personne physique agissant à des fins qui n'entrent pas dans le cadre de son activité commerciale, industrielle, artisanale, libérale ou agricole (art. liminaire du Code de la consommation).
+« Produit(s) » : désigne l'ensemble des biens proposés à la vente sur le Site.
+« Commande » : désigne tout achat de Produit(s) effectué par le Client sur le Site, validé par le paiement.
+« CGV » : désigne les présentes Conditions Générales de Vente.
+Article 3 – Produits
+Les Produits proposés à la vente sont ceux qui figurent sur le Site, dans la limite des stocks disponibles. Chaque Produit fait l'objet d'un descriptif mentionnant ses caractéristiques essentielles au sens de l'article L.111-1 du Code de la consommation (dénomination, caractéristiques, état, prix).
+La Société se réserve le droit de modifier l'assortiment de Produits à tout moment.
+Article 4 – Prix
+Les prix des Produits sont indiqués en euros (€) toutes taxes comprises (TTC), incluant la TVA au taux en vigueur dans le pays de livraison, conformément aux règles applicables en matière de vente à distance intracommunautaire (régime OSS — Directive 2006/112/CE, telle que modifiée par la Directive 2017/2455). Pour les livraisons en France, la TVA française est appliquée. Le taux de TVA applicable est déterminé en fonction de l'adresse de livraison indiquée par le Client. Le montant de la TVA n'est pas affiché de manière distincte lors du processus de commande mais figure sur la facture adressée au Client. Tout changement de taux de TVA pourra être répercuté sur le prix TTC des Produits.
+Pour les Clients professionnels établis dans un État membre de l'Union européenne autre que la France, disposant d'un numéro de TVA intracommunautaire valide et en ayant fait mention lors de leur commande, les prix affichés sur le Site s'entendent hors taxes (HT). La TVA n'est pas applicable conformément à l'article 262 ter, I du Code général des impôts et à l'article 138 de la Directive 2006/112/CE (régime d'autoliquidation). La Société se réserve le droit de vérifier la validité du numéro de TVA intracommunautaire communiqué via le système VIES de la Commission européenne. En cas de numéro invalide ou non vérifiable, la TVA du pays de livraison sera appliquée.
+Les prix ne comprennent pas les frais de livraison, lesquels sont indiqués séparément avant la validation de la commande et facturés en supplément en fonction du montant de la commande et de la zone géographique de livraison.
+Le prix applicable est celui affiché sur le Site au moment de la validation de la commande. La Société se réserve le droit de modifier ses tarifs à tout moment, sans effet sur les commandes déjà validées.
+Article 5 – Commande et paiement
+5.1 – Processus de commande
+Le Client sélectionne les Produits souhaités et les ajoute à son panier. Il vérifie le récapitulatif de sa commande (Produits, quantités, prix, adresse de livraison) et peut corriger toute erreur avant de procéder au paiement.
+Le Client prend connaissance des présentes CGV et les accepte en cochant la case prévue à cet effet, puis valide définitivement sa commande en cliquant sur le bouton « Confirmer ma commande ».
+La confirmation de la commande par le Client vaut acceptation irrévocable des présentes CGV et constitue la conclusion du contrat de vente, sous réserve de la disponibilité effective du Produit. Un e-mail de confirmation est envoyé au Client.
+5.2 – Disponibilité
+En cas d'indisponibilité d'un Produit après validation de la commande, la Société en informe le Client dans les meilleurs délais. Le Client peut alors choisir entre le remplacement par un produit de qualité et de prix équivalent ou le remboursement intégral du Produit concerné, effectué sous 14 jours.
+5.3 – Moyens de paiement
+Le paiement s'effectue en ligne, au choix du Client, par carte bancaire, PayPal ou Stripe. Le paiement est exigible en totalité au moment de la commande.
+Les transactions sont sécurisées par protocole de chiffrement SSL (AES-256). La Société respecte les exigences de la norme PCI-DSS. Les données de paiement ne sont à aucun moment stockées sur les serveurs de la Société.
+5.4 – Utilisation frauduleuse de carte bancaire
+En cas d'utilisation frauduleuse de sa carte bancaire, le Client peut exiger l'annulation du paiement. Le porteur de la carte doit contester le prélèvement par écrit auprès de sa banque dans les délais légaux (70 jours, ou 120 jours si son contrat le prévoit). Les sommes contestées sont recréditées dans un délai maximum d'un mois, sans frais pour le titulaire.
+5.5 – Facturation
+Une facture dématérialisée est adressée au Client par e-mail pour chaque commande. Elle mentionne l'identité des parties, la date, le détail des Produits, les prix unitaires HT et TTC, ainsi que les frais de livraison.
+Article 6 – Livraison
+6.1 – Zones et frais de livraison
+Les frais de livraison sont indiqués TTC, sur une ligne distincte du prix des Produits, au cours du processus de commande. Ils varient selon le territoire de livraison et le transporteur choisi (Mondial Relay, Colissimo, Chronopost, CChezvous).
+En raison de leur volume et de leur poids, les parasols coco sont expédiés EXCLUSIVEMENT par le transporteur spécialisé CChezvous, dédié aux produits volumineux. AUCUN autre mode de livraison n'est disponible pour ce Produit. La livraison s'effectue SUR RENDEZ-VOUS, au pied de l'immeuble ou de l'habitation.
+6.2 – Délais de livraison
+Les commandes sont livrées dans les délais suivants à compter de la validation du paiement :
+	•	Mondial Relay et Colissimo (France métropolitaine) : 48 à 72 heures ouvrées
+	•	Chronopost Express : 24 à 48 heures ouvrées
+	•	CChezvous (parasols coco) : 4 à 6 jours ouvrés
+	•	Colissimo International (Europe) : 3 à 6 jours ouvrés
+Les délais s'entendent en jours ouvrés et excluent les samedis, dimanches et jours fériés.
+6.3 – Retard de livraison
+En cas de dépassement du délai de livraison indiqué lors de la commande, le Client peut, conformément aux articles L.216-2 et L.216-3 du Code de la consommation :
+	•	Mettre en demeure la Société d'effectuer la livraison dans un délai supplémentaire raisonnable, par courrier recommandé ou écrit sur support durable ;
+	•	En l'absence de livraison dans ce nouveau délai, résoudre le contrat par les mêmes voies ;
+	•	Obtenir le remboursement intégral des sommes versées dans un délai de 14 jours suivant la résolution.
+Exception : lorsque le respect du délai constitue une condition essentielle du contrat (par exemple, une date impérative communiquée par le Client avant la commande), celui-ci peut résoudre immédiatement le contrat sans mise en demeure préalable.
+6.4 – Réception et transfert des risques
+Le Client est invité à vérifier l'état du colis à la réception. En cas de dommage apparent ou de Produit manquant, le Client est encouragé à formuler des réserves précises et motivées auprès du transporteur au moment de la livraison et en informer la Société par e-mail dans un délai de trois (3) jours ouvrés.
+Le transfert des risques de perte et de détérioration des Produits s'effectue au moment où le Client (ou un tiers désigné par lui) prend physiquement possession des Produits, conformément à l'article L.216-4 du Code de la consommation.
+6.5 – Colis perdu ou endommagé par le transporteur
+En cas de colis perdu ou endommagé durant le transport, la Société procède, au choix du Client, à un nouvel envoi ou au remboursement intégral de la commande concernée, dans un délai de 14 jours. La Société se charge des démarches auprès du transporteur.
+Article 7 – Réserve de propriété
+La Société conserve la propriété pleine et entière des Produits vendus jusqu'au parfait encaissement du prix, en principal, frais et taxes compris.
+Le transfert des risques au Client s'effectue dès la prise de possession physique du Produit, indépendamment du transfert de propriété.
+Article 8 – Droit de rétractation
+8.1 – Principe et délai
+Conformément aux articles L.221-18 et suivants du Code de la consommation, le Client ayant la qualité de consommateur dispose d'un délai de quatorze (14) jours à compter de la réception du Produit pour exercer son droit de rétractation, sans avoir à justifier de motif.
+8.2 – Modalités d'exercice
+Modalité privilégiée – Espace client : la Société met à disposition du Client une procédure de retour en ligne. Le Client se connecte à son espace client (via le lien « Afficher votre commande » dans l'e-mail de confirmation ou directement sur son Compte client), accède à la commande concernée et clique sur « Demander un retour ». Le motif de retour est facultatif. Un code de connexion à usage unique est envoyé par e-mail pour l'identification.
+Autres moyens légaux : le Client peut également exercer son droit de rétractation par toute déclaration écrite dénuée d'ambiguïté (ou via le formulaire type en Annexe 2), adressée :
+	•	par e-mail à : contact@ma-toile-coco.fr
+	•	par courrier postal à : SAS ZEPHYR O.S.C – 5 rue Fénelon – 33000 Bordeaux
+Après validation de la demande, le Client reçoit par e-mail les instructions de retour accompagnées, le cas échéant, d'une étiquette de retour.
+8.3 – Retour du Produit
+	•	Le Produit doit être retourné dans un délai de quatorze (14) jours suivant la notification de rétractation.
+	•	Le Produit doit être renvoyé dans son état d'origine, complet (emballage, accessoires, notices), propre à une nouvelle commercialisation.
+	•	Les frais de retour sont à la charge du Client (article L.221-23 du Code de la consommation).
+	•	La responsabilité du Client peut être engagée en cas de dépréciation du Produit résultant de manipulations autres que celles nécessaires pour en vérifier la nature, les caractéristiques et le bon fonctionnement.
+Adresse de retour : les Produits doivent être retournés à l'adresse communiquée dans les instructions de retour (entrepôt partenaire). Merci de ne pas renvoyer vos colis au siège social sauf instruction contraire expresse.
+8.4 – Exclusion – Produits sur mesure
+Conformément à l'article L.221-28, 3° du Code de la consommation, le droit de rétractation ne s'applique pas aux biens confectionnés selon les spécifications du consommateur ou nettement personnalisés. Sont notamment concernées les toiles réalisées sur mesure (dimensions spécifiques, découpes particulières, toute adaptation personnalisée).
+8.5 – Remboursement
+En cas de rétractation conforme, la Société rembourse au Client la totalité des sommes versées, y compris les frais de livraison standard, dans un délai maximal de quatorze (14) jours à compter de la réception de la décision de rétractation.
+Le remboursement peut être différé jusqu'à réception du Produit retourné ou jusqu'à fourniture par le Client d'une preuve d'expédition, la date retenue étant celle du premier de ces événements.
+Le remboursement est effectué via le même moyen de paiement que celui utilisé lors de la commande, sauf accord expres du Client.
+Précision sur les frais de livraison : si le Client a choisi un mode de livraison plus coûteux que le mode standard proposé, la Société rembourse les frais de livraison standard uniquement (article L.221-24 du Code de la consommation). Pour les Produits dont un seul mode de livraison est proposé (parasols coco livrés par CChezvous), ce mode constitue le mode standard et les frais de livraison correspondants sont remboursés en intégralité.
+Article 9 – Garantie commerciale « Satisfait ou Remboursé – 30 jours »
+9.1 – Principe
+Indépendamment du droit légal de rétractation, la Société propose une garantie commerciale facultative. Confiants dans la qualité de nos Produits, ceux-ci peuvent être retournés dans un délai de trente (30) jours à compter de leur réception, sans justification.
+Cette garantie s'applique aux consommateurs comme aux clients professionnels.
+9.2 – Modalités
+Toute demande de retour dans le cadre de cette garantie doit être effectuée exclusivement via l'espace client accessible via ce lien : Compte client (se connecter, accéder à la commande, cliquer sur « Demander un retour »). Après vérification du respect des délais, une étiquette de retour et les instructions nécessaires sont transmises par e-mail.
+9.3 – Conditions et exclusions
+	•	Le Produit doit être retourné dans son état d'origine, complet et propre à une nouvelle commercialisation.
+	•	Les frais de retour restent à la charge du Client.
+	•	Les Produits réalisés sur mesure ou personnalisés sont exclus de cette garantie.
+	•	La responsabilité du Client peut être engagée en cas de dépréciation du Produit résultant de manipulations autres que celles nécessaires pour en vérifier la nature, les caractéristiques et le bon fonctionnement.
+9.4 – Remboursement
+Après réception et vérification du Produit retourné conformément aux instructions, la Société procède au remboursement du prix du Produit via le même moyen de paiement que celui utilisé lors de la commande.
+Nature de la garantie commerciale : cette garantie est consentie à titre gracieux par la Société et ne se substitue pas aux garanties légales de conformité et des vices cachés dont bénéficie le consommateur (articles L.217-1 et suivants du Code de la consommation et articles 1641 et suivants du Code civil).
+Article 10 – Garanties légales
+10.1 – Garantie légale de conformité
+Conformément aux articles L.217-1 à L.217-32 du Code de la consommation, la Société répond des défauts de conformité apparaissant dans un délai de deux (2) ans à compter de la délivrance du bien. Elle répond également des défauts de conformité résultant de l'emballage, des instructions de montage ou de l'installation lorsque celle-ci a été mise à sa charge.
+Dans le cadre de cette garantie, le consommateur :
+	•	bénéficie d'un délai de deux ans pour agir ;
+	•	n'a pas à prouver la date d'apparition du défaut (présomption d'antériorité pendant toute la durée de la garantie pour les biens neufs) ;
+	•	peut choisir entre la réparation ou le remplacement du bien, mis en œuvre dans un délai de 30 jours et sans frais ;
+	•	bénéficie d'une extension de 6 mois de la garantie en cas de réparation, et d'un renouvellement de 2 ans en cas de remplacement imposé par le vendeur alors que la réparation était demandée.
+Le consommateur peut obtenir une réduction de prix ou un remboursement intégral si :
+	•	le professionnel refuse de réparer ou de remplacer le bien ;
+	•	la réparation ou le remplacement intervient après un délai de 30 jours ;
+	•	la réparation ou le remplacement occasionne un inconvénient majeur ;
+	•	la non-conformité persiste malgré une tentative de mise en conformité restée infructueuse.
+Lorsque le défaut est suffisamment grave, le consommateur peut demander une réduction de prix ou la résolution immédiate du contrat sans passer par la réparation ou le remplacement.
+ENCADRÉ OBLIGATOIRE – GARANTIE LÉGALE DE CONFORMITÉ
+Le consommateur dispose d'un délai de deux ans à compter de la délivrance du bien pour obtenir la mise en œuvre de la garantie légale de conformité en cas d'apparition d'un défaut de conformité. Dans ce délai pour les biens neufs, le consommateur n'est tenu que d'établir l'existence du défaut de conformité et non la date d'apparition de celui-ci.
+La garantie légale de conformité emporte obligation pour le professionnel, le cas échéant, de fournir toutes les mises à jour nécessaires au maintien de la conformité du bien.
+La garantie légale de conformité donne au consommateur droit à la réparation ou au remplacement du bien dans un délai de trente jours suivant sa demande, sans frais et sans inconvénient majeur pour lui. Si le bien est réparé dans le cadre de la garantie légale de conformité, le consommateur bénéficie de l'extension de six mois de la garantie initiale. Si le consommateur demande la réparation du bien, mais que le vendeur impose le remplacement, la garantie légale de conformité est renouvelée pour une période de deux ans à compter de la date de remplacement du bien.
+Le consommateur peut obtenir une réduction du prix d'achat en conservant le bien ou mettre fin au contrat en se faisant rembourser intégralement contre restitution du bien, si : 1° le professionnel refuse de réparer ou de remplacer le bien ; 2° la réparation ou le remplacement du bien intervient après un délai de trente jours ; 3° la réparation ou le remplacement du bien occasionne un inconvénient majeur pour le consommateur, notamment lorsque le consommateur supporte définitivement les frais de reprise ou d'enlèvement du bien non conforme, ou s'il supporte les frais d'installation du bien réparé ou de remplacement ; 4° la non-conformité du bien persiste en dépit de la tentative de mise en conformité du vendeur restée infructueuse.
+Le consommateur a également droit à une réduction du prix du bien ou à la résolution du contrat lorsque le défaut de conformité est si grave qu'il justifie que la réduction du prix ou la résolution du contrat soit immédiate. Le consommateur n'est alors pas tenu de demander la réparation ou le remplacement du bien au préalable.
+Le consommateur n'a pas droit à la résolution de la vente si le défaut de conformité est mineur. Toute période d'immobilisation du bien en vue de sa réparation ou de son remplacement suspend la garantie qui restait à courir jusqu'à la délivrance du bien remis en état.
+Les droits mentionnés ci-dessus résultent de l'application des articles L.217-1 à L.217-32 du Code de la consommation.
+Le vendeur qui fait obstacle de mauvaise foi à la mise en œuvre de la garantie légale de conformité encourt une amende civile d'un montant maximal de 300 000 euros, qui peut être porté jusqu'à 10 % du chiffre d'affaires moyen annuel (article L.241-5 du Code de la consommation).
+Le consommateur bénéficie également de la garantie légale des vices cachés en application des articles 1641 à 1649 du Code civil, pendant une durée de deux ans à compter de la découverte du défaut. Cette garantie donne droit à une réduction de prix si le bien est conservé ou à un remboursement intégral contre restitution du bien.
+10.2 – Garantie légale des vices cachés
+Conformément aux articles 1641 à 1649 du Code civil, le Client peut mettre en œuvre la garantie des vices cachés dans un délai de deux (2) ans à compter de la découverte du vice. Il appartient au Client de prouver que le défaut existait au moment de l'achat, qu'il était caché et qu'il rend le Produit impropre à l'usage auquel il est destiné. Le Client peut alors choisir entre la résolution de la vente ou une réduction du prix.
+Les frais de renvoi du Produit sont remboursés au Client sur présentation de justificatifs.
+10.3 – Exclusions
+Les garanties légales ne couvrent pas les défauts résultant d'une mauvaise utilisation, d'un défaut d'entretien, d'une installation non conforme aux instructions fournies ou de l'usure normale du Produit.
+10.4 – Mise en œuvre
+Pour faire jouer une garantie légale, le Client contacte le service client à contact@ma-toile-coco.fr en joignant une copie de sa facture et une description du défaut constaté. La Société lui indique la marche à suivre pour le retour du Produit.
+Article 11 – Force majeure
+Les Parties ne pourront être tenues responsables si la non-exécution ou le retard dans l'exécution de l'une quelconque de leurs obligations découle d'un cas de force majeure au sens de l'article 1218 du Code civil. La Partie concernée en informe l'autre dans les meilleurs délais. Si l'événement de force majeure perdure au-delà de trente (30) jours, chaque Partie pourra résilier le contrat sans indemnité.
+Article 12 – Propriété intellectuelle
+L'ensemble des éléments du Site (textes, images, logos, vidéos, architecture, charte graphique) est la propriété exclusive de la Société ou de ses concédants. Ces éléments sont protégés par les lois françaises et internationales relatives à la propriété intellectuelle.
+Toute reproduction, représentation, modification, distribution ou exploitation totale ou partielle de ces contenus, par quelque procédé que ce soit, sans l'autorisation écrite et préalable de la Société, est strictement interdite et susceptible de constituer un délit de contrefaçon.
+Article 13 – Données personnelles
+La Société collecte et traite les données personnelles du Client dans le cadre de l'exécution des commandes et de la gestion de la relation commerciale, conformément au Règlement (UE) 2016/679 (RGPD) et à la loi n°78-17 du 6 janvier 1978 modifiée.
+Les traitements de données mis en œuvre ont pour finalités principales le traitement des commandes, l'établissement des factures, la gestion de la relation client, et le cas échéant, la prospection commerciale avec le consentement du Client.
+Les données peuvent être communiquées aux prestataires intervenant dans l'exécution des commandes (transporteurs, prestataires de paiement) et, le cas échéant, aux autorités compétentes.
+Le Client dispose d'un droit d'accès, de rectification, d'effacement, de portabilité, de limitation du traitement et d'opposition. Ces droits s'exercent par e-mail à contact@ma-toile-coco.fr. Une réponse est adressée dans un délai d'un (1) mois.
+Les données sont conservées pendant la durée nécessaire aux finalités du traitement et au maximum trois (3) ans après le dernier contact, à l'exception des données nécessaires à la preuve d'un droit ou d'un contrat, archivées cinq (5) ans.
+Pour plus d'informations sur l'utilisation des cookies et la gestion des données personnelles, le Client est invité à consulter la Politique de confidentialité accessible sur le Site.
+Article 14 – Responsabilité
+La Société s'engage à fournir ses services avec diligence et selon les règles de l'art. Elle procède régulièrement à des contrôles du fonctionnement et de l'accessibilité du Site et se réserve la possibilité de l'interrompre momentanément pour des raisons de maintenance.
+Les Produits sont conformes à la législation française en vigueur. La responsabilité de la Société ne saurait être engagée en cas de non-respect de la législation du pays de livraison. Il appartient au Client de vérifier la conformité des Produits avec la réglementation locale.
+La Société ne saurait être tenue responsable des difficultés d'accès au Site dues à des circonstances extérieures, à la force majeure ou à des perturbations des réseaux de télécommunications.
+Limitation de responsabilité : dans les limites autorisées par la loi, la responsabilité totale de la Société au titre d'une commande est limitée au montant total payé par le Client pour ladite commande. Cette limitation ne s'applique pas en cas de dol, de faute lourde, d'atteinte à l'intégrité physique, ou lorsque la loi ne permet pas une telle limitation.
+Article 15 – Liens hypertextes
+Le Site peut contenir des liens vers des sites internet tiers. La Société n'exerce aucun contrôle sur ces sites et décline toute responsabilité quant à leurs contenus, produits ou services. Le Client est invité à prendre connaissance de leurs propres conditions d'utilisation.
+Article 16 – Utilisations interdites
+Le Client s'interdit d'utiliser le Site ou son contenu à des fins illégales, pour porter atteinte aux droits de propriété intellectuelle de la Société ou de tiers, pour harceler ou discriminer quiconque, pour soumettre des informations fausses ou trompeuses, pour transmettre des virus ou code malveillant, ou pour porter atteinte à la sécurité du Site. La Société se réserve le droit de suspendre l'accès au Site en cas de manquement avéré.
+Article 17 – Réclamations, médiation et droit applicable
+17.1 – Réclamations
+Toute réclamation doit être adressée au service client par e-mail à contact@ma-toile-coco.fr (du lundi au vendredi, de 8h à 18h).
+17.2 – Médiation de la consommation
+Conformément aux articles L.612-1 et suivants du Code de la consommation, en cas de litige non résolu après réclamation auprès du service client, le Client consommateur peut saisir gratuitement le médiateur de la consommation désigné :
+La Société Médiation Professionnelle
+24 rue Albert de Mun – 33000 Bordeaux
+www.mediateur-consommation-smp.fr
+Le Client peut également recourir à la plateforme européenne de règlement en ligne des litiges : https://webgate.ec.europa.eu/odr/
+17.3 – Droit applicable et juridiction compétente
+Les présentes CGV sont soumises au droit français. Le Client consommateur peut saisir la juridiction territorialement compétente en vertu du Code de procédure civile ou la juridiction du lieu où il demeurait au moment de la conclusion du contrat ou de la survenance du fait dommageable.
+Article 18 – Dispositions générales
+Les présentes CGV constituent l'intégralité de l'accord entre la Société et le Client concernant les commandes passées sur le Site.
+Si une clause des présentes CGV est déclarée nulle ou inapplicable, les autres clauses restent pleinement en vigueur.
+Le fait pour la Société de ne pas exercer un droit reconnu par les présentes ne constitue pas une renonciation à ce droit.
+Annexes
+Annexe 1 – Textes de référence
+Article L.217-4 du Code de la consommation
+« Le vendeur est tenu de livrer un bien conforme au contrat et répond des défauts de conformité existant lors de la délivrance. Il répond également des défauts de conformité résultant de l'emballage, des instructions de montage ou de l'installation lorsque celle-ci a été mise à sa charge par le contrat ou a été réalisée sous sa responsabilité. »
+Article L.217-5 du Code de la consommation
+« Le bien est conforme au contrat s'il est propre à l'usage habituellement attendu d'un bien semblable et, le cas échéant, s'il correspond à la description donnée par le vendeur et possède les qualités que celui-ci a présentées à l'acheteur sous forme d'échantillon ou de modèle ; s'il présente les qualités qu'un acheteur peut légitimement attendre eu égard aux déclarations publiques faites par le vendeur, par le producteur ou par son représentant, notamment dans la publicité ou l'étiquetage ; ou s'il présente les caractéristiques définies d'un commun accord par les parties ou est propre à tout usage spécial recherché par l'acheteur, porté à la connaissance du vendeur et que ce dernier a accepté. »
+Article L.217-12 du Code de la consommation
+« L'action résultant du défaut de conformité se prescrit par deux ans à compter de la délivrance du bien. »
+Article 1641 du Code civil
+« Le vendeur est tenu de la garantie à raison des défauts cachés de la chose vendue qui la rendent impropre à l'usage auquel on la destine, ou qui diminuent tellement cet usage, que l'acheteur ne l'aurait pas acquise, ou n'en aurait donné qu'un moindre prix, s'il les avait connus. »
+Article 1648, alinéa 1er du Code civil
+« L'action résultant des vices rédhibitoires doit être intentée par l'acquéreur dans un délai de deux ans à compter de la découverte du vice. »
+Annexe 2 – Formulaire de rétractation
+(Veuillez compléter et renvoyer le présent formulaire uniquement si vous souhaitez vous rétracter de votre commande)
+À l'attention de :
+SAS ZEPHYR O.S.C – 5 rue Fénelon – 33000 Bordeaux E-mail : contact@ma-toile-coco.fr
+Je vous notifie par la présente ma rétractation du contrat portant sur la vente du/des bien(s) ci-dessous :
+Commandé le : ........................................................ Reçu le : ........................................................ Numéro de commande : ........................................................ Nom du/des consommateur(s) : ........................................................ Adresse : ........................................................
+Signature (uniquement si envoi sur papier) :
+Date : ........................................................
+—
+La présente version des CGV est consultable à tout moment sur ma-toile-coco.fr
+
+
+

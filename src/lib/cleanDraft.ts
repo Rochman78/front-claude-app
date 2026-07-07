@@ -173,5 +173,13 @@ export function cleanDraftResponse(text: string): string {
   const sigPattern = /\n[^\n]*(cordialement|bien à vous|bien cordialement|l'équipe|le service client|à votre disposition|belle journée|bonne journée|excellente journée|nous vous souhaitons|à bientôt)[^\n]*(\n\s*)*/i;
   result = result.replace(sigPattern, '');
 
+  // 3. Normaliser la salutation : « Bonjour <n'importe quoi>, » → « Bonjour, »
+  //    Charles 07/07/2026 : Claude glisse parfois un identifiant/code/prénom
+  //    (« Bonjour CE.74E, », « Bonjour Ricarda, », « Bonjour CLG-XXX, »)
+  //    même quand le prompt l'interdit. On force le scrub à la sortie.
+  //    Multilingue : même règle après traduction (Hallo, Hola, etc.).
+  const greetRe = /^([ \t]*)(Bonjour|Hallo|Hola|Buongiorno|Goedendag|Beste|Bom dia|Buenos días|Dear|Hello|Hi)\b[^,\n]*,[ \t]*/im;
+  result = result.replace(greetRe, '$1$2,');
+
   return result.trim();
 }

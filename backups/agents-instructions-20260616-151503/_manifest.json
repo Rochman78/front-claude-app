@@ -1,0 +1,52 @@
+[
+  {
+    "id": "59805dc4-5f17-4b9c-a4cb-f39140d2c9e8",
+    "store_code": "COCO",
+    "chars": 48789
+  },
+  {
+    "id": "136ff794-69cc-4da2-9b29-26418c8161a9",
+    "store_code": "HET",
+    "chars": 52905
+  },
+  {
+    "id": "ff68cb20-b308-45fc-9730-e8a8a9b8206a",
+    "store_code": "LFC",
+    "chars": 52914
+  },
+  {
+    "id": "cd189691-7fab-477f-9caa-732318f9b08c",
+    "store_code": "LVO",
+    "chars": 52910
+  },
+  {
+    "id": "58a997a2-42e5-4af3-a2d3-1b7258b745aa",
+    "store_code": "MON",
+    "chars": 52903
+  },
+  {
+    "id": "3b458fc6-f501-4a5d-b213-b724776044fd",
+    "store_code": "RED",
+    "chars": 52908
+  },
+  {
+    "id": "agent_4f5067716c74",
+    "store_code": "REDE",
+    "chars": 52908
+  },
+  {
+    "id": "42b00db4-a2e9-4a8e-b1d7-cbb09662fb6c",
+    "store_code": "RETE",
+    "chars": 52907
+  },
+  {
+    "id": "64baf85e-c1d7-42f9-afaa-ee17b556a64a",
+    "store_code": "TAR",
+    "chars": 52900
+  },
+  {
+    "id": "5ca95b89-d7a0-46aa-ba96-8bbdd51e05d6",
+    "store_code": "UNI",
+    "chars": 52915
+  }
+]

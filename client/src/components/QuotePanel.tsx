@@ -111,6 +111,9 @@ export default function QuotePanel({
   const [expectedTTC, setExpectedTTC] = useState<number | null>(null);
   const [verifyForm, setVerifyForm] = useState<VerifyFormData | null>(null);
   const [availableImages, setAvailableImages] = useState<ImageSelection[]>([]);
+  // Index de l'image annexe à prévisualiser en plein écran (null = pas de preview).
+  // Utilisé pour que le gérant puisse zoomer sur un croquis avant de le cocher.
+  const [previewImageIdx, setPreviewImageIdx] = useState<number | null>(null);
   // Trapèze : on n'utilise PAS l'extraction Claude pour les lignes produit
   // (Claude se trompe trop souvent : 4 côtés différents → calcul Héron, choix
   // de tranche, prix m²…). Identité client gardée, lignes vidées.
@@ -166,6 +169,16 @@ export default function QuotePanel({
   useEffect(() => {
     onStateChange?.(state);
   }, [state, onStateChange]);
+
+  // ESC ferme la preview annexe (si ouverte).
+  useEffect(() => {
+    if (previewImageIdx === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreviewImageIdx(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewImageIdx]);
 
   // ─── Devis créé ───
   if (state === 'done' && result) {
@@ -876,17 +889,30 @@ export default function QuotePanel({
             <div style={sectionTitleStyle}>Annexes (joindre au devis PDF)</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
               {availableImages.map((img, idx) => (
-                <label key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                  <img
-                    src={`data:${img.mediaType};base64,${img.data}`}
-                    alt={img.name}
+                <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                  {/* Miniature cliquable — ouvre la preview plein écran
+                      pour que le gérant puisse zoomer sur le croquis avant
+                      de le cocher. Séparé du checkbox (Charles 07/07/2026). */}
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImageIdx(idx)}
+                    title="Cliquer pour voir en grand"
                     style={{
-                      width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px',
-                      border: img.selected ? '2px solid #4a90d9' : '2px solid #ddd',
-                      opacity: img.selected ? 1 : 0.6,
+                      padding: 0, border: 'none', background: 'transparent',
+                      cursor: 'zoom-in', lineHeight: 0,
                     }}
-                  />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                  >
+                    <img
+                      src={`data:${img.mediaType};base64,${img.data}`}
+                      alt={img.name}
+                      style={{
+                        width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px',
+                        border: img.selected ? '2px solid #4a90d9' : '2px solid #ddd',
+                        opacity: img.selected ? 1 : 0.6,
+                      }}
+                    />
+                  </button>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '2px', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
                       checked={img.selected}
@@ -897,8 +923,8 @@ export default function QuotePanel({
                       }}
                     />
                     <span style={{ fontSize: '10px', maxWidth: '60px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{img.name}</span>
-                  </div>
-                </label>
+                  </label>
+                </div>
               ))}
             </div>
           </div>
@@ -1041,6 +1067,51 @@ export default function QuotePanel({
             </>
           );
         })()}
+
+        {/* Modal preview annexe — plein écran fond sombre, click ou ESC
+            pour fermer. Charles 07/07/2026 : les miniatures 60×60 des
+            croquis sont illisibles, besoin de zoomer avant de cocher. */}
+        {previewImageIdx !== null && availableImages[previewImageIdx] && (
+          <div
+            onClick={() => setPreviewImageIdx(null)}
+            style={{
+              position: 'fixed', inset: 0,
+              background: 'rgba(0, 0, 0, 0.88)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 9999, cursor: 'zoom-out', padding: '20px',
+            }}
+          >
+            <img
+              src={`data:${availableImages[previewImageIdx].mediaType};base64,${availableImages[previewImageIdx].data}`}
+              alt={availableImages[previewImageIdx].name}
+              style={{
+                maxWidth: '95vw', maxHeight: '90vh',
+                objectFit: 'contain', borderRadius: '4px',
+                boxShadow: '0 8px 40px rgba(0, 0, 0, 0.6)',
+              }}
+            />
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setPreviewImageIdx(null); }}
+              aria-label="Fermer"
+              style={{
+                position: 'absolute', top: '16px', right: '16px',
+                width: '36px', height: '36px', borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.15)', color: 'white',
+                border: 'none', fontSize: '22px', cursor: 'pointer',
+                lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              ✕
+            </button>
+            <div style={{
+              position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)',
+              color: 'rgba(255,255,255,0.7)', fontSize: '11px', pointerEvents: 'none',
+            }}>
+              {availableImages[previewImageIdx].name} — clic ou Échap pour fermer
+            </div>
+          </div>
+        )}
       </div>
     );
   }

@@ -400,11 +400,17 @@ Note : "deliveryAddress" doit être :
         // → « 2,5 × 3,8 m ». Même règle CLAUDE.md que la surface : on
         // travaille au dixième de mètre pour éviter les fausses précisions
         // (le filet est fabriqué à ±5 cm de toute façon).
-        // Formats acceptés en entrée :
-        //   « 2.49 x 3.84 m », « 2,49x3,84 m », « 2,49 × 3,84 m »,
-        //   « 6,9 x 6,9 x 3,8 m » (triangle 3 côtés)
+        // Formats acceptés en entrée (2 à 4 dimensions) :
+        //   « 2.49 x 3.84 m »              (rectangle 2 dims)
+        //   « 6,9 x 6,9 x 3,8 m »           (triangle 3 dims)
+        //   « 6,65×4,2×5,4×5,2 m »          (trapèze / quadrilatère 4 dims)
+        // Bug fix 07/07/2026 (cnv_1lpx6z13, RETE, Alessandro Lombardini) :
+        // l'ancienne regex ne capturait que 2 ou 3 dimensions → le trapèze
+        // à 4 dims restait avec « 6,65 » (au centième) au lieu de « 6,7 »
+        // (au dixième), incohérent avec la règle d'arrondi appliquée à
+        // la surface (23,5 m² dans ce cas).
         const label = String(line.label || '');
-        const dimRe = /(\d+[.,]\d+)(\s*[x×X]\s*)(\d+[.,]\d+)(\s*[x×X]\s*(\d+[.,]\d+))?(\s*m\b)/;
+        const dimRe = /((?:\d+[.,]\d+)(?:\s*[x×X]\s*\d+[.,]\d+){1,3})(\s*m\b)/;
         const dm = label.match(dimRe);
         if (dm) {
           const roundToStr = (s: string) => {
@@ -413,12 +419,14 @@ Note : "deliveryAddress" doit être :
             const sep = s.includes(',') ? ',' : '.';
             return (Math.round(n * 10) / 10).toFixed(1).replace('.', sep);
           };
-          const a = roundToStr(dm[1]);
-          const b = roundToStr(dm[3]);
-          const c = dm[5] ? roundToStr(dm[5]) : null;
-          const rebuilt = c
-            ? `${a}${dm[2]}${b}${dm[4]!.replace(/(\d+[.,]\d+)/, c)}${dm[6]}`
-            : `${a}${dm[2]}${b}${dm[6]}`;
+          // Split le bloc dimensions en gardant les séparateurs (×/x) intacts.
+          // Ex : "6,65×4,2×5,4×5,2" → ["6,65", "×", "4,2", "×", "5,4", "×", "5,2"]
+          // Indices pairs = valeurs à arrondir, indices impairs = séparateurs.
+          const parts = dm[1].split(/(\s*[x×X]\s*)/);
+          const roundedBlock = parts
+            .map((p, i) => (i % 2 === 0 ? roundToStr(p) : p))
+            .join('');
+          const rebuilt = `${roundedBlock}${dm[2]}`;
           if (rebuilt !== dm[0]) {
             line.label = label.replace(dimRe, rebuilt);
             console.log(`[extract-quote] dimensions arrondies au dixième : "${dm[0]}" → "${rebuilt}"`);

@@ -122,7 +122,12 @@ export function cleanDraft(text: string): string {
     }
   }
 
-  return lines.join('\n').trim();
+  // Normaliser la salutation : « Bonjour <n'importe quoi>, » → « Bonjour, »
+  // Charles 07/07/2026 : Claude glisse parfois un identifiant/code/prénom
+  // (« Bonjour CE.74E, », « Bonjour Ricarda, », « Bonjour CLG-XXX, »)
+  // même quand le prompt l'interdit. Scrub garanti à la sortie du plugin.
+  const greetRe = /^([ \t]*)(Bonjour|Hallo|Hola|Buongiorno|Goedendag|Beste|Bom dia|Buenos días|Dear|Hello|Hi)\b[^,\n]*,[ \t]*/im;
+  return lines.join('\n').replace(greetRe, '$1$2,').trim();
 }
 
 /**

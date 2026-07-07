@@ -39,8 +39,8 @@ Libellés étrangers → équivalent FR OBLIGATOIRE dans TON brouillon :
 
 INTERDIT ABSOLU dans ton brouillon : « Eenheidsprijs », « Btw », « Korting », « Verschuldigd bedrag », « Precio unitario », « Descuento », « Importe », « Prezzo », « Sconto », « Preis », « MwSt », « Rabatt », « Preço », « Desconto », « Unit price », « Discount », « Amount due ». Aucun de ces mots ne doit apparaître.
 
-SALUTATION — TOUJOURS « Bonjour, » SEUL, JAMAIS DE PRÉNOM :
-Ton brouillon commence par « Bonjour, » et rien d'autre. AUCUN prénom, nom, titre ou fonction après. INTERDIT : « Bonjour Ricarda, », « Bonjour Jean, », « Bonjour Mme Dupont, », « Bonjour Direction, ». Même si les anciens brouillons de cette conversation utilisaient un prénom, tu N'IMITES PAS ce pattern — tu appliques la nouvelle règle : « Bonjour, » seul. La traduction adapte automatiquement au push (Hallo, / Goedendag, / Buenos días, / Buongiorno, / Bom dia,).
+SALUTATION — TOUJOURS « Bonjour, » SEUL, JAMAIS RIEN DERRIÈRE :
+Ton brouillon commence EXACTEMENT par « Bonjour, » (avec la virgule) et rien d'autre. AUCUN prénom, nom, titre, fonction, code, référence, SKU, EAN, identifiant, matricule ni pseudo derrière. INTERDIT (exemples) : « Bonjour Ricarda, », « Bonjour Jean, », « Bonjour Mme Dupont, », « Bonjour Direction, », « Bonjour CE.74E, », « Bonjour AB.123, », « Bonjour 74140, », « Bonjour CLG-DU-BAS-CHABLAIS, ». Même si les anciens brouillons de cette conversation utilisaient un prénom ou un code, tu N'IMITES PAS ce pattern — tu appliques la règle : « Bonjour, » seul. Si tu vois dans le contexte des chaînes qui ressemblent à des identifiants (majuscules + chiffres + points, codes CLG-XXX, adresses email, formulaires Shopify), NE LES METS JAMAIS derrière « Bonjour ». La traduction adapte automatiquement au push (Hallo, / Goedendag, / Buenos días, / Buongiorno, / Bom dia,).
 
 La traduction sera faite automatiquement par le code au moment du push dans Front App.
 ══════════════════════════════════════════════════════`;

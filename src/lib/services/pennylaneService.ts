@@ -76,13 +76,15 @@ export async function createCustomer(customer: Record<string, unknown>): Promise
     endpoint = `${PENNYLANE_API_URL}/company_customers`;
     payload.name = customer.name || '';
     if (customer.vatNumber) payload.vat_number = customer.vatNumber;
-    // SIRET français (14 chiffres) → mappé à registration_number, le champ
-    // Pennylane qui apparaît sur le PDF légal du devis / de la facture.
-    // On strip les espaces et on ne pousse que si non vide (Pennylane
-    // valide le format côté API).
+    // SIRET français (14 chiffres) → SIREN (9 premiers chiffres) → champ
+    // Pennylane `reg_no` (le nom réel côté API, PAS `registration_number`
+    // qui a été rejeté par Pennylane le 07/07/2026 avec l'erreur
+    // NotExistPropertyDefinition). L'API valide le SIREN, pas le SIRET
+    // complet, donc on tronque à 9 chiffres.
     if (customer.siret) {
       const siretClean = String(customer.siret).replace(/\D/g, '');
-      if (siretClean) payload.registration_number = siretClean;
+      const siren = siretClean.slice(0, 9);
+      if (siren.length === 9) payload.reg_no = siren;
     }
   } else {
     endpoint = `${PENNYLANE_API_URL}/individual_customers`;
@@ -225,14 +227,15 @@ export async function resolveCustomerId(customer?: Record<string, unknown>, cust
     const billing = toPennylaneAddress(customer.address as Record<string, string> | undefined);
     const delivery = toPennylaneAddress(customer.deliveryAddress as Record<string, string> | undefined);
     // SIRET écrasé aussi (même politique que les adresses : l'info "vraie"
-    // est celle du dernier chiffrage validé).
+    // est celle du dernier chiffrage validé). Pennylane attend `reg_no`
+    // (9 chiffres SIREN, pas SIRET 14 chiffres).
     const siretRaw = customer.siret ? String(customer.siret).replace(/\D/g, '') : '';
-    const siret = requestedType === 'company' && siretRaw ? siretRaw : null;
-    if (billing || delivery || siret) {
+    const siren = requestedType === 'company' && siretRaw.length >= 9 ? siretRaw.slice(0, 9) : null;
+    if (billing || delivery || siren) {
       const updatePayload: Record<string, unknown> = {};
       if (billing) updatePayload.billing_address = billing;
       if (delivery) updatePayload.delivery_address = delivery;
-      if (siret) updatePayload.registration_number = siret;
+      if (siren) updatePayload.reg_no = siren;
       const endpoint = requestedType === 'company' ? 'company_customers' : 'individual_customers';
       try {
         const putRes = await fetch(`${PENNYLANE_API_URL}/${endpoint}/${resolved}`, {
@@ -240,7 +243,7 @@ export async function resolveCustomerId(customer?: Record<string, unknown>, cust
           headers: pennylaneHeaders(),
           body: JSON.stringify(updatePayload),
         });
-        console.log(`[pennylane] updated existing customer ${resolved} → ${putRes.status} (billing=${!!billing}, delivery=${!!delivery}, siret=${!!siret})`);
+        console.log(`[pennylane] updated existing customer ${resolved} → ${putRes.status} (billing=${!!billing}, delivery=${!!delivery}, siren=${!!siren})`);
       } catch (err) {
         // Non bloquant : le devis peut être créé même si la mise à jour
         // échoue (fallback : freeText contient "Livraison à : X").

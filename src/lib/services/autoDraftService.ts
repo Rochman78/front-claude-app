@@ -226,7 +226,44 @@ ${fullBody}`;
     // code promo ECHANGE15, et l'auto-send a transmis au client.
     let forceBrouillonMode = false;
     let savReason = '';
-    {
+
+    // 3b. Check "premier contact client" — l'auto-send ne doit se déclencher
+    //     QUE si le client n'a jamais échangé avec nous auparavant. Cas réel
+    //     cnv_1lseqatz (TAR, 06/07/2026, mike@die-gestalter.swiss) : le
+    //     client avait déjà 5 conv(s) antérieures liées à sa commande #TZ5871
+    //     (réponses au reminder Shopify, factures), et le SAV detector ne
+    //     l'a pas attrapé → auto-send parti alors qu'un humain aurait dû
+    //     regarder l'historique. Règle Charles 07/07/2026 : historique
+    //     client existant → mode brouillon forcé, même si le mail actuel
+    //     ressemble à une nouvelle demande de devis.
+    if (senderHandle) {
+      try {
+        const encoded = encodeURIComponent(`"${senderHandle}"`);
+        const searchRes = await frontFetch(`/conversations/search/${encoded}`);
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const otherConvs = ((searchData._results as Array<{ id: string }>) || [])
+            .filter((c) => c.id !== conversationId);
+          if (otherConvs.length > 0) {
+            forceBrouillonMode = true;
+            savReason = `client déjà connu (${otherConvs.length} conv(s) antérieure(s) avec nous) → mode brouillon forcé (pas premier contact)`;
+            console.log(`[auto-draft] ${conversationId} client ${senderHandle} a ${otherConvs.length} autre(s) conv(s) → FORCE brouillon`);
+          }
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'search err';
+        // Si la recherche client échoue, on bascule par prudence en brouillon
+        // (mieux vaut un faux positif "trop prudent" qu'un envoi involontaire
+        // à un client habitué qui aurait dû être traité manuellement).
+        forceBrouillonMode = true;
+        savReason = `search history error: ${msg.slice(0, 80)} → mode brouillon forcé par prudence`;
+        console.warn(`[auto-draft] ${conversationId} search history failed: ${msg} — force brouillon par prudence`);
+      }
+    }
+
+    // 3c. SAV detector — court-circuité si forceBrouillonMode est déjà activé
+    //     par le check "premier contact" pour éviter un appel Sonnet inutile.
+    if (!forceBrouillonMode) {
       const fullBody = inboundBodies.join('\n\n').substring(0, 4000);
       try {
         const savPrompt = `Tu reçois un mail envoyé à une boutique e-commerce de filets / voiles d'ombrage.
@@ -472,7 +509,7 @@ ${fullBody}`;
     const comment = sendMode
       ? '📤 Mail envoyé automatiquement par Claude (auto-send devis). Si la réponse n\'est pas bonne, contre-mail rapidement.'
       : forceBrouillonMode
-      ? '⚠️ Brouillon créé automatiquement par Claude — auto-send BLOQUÉ : le mail contient un sujet SAV (retour, remboursement, échange, garantie, annulation, etc.). Décision humaine requise avant envoi. Détail dans le plugin.'
+      ? `⚠️ Brouillon créé automatiquement par Claude — auto-send BLOQUÉ : ${savReason}. Décision humaine requise avant envoi. Détail dans le plugin.`
       : '✍️ Brouillon créé automatiquement par Claude. Tout le détail est dans le plugin si besoin d\'aller vérifier.';
     await postComment(conversationId, comment);
 

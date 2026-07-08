@@ -227,42 +227,27 @@ ${fullBody}`;
     let forceBrouillonMode = false;
     let savReason = '';
 
-    // 3b. Check "premier contact client" — l'auto-send ne doit se déclencher
-    //     QUE si le client n'a jamais échangé avec nous auparavant. Cas réel
-    //     cnv_1lseqatz (TAR, 06/07/2026, mike@die-gestalter.swiss) : le
-    //     client avait déjà 5 conv(s) antérieures liées à sa commande #TZ5871
-    //     (réponses au reminder Shopify, factures), et le SAV detector ne
-    //     l'a pas attrapé → auto-send parti alors qu'un humain aurait dû
-    //     regarder l'historique. Règle Charles 07/07/2026 : historique
-    //     client existant → mode brouillon forcé, même si le mail actuel
-    //     ressemble à une nouvelle demande de devis.
-    if (senderHandle) {
-      try {
-        const encoded = encodeURIComponent(`"${senderHandle}"`);
-        const searchRes = await frontFetch(`/conversations/search/${encoded}`);
-        if (searchRes.ok) {
-          const searchData = await searchRes.json();
-          const otherConvs = ((searchData._results as Array<{ id: string }>) || [])
-            .filter((c) => c.id !== conversationId);
-          if (otherConvs.length > 0) {
-            forceBrouillonMode = true;
-            savReason = `client déjà connu (${otherConvs.length} conv(s) antérieure(s) avec nous) → mode brouillon forcé (pas premier contact)`;
-            console.log(`[auto-draft] ${conversationId} client ${senderHandle} a ${otherConvs.length} autre(s) conv(s) → FORCE brouillon`);
-          }
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'search err';
-        // Si la recherche client échoue, on bascule par prudence en brouillon
-        // (mieux vaut un faux positif "trop prudent" qu'un envoi involontaire
-        // à un client habitué qui aurait dû être traité manuellement).
-        forceBrouillonMode = true;
-        savReason = `search history error: ${msg.slice(0, 80)} → mode brouillon forcé par prudence`;
-        console.warn(`[auto-draft] ${conversationId} search history failed: ${msg} — force brouillon par prudence`);
-      }
-    }
+    // 3b. (Supprimé 08/07/2026) L'ancien check "premier contact client" qui
+    //     appelait /conversations/search/{email} produisait des faux positifs
+    //     massifs — Front's search est full-text (matche l'email dans le corps
+    //     des mails, signatures, cross-refs entre inboxes admin) ET plafonne
+    //     à 50 résultats par page. Résultat : 18 blocages/2 j avec exactement
+    //     « 49 conv antérieures » = juste la saturation de la page de search
+    //     moins la conv courante.
+    //
+    //     La règle métier vraie est déjà couverte par le check ligne 142 :
+    //     msgs.length !== 1 → skip. Autrement dit :
+    //       - Auto-send OK si la conv contient EXACTEMENT le mail entrant
+    //         qui vient d'arriver et rien d'autre (peu importe que le client
+    //         ait d'autres convs séparées ailleurs).
+    //       - Auto-send bloqué dès qu'il y a un OUT (on a déjà répondu) OU
+    //         un 2ᵉ IN (conv en cours) OU un brouillon.
+    //     Cas cnv_1lseqatz (mike@die-gestalter.swiss, 06/07) qui avait motivé
+    //     la règle : si la nouvelle demande arrive dans un nouveau thread
+    //     séparé des factures Shopify → auto-send légitime ; si elle arrive
+    //     dans le thread existant (2ᵉ IN) → bloquée par ligne 142.
 
-    // 3c. SAV detector — court-circuité si forceBrouillonMode est déjà activé
-    //     par le check "premier contact" pour éviter un appel Sonnet inutile.
+    // 3c. SAV detector.
     if (!forceBrouillonMode) {
       const fullBody = inboundBodies.join('\n\n').substring(0, 4000);
       try {

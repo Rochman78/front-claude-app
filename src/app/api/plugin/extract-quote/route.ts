@@ -14,8 +14,21 @@ function vatColumnIndex(vatPercent: number): number {
 /** Parse une ligne du fichier prix-ht-standards.txt (nouveau format tabulaire).
  *  Colonnes : typologie | forme | matiere | couleur | taille | SKU | TTC | HT × 12
  *  Retourne un dict par SKU. */
-function parsePriceFile(content: string): Record<string, { ttc: number; hts: number[]; label: string }> {
-  const out: Record<string, { ttc: number; hts: number[]; label: string }> = {};
+interface CatalogEntry {
+  ttc: number;
+  hts: number[];
+  label: string;
+  // Meta séparés (typologie/forme/matiere/couleur/taille) pour le lookup
+  // exact déterministe par productMatch (fix Charles 08/07/2026).
+  typology: string;
+  shape: string;
+  material: string;
+  color: string;
+  size: string;
+}
+
+function parsePriceFile(content: string): Record<string, CatalogEntry> {
+  const out: Record<string, CatalogEntry> = {};
   for (const rawLine of content.split('\n')) {
     const line = rawLine.trim();
     if (!line || line.startsWith('═') || line.startsWith('-') || line.startsWith('⚠') || line.startsWith('ℹ')) continue;
@@ -34,15 +47,64 @@ function parsePriceFile(content: string): Record<string, { ttc: number; hts: num
     }
     if (hts.length !== 12) continue;
     const label = `${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]} ${parts[4]}`.trim();
-    out[sku] = { ttc, hts, label };
+    out[sku] = {
+      ttc, hts, label,
+      typology: parts[0], shape: parts[1], material: parts[2], color: parts[3], size: parts[4],
+    };
   }
   return out;
 }
 
+/** Normalise une valeur d'attribut pour matching insensible casse / accents / séparateurs. */
+function normAttr(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[×x]/g, 'x')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** Normalise une taille : « 4×5 », « 4x5 », « 5x4 », « 4 x 5 » → « 4x5 » (petit×grand). */
+function normSize(s: string): string {
+  const n = normAttr(s);
+  const m = n.match(/^(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)(?:\s*x\s*(\d+(?:[.,]\d+)?))?$/);
+  if (!m) return n;
+  const nums = [m[1], m[2], m[3]].filter(Boolean).map((v) => parseFloat(v.replace(',', '.')));
+  // Filets réversibles : rectangle 5x4 = 4x5. Triangle 3 côtés : ordre canonique = trié.
+  nums.sort((a, b) => a - b);
+  return nums.map((v) => (Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.0', ''))).join('x');
+}
+
+/** Lookup déterministe : trouve un SKU par match exact des 5 attributs (typo, forme, matière, couleur, taille). */
+function findSkuByProductMatch(
+  catalog: Record<string, CatalogEntry>,
+  pm: { typology?: string; shape?: string; material?: string; color?: string; size?: string },
+): string | null {
+  if (!pm.typology || !pm.shape || !pm.material || !pm.color || !pm.size) return null;
+  const wantTypo = normAttr(pm.typology);
+  const wantShape = normAttr(pm.shape);
+  const wantMat = normAttr(pm.material);
+  const wantColor = normAttr(pm.color);
+  const wantSize = normSize(pm.size);
+  const matches: string[] = [];
+  for (const [sku, entry] of Object.entries(catalog)) {
+    if (normAttr(entry.typology) !== wantTypo) continue;
+    if (normAttr(entry.shape) !== wantShape) continue;
+    if (normAttr(entry.material) !== wantMat) continue;
+    if (normAttr(entry.color) !== wantColor) continue;
+    if (normSize(entry.size) !== wantSize) continue;
+    matches.push(sku);
+  }
+  // Un seul match = déterministe. Plusieurs = ambigu (couleur générique
+  // qui match plusieurs SKU) → null (fallback inférence par prix).
+  return matches.length === 1 ? matches[0] : null;
+}
+
 /** Charge le prix-ht-standards.txt d'un store depuis la BDD.
  *  Cache mémoire simple (invalidé au restart process). */
-const priceFileCache: Record<string, { at: number; catalog: Record<string, { ttc: number; hts: number[]; label: string }> }> = {};
-async function loadPriceCatalog(storeCode: string): Promise<Record<string, { ttc: number; hts: number[]; label: string }>> {
+const priceFileCache: Record<string, { at: number; catalog: Record<string, CatalogEntry> }> = {};
+async function loadPriceCatalog(storeCode: string): Promise<Record<string, CatalogEntry>> {
   const cached = priceFileCache[storeCode];
   // Cache 5 min pour éviter de recharger sur chaque devis
   if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.catalog;
@@ -82,7 +144,7 @@ function extractSku(label: string, description?: string): string | null {
  *   4. Si zéro → null.
  */
 function inferSkuFromCatalog(
-  catalog: Record<string, { ttc: number; hts: number[]; label: string }>,
+  catalog: Record<string, CatalogEntry>,
   priceInMail: number,
   vatColIdx: number,
   lineLabel: string,
@@ -170,8 +232,19 @@ export async function POST(req: NextRequest) {
 - Les prix de la grille sur mesure sont déjà en HT → copier tel quel.
 - Les prix du catalogue standard sont en TTC dans le mail → copier le prix TTC dans unitPrice, mettre unit="piece". Le serveur convertira automatiquement en HT selon le SKU et la TVA du client.
 
-=== RÈGLE N°2 BIS : SKU OBLIGATOIRE POUR LES STANDARDS ===
-Pour CHAQUE ligne avec unit="piece" (standard catalogue), tu DOIS inclure le SKU (13 chiffres, commence par 37) dans la DESCRIPTION (PAS dans le label — le label reste propre avec juste le nom produit). Cherche le SKU dans le mail ou déduis-le depuis le fichier prix-ht-standards.txt en croisant typologie + forme + matière + couleur + taille. Format EXACT : description = "SKU : 3770030527170". Sans SKU, la conversion TTC→HT côté serveur est impossible.
+=== RÈGLE N°2 BIS : PRODUCTMATCH POUR LES STANDARDS ===
+Pour CHAQUE ligne avec unit="piece" (standard catalogue), tu DOIS remplir le champ productMatch avec les 5 attributs canoniques du produit — le SERVEUR cherchera lui-même le SKU dans son catalogue (déterministe). Ne cherche PAS le SKU toi-même dans le fichier prix-ht-standards.txt : c'est un travail de code, pas de LLM. Ne mets rien dans description (le serveur ajoutera "SKU : xxx" après lookup).
+
+Format productMatch (5 clés OBLIGATOIRES pour toute ligne piece) :
+{
+  "typology": "filet" | "accessoire",           // filet camouflage OU accessoire (mât, kit fixation, câble, corde, borne, base d'ancrage...)
+  "shape":    "rectangle" | "carré" | "triangle" | "trapèze",  // toujours en français canonique
+  "material": "polyester" | "câble acier" | "fibre de coco" | "polyester ignifugé" | "câble acier ignifugé",  // français canonique
+  "color":    "sable" | "blanc" | "vert" | "noir" | "gris" | "bleu" | "militaire",  // français canonique
+  "size":     "AxB"  // A et B en mètres SANS unité (ex: "4x5", "2x2", "3x6"). Pour triangle: "AxBxC" (3 côtés). RÉVERSIBLE : mets petit×grand.
+}
+
+Pour les ACCESSOIRES (mât, kit, câble au mètre, corde…) où color/size peuvent ne pas avoir de sens : mets typology="accessoire" et remplis material avec le libellé exact (ex: "mât", "kit fixation", "corde polyester"). Le serveur fera l'inférence par prix si le lookup échoue.
 
 === RÈGLE N°3 : LABEL (TOUJOURS dans la langue de la boutique) ===
 - Le brouillon est en français mais le label du devis PDF DOIT être dans la LANGUE DE LA BOUTIQUE.
@@ -253,9 +326,12 @@ ${claudeText || '(aucun chiffrage service client — extraire depuis le fil de m
   "discountPercent": 0,
   "totalTTC": 0,
   "lines": [
-    { "type": "product|accessory|transport|transport_discount", "label": "", "quantity": 0, "unitPrice": 0, "unit": "m2|piece", "description": "" }
+    { "type": "product|accessory|transport|transport_discount", "label": "", "quantity": 0, "unitPrice": 0, "unit": "m2|piece", "description": "",
+      "productMatch": { "typology": "filet|accessoire", "shape": "rectangle|carré|triangle|trapèze", "material": "polyester|câble acier|fibre de coco|polyester ignifugé|câble acier ignifugé", "color": "sable|blanc|vert|noir|gris|bleu|militaire", "size": "AxB" } }
   ]
 }
+
+Note : "productMatch" est OBLIGATOIRE quand unit="piece", et OMIS quand unit="m2" (sur-mesure — le prix vient de la grille, pas d'un SKU catalogue).
 
 Note : "deliveryAddress" doit être :
 - null (par défaut, si pas d'adresse de livraison distincte dans le fil)
@@ -457,26 +533,51 @@ Note : "deliveryAddress" doit être :
             continue;
           }
 
-          let sku = extractSku(String(line.label || ''), String(line.description || ''));
+          // Nouveau flow (fix Charles 08/07/2026) : on ne fait plus confiance
+          // au SKU écrit par Claude — c'est un travail de LLM sur une longue
+          // table, notoirement instable. À la place :
+          //   1. Priorité au lookup EXACT via productMatch (5 attributs
+          //      canoniques extraits par Claude : typology/shape/material/
+          //      color/size) → 100 % déterministe.
+          //   2. Fallback : inférence par prix + overlap tokens sur le label
+          //      (utile pour les accessoires où productMatch peut être vague).
+          //   3. Dernier recours : le SKU que Claude a écrit dans le label /
+          //      description (rétrocompat si Claude oublie productMatch).
+          const productMatch = (line.productMatch || {}) as Record<string, string>;
+          let sku: string | null = null;
+          let inferredBy: 'productMatch' | 'price' | 'claudeWrote' | null = null;
 
-          // Auto-inférence si Claude n'a pas mis le SKU (typique : accessoires
-          // dont le SKU n'est jamais écrit dans les brouillons clients).
-          // On tente de retrouver le SKU dans le catalogue par match sur le
-          // prix (HT@vatPercent ou TTC), désambigué au besoin par overlap
-          // token label saisi ∩ label catalogue. Si un SKU unique sort → on
-          // l'injecte dans la description et on continue le flow normal.
-          if (!sku) {
-            const inferred = inferSkuFromCatalog(catalog, priceInMail, vatColIdx, String(line.label || ''));
-            if (inferred) {
-              sku = inferred;
-              const currentDesc = String(line.description || '').trim();
-              const skuLine = `SKU : ${inferred}`;
-              line.description = currentDesc ? `${currentDesc} | ${skuLine}` : skuLine;
-              console.log(`[extract-quote] SKU ${inferred} auto-inféré pour ligne "${(line.label || '').substring(0, 40)}" (prix ${priceInMail} €)`);
-            } else {
-              warnings.push(`⚠️ Ligne "${(line.label || '').substring(0, 60)}" : SKU manquant et inférence catalogue impossible (aucune ligne du store ${storeCode} n'égale ${priceInMail.toFixed(2)} € en HT ou TTC). Complète manuellement la description avec « SKU : xxxxxxxxxxxxx ».`);
-              continue;
+          const byProductMatch = findSkuByProductMatch(catalog, productMatch);
+          if (byProductMatch) {
+            sku = byProductMatch;
+            inferredBy = 'productMatch';
+            console.log(`[extract-quote] SKU ${sku} trouvé par productMatch(${JSON.stringify(productMatch)})`);
+          } else {
+            const claudeWrote = extractSku(String(line.label || ''), String(line.description || ''));
+            const byPrice = inferSkuFromCatalog(catalog, priceInMail, vatColIdx, String(line.label || ''));
+            if (byPrice) {
+              sku = byPrice;
+              inferredBy = 'price';
+              console.log(`[extract-quote] SKU ${sku} inféré par prix (productMatch KO). Claude avait écrit: ${claudeWrote || '(rien)'}.`);
+            } else if (claudeWrote && catalog[claudeWrote]) {
+              sku = claudeWrote;
+              inferredBy = 'claudeWrote';
+              console.log(`[extract-quote] SKU ${sku} pris tel quel dans le label/description (productMatch et inférence prix KO).`);
             }
+          }
+
+          if (!sku) {
+            warnings.push(`⚠️ Ligne "${(line.label || '').substring(0, 60)}" : impossible de déterminer le SKU (productMatch=${JSON.stringify(productMatch)}, prix ${priceInMail} €, aucun match catalogue). Complète manuellement la description avec « SKU : xxxxxxxxxxxxx ».`);
+            continue;
+          }
+
+          // Injecter/mettre à jour "SKU : xxx" dans la description
+          const currentDesc = String(line.description || '').trim();
+          if (!currentDesc.includes(sku)) {
+            const skuLine = `SKU : ${sku}`;
+            line.description = currentDesc && !/SKU\s*:\s*\d+/i.test(currentDesc)
+              ? `${currentDesc} | ${skuLine}`
+              : (currentDesc ? currentDesc.replace(/SKU\s*:\s*\d+/i, skuLine) : skuLine);
           }
           let entry = catalog[sku];
           if (!entry) {

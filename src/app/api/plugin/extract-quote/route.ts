@@ -478,7 +478,7 @@ Note : "deliveryAddress" doit être :
               continue;
             }
           }
-          const entry = catalog[sku];
+          let entry = catalog[sku];
           if (!entry) {
             warnings.push(`⚠️ Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : SKU introuvable dans prix-ht-standards.txt du store ${storeCode} → prix conservé (${priceInMail.toFixed(2)} €). Vérifie que le SKU est correct.`);
             continue;
@@ -500,13 +500,39 @@ Note : "deliveryAddress" doit être :
           // mais entry.ttc=29.90 → warning "TTC saisi ≠ TTC catalogue" tirait
           // à tort alors que le HT correspondait exactement. Fix : accepter
           // les 2 angles.
-          const catalogHT = entry.hts[vatColIdx];
-          const matchesTtc = Math.abs(entry.ttc - priceInMail) <= 0.01;
-          const matchesHt = Math.abs(catalogHT - priceInMail) <= 0.01;
+          let catalogHT = entry.hts[vatColIdx];
+          let matchesTtc = Math.abs(entry.ttc - priceInMail) <= 0.01;
+          let matchesHt = Math.abs(catalogHT - priceInMail) <= 0.01;
+
+          // Cas Charles 08/07/2026 (cnv_1lsco05z, LFC) : Claude Haiku a écrit
+          // le SKU 3770030527170 (sable 4x7, TTC 279,99) dans la description
+          // d'une ligne « 4×5 militaire polyester » à 199,99 €. L'ancien code
+          // se contentait de warner puis d'appliquer le HT du MAUVAIS SKU
+          // (233,33 € au lieu de 166,66 € → surfacturation 66,67 €/pièce).
+          // Fix : quand le prix ne matche pas, on tente une ré-inférence à
+          // partir du couple (prix, label). Si le catalogue a un SKU dont
+          // le prix ET le label collent, on remplace silencieusement le
+          // SKU de Claude par le bon SKU. Warning informatif.
           if (!matchesTtc && !matchesHt) {
-            warnings.push(
-              `⚠ Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : prix saisi ${priceInMail.toFixed(2)} € ≠ catalogue (TTC ${entry.ttc.toFixed(2)} € / HT ${catalogHT.toFixed(2)} € à ${vatPercent} %). Le HT catalogue est appliqué. Vérifie que le mail n'a pas annoncé un montant différent au client.`
-            );
+            const reinferred = inferSkuFromCatalog(catalog, priceInMail, vatColIdx, String(line.label || ''));
+            if (reinferred && reinferred !== sku && catalog[reinferred]) {
+              const newEntry = catalog[reinferred];
+              console.log(`[extract-quote] SKU corrigé : ${sku} (TTC ${entry.ttc}) → ${reinferred} (TTC ${newEntry.ttc}) via label "${(line.label || '').substring(0, 40)}" à ${priceInMail} €`);
+              warnings.push(`ℹ️ Ligne "${(line.label || '').substring(0, 60)}" : SKU auto-corrigé (${sku} → ${reinferred}) — le prix saisi ${priceInMail.toFixed(2)} € matchait mieux avec le catalogue à ${reinferred}. Vérifie que ce SKU correspond bien au produit demandé.`);
+              const oldDesc = String(line.description || '');
+              line.description = oldDesc.includes(sku)
+                ? oldDesc.replace(new RegExp(sku.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), reinferred)
+                : (oldDesc ? `${oldDesc} | SKU : ${reinferred}` : `SKU : ${reinferred}`);
+              sku = reinferred;
+              entry = newEntry;
+              catalogHT = entry.hts[vatColIdx];
+              matchesTtc = Math.abs(entry.ttc - priceInMail) <= 0.01;
+              matchesHt = Math.abs(catalogHT - priceInMail) <= 0.01;
+            } else {
+              warnings.push(
+                `⚠ Ligne "${(line.label || '').substring(0, 60)}" (SKU ${sku}) : prix saisi ${priceInMail.toFixed(2)} € ≠ catalogue (TTC ${entry.ttc.toFixed(2)} € / HT ${catalogHT.toFixed(2)} € à ${vatPercent} %). Le HT catalogue est appliqué. Vérifie que le mail n'a pas annoncé un montant différent au client.`
+              );
+            }
           }
 
           const oldPrice = line.unitPrice;

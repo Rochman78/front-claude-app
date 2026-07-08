@@ -545,23 +545,19 @@ Note : "deliveryAddress" doit être :
           //      description (rétrocompat si Claude oublie productMatch).
           const productMatch = (line.productMatch || {}) as Record<string, string>;
           let sku: string | null = null;
-          let inferredBy: 'productMatch' | 'price' | 'claudeWrote' | null = null;
 
           const byProductMatch = findSkuByProductMatch(catalog, productMatch);
           if (byProductMatch) {
             sku = byProductMatch;
-            inferredBy = 'productMatch';
             console.log(`[extract-quote] SKU ${sku} trouvé par productMatch(${JSON.stringify(productMatch)})`);
           } else {
             const claudeWrote = extractSku(String(line.label || ''), String(line.description || ''));
             const byPrice = inferSkuFromCatalog(catalog, priceInMail, vatColIdx, String(line.label || ''));
             if (byPrice) {
               sku = byPrice;
-              inferredBy = 'price';
               console.log(`[extract-quote] SKU ${sku} inféré par prix (productMatch KO). Claude avait écrit: ${claudeWrote || '(rien)'}.`);
             } else if (claudeWrote && catalog[claudeWrote]) {
               sku = claudeWrote;
-              inferredBy = 'claudeWrote';
               console.log(`[extract-quote] SKU ${sku} pris tel quel dans le label/description (productMatch et inférence prix KO).`);
             }
           }

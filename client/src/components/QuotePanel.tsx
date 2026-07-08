@@ -222,12 +222,18 @@ export default function QuotePanel({
   // ─── Formulaire de vérification ───
   if (state === 'verify' && verifyForm) {
     const f = verifyForm;
+    // Setter fonctionnel — évite l'écrasement quand 2 upd() sont chaînés dans
+    // le même handler (cas onChange vatNumber qui set aussi vatPercent : sans
+    // forme fonctionnelle, le 2e update repart de `f` stale et wipe le 1er).
     const upd = (key: keyof VerifyFormData, val: string | boolean) =>
-      setVerifyForm({ ...f, [key]: val } as VerifyFormData);
+      setVerifyForm((prev) => ({ ...(prev as VerifyFormData), [key]: val }) as VerifyFormData);
     const updLine = (idx: number, key: string, val: string) => {
-      const newLines = [...f.lines];
-      newLines[idx] = { ...newLines[idx], [key]: val };
-      setVerifyForm({ ...f, lines: newLines });
+      setVerifyForm((prev) => {
+        const cur = prev as VerifyFormData;
+        const newLines = [...cur.lines];
+        newLines[idx] = { ...newLines[idx], [key]: val };
+        return { ...cur, lines: newLines };
+      });
     };
     const addLine = () => {
       setVerifyForm({ ...f, lines: [...f.lines, { label: '', quantity: '1', unitPrice: '0', unit: 'm2', type: 'product', description: '' }] });

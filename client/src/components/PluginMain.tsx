@@ -31,7 +31,11 @@ const ANSWER_DEFAULT = 'à toi de décider';
  *   3. 🟢 INFO — ...
  */
 function extractQuestionsSection(content: string): string | null {
-  const m = content.match(/QUESTIONS\s*(?:GÉRANT)?\s*(?:\(.*?\))?\s*[\n\r]+([\s\S]*?)(?:\n---|\nMAIL FINAL|$)/i);
+  // Cas Charles 08/07/2026 : Claude a écrit « **QUESTIONS** » (markdown gras)
+  // au lieu de « QUESTIONS » nu. Le parser ne matchait pas, actionableQuestions
+  // était vide, le bouton « 💬 Répondre à l'agent » était masqué à tort.
+  // Fix : tolérer 0-N `*` autour du mot QUESTIONS.
+  const m = content.match(/\*{0,3}\s*QUESTIONS\s*\*{0,3}\s*(?:GÉRANT)?\s*(?:\(.*?\))?\s*[\n\r]+([\s\S]*?)(?:\n---|\nMAIL FINAL|$)/i);
   return m ? m[1].trim() : null;
 }
 
@@ -88,8 +92,8 @@ function filterInfoFromQuestions(content: string): string {
   const renumbered = kept.map((it, i) => `${i + 1}. ${it}`).join('\n\n');
   // Remplacer la section originale par la renumérotée
   return content.replace(
-    /QUESTIONS(\s*(?:GÉRANT)?\s*(?:\(.*?\))?\s*[\n\r]+)([\s\S]*?)(?=\n---|\nMAIL FINAL|$)/i,
-    (_full, header, _body) => `QUESTIONS${header}${renumbered}`,
+    /(\*{0,3}\s*QUESTIONS\s*\*{0,3})(\s*(?:GÉRANT)?\s*(?:\(.*?\))?\s*[\n\r]+)([\s\S]*?)(?=\n---|\nMAIL FINAL|$)/i,
+    (_full, headerWord, headerRest, _body) => `${headerWord}${headerRest}${renumbered}`,
   );
 }
 

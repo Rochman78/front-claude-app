@@ -15,6 +15,14 @@ import { parseStandardsRows, findFamilySkus, type CatalogRow } from '@/lib/servi
 // prévient la dérive vers la langue du mail client (cas Suex S.r.l. IT,
 // Cenci Noleggi Mamà IT, etc.) que la règle dans agents.instructions ne
 // suffisait pas à corriger sur des fils saturés en langue étrangère.
+// Rappel COURT injecté en TÊTE du message user (avant le mail client
+// étranger) — sert de "language firewall" pour que Sonnet ne bascule
+// pas mid-phrase quand le contexte est saturé d'une langue étrangère.
+// Cas 07/2026 cnv_1lbupzpz (RED, Lluis Camí) — cf message/route.ts.
+const LANGUE_PREFIX = `⚠️ CONSIGNE LINGUISTIQUE ABSOLUE : TOUT ce que tu vas écrire ci-dessous (brouillon, QUESTIONS, notes, tableaux) doit être 100 % en FRANÇAIS, du premier mot au dernier. Le mail client qui suit peut être en ES/DE/NL/IT/PT/EN — PEU IMPORTE. Ta réponse reste en FR intégral. Aucun mot dans une autre langue. Si tu sens venir un basculement, réécris en FR.
+
+`;
+
 const LANGUE_REMINDER = `
 
 ══════════════════════════════════════════════════════
@@ -25,6 +33,9 @@ Tu rédiges TOUT en FRANÇAIS : brouillon, QUESTIONS, notes, exemples, du premie
 Le mail client ci-dessus peut être rédigé en italien, allemand, espagnol, néerlandais, portugais, anglais — PEU IMPORTE. Ta réponse reste 100 % EN FRANÇAIS.
 
 Si tu sens que tu vas commencer une phrase dans une autre langue parce que le contexte est saturé d'une autre langue : STOP. Réécris en français.
+
+⚠️ CAS RÉEL 10/07/2026 (cnv_1lbupzpz, RED, Lluis Camí) — À NE PAS REPRODUIRE :
+brouillon commencé en FR (« Bonjour Lluis, Merci pour le croquis... Concernant la séparation de 4,5 m entre les axes des poteaux : cela dépend de votre configuration d'instalación y del tipo de postes. No podemos validar ni desaconsejar... ») puis bascule mid-phrase en espagnol. Tableau tarifaire entier en ES (« Red de camuflaje reforzada — precio unitario sin IVA », « Total sin IVA : 1 153,41 € », « IVA (21 %) : 242,22 € »). INTERDIT. Rédige TOUT en FR, y compris le tableau tarifaire.
 
 PIÈGE FRÉQUENT — TABLEAU TARIFAIRE CITÉ PAR LE CLIENT :
 Le client peut recopier un ancien tableau que nous lui avons envoyé, dans SA langue (Dutch, Deutsch, Español, Italiano, Português, English…). Tu REDESSINES ce tableau en FRANÇAIS avec les libellés FR ci-dessous, sans exception. Même si le client cite « corrige ce tableau », tu recopies la structure mais en FR.
@@ -388,9 +399,12 @@ ${altUnknown.map((a) => `  • SKU ${a.sku} | ${a.label}`).join('\n')}
       console.log(`[plugin/analyze] dedupe: ${dedupResult.removed} bloc(s) répété(s) retiré(s), -${dedupResult.bytesSaved} chars`);
     }
     const isResume = !forceFresh && existingMessages.length > 0;
+    // Double sandwich linguistique : PREFIX court en tête + REMINDER
+    // détaillé en queue. Cf. cnv_1lbupzpz 10/07/2026 — historique 200 KB
+    // en ES écrasait le reminder de queue seul.
     const userMessage = isResume
-      ? `[Suite de la conversation] Le client a répondu. Voici le fil de mails COMPLET et MIS À JOUR (les messages les plus récents sont les plus importants). Tiens compte de tout ce que tu as échangé avec le gérant précédemment et propose un nouveau brouillon cohérent avec le déroulé de la conversation. Donne plus de poids aux messages les plus récents du client.\n\nClient : ${customerName || ''} (${customerEmail || ''})\n\n${cleanedMailContent}${stockInfo}${LANGUE_REMINDER}`
-      : `[Analyse demandée] Voici le fil de mails du client ${customerName || ''} (${customerEmail || ''}) :\n\n${cleanedMailContent}${stockInfo}${LANGUE_REMINDER}`;
+      ? `${LANGUE_PREFIX}[Suite de la conversation] Le client a répondu. Voici le fil de mails COMPLET et MIS À JOUR (les messages les plus récents sont les plus importants). Tiens compte de tout ce que tu as échangé avec le gérant précédemment et propose un nouveau brouillon cohérent avec le déroulé de la conversation. Donne plus de poids aux messages les plus récents du client.\n\nClient : ${customerName || ''} (${customerEmail || ''})\n\n${cleanedMailContent}${stockInfo}${LANGUE_REMINDER}`
+      : `${LANGUE_PREFIX}[Analyse demandée] Voici le fil de mails du client ${customerName || ''} (${customerEmail || ''}) :\n\n${cleanedMailContent}${stockInfo}${LANGUE_REMINDER}`;
 
     // Sauvegarder le message user en BDD
     const userMsgId = crypto.randomUUID();

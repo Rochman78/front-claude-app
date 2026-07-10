@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool, { initDB } from '@/lib/db';
 import { createChatStream } from '@/lib/services/claudeService';
 
+// Rappel COURT injecté en TÊTE du message user (avant le mail client
+// étranger) — sert de "language firewall" pour que Sonnet ne bascule
+// pas mid-phrase quand le contexte est saturé d'une langue étrangère.
+// Cas 07/2026 cnv_1lbupzpz (RED, Lluis Camí) : conv de 200 KB+ tout en
+// espagnol → LANGUE_REMINDER en queue seul écrasé par la masse, brouillon
+// à moitié ES avec « configuration d'instalación », tableau tarifaire
+// entier en ES (Precio unitario sin IVA...). Le double sandwich (prefix
+// + suffix) répète la contrainte au moment où Sonnet ouvre chaque
+// paragraphe → réduit fortement la dérive.
+const LANGUE_PREFIX = `⚠️ CONSIGNE LINGUISTIQUE ABSOLUE : TOUT ce que tu vas écrire ci-dessous (brouillon, QUESTIONS, notes, tableaux) doit être 100 % en FRANÇAIS, du premier mot au dernier. Le mail client qui suit peut être en ES/DE/NL/IT/PT/EN — PEU IMPORTE. Ta réponse reste en FR intégral. Aucun mot dans une autre langue. Si tu sens venir un basculement, réécris en FR.
+
+`;
+
 // Rappel final injecté en queue du message user. Cf analyze/route.ts pour
 // la justification (recency bias des LLM contre dérive linguistique).
 const LANGUE_REMINDER = `
@@ -12,6 +25,10 @@ const LANGUE_REMINDER = `
 Tu rédiges TOUT en FRANÇAIS : brouillon, QUESTIONS, notes, exemples, du premier mot au dernier.
 
 Peu importe la langue dans laquelle le client ou le mail précédent est rédigé : ta réponse reste 100 % EN FRANÇAIS.
+
+⚠️ CAS RÉEL 10/07/2026 (cnv_1lbupzpz, RED, Lluis Camí) — À NE PAS REPRODUIRE :
+brouillon commencé en FR (« Bonjour Lluis, Merci pour le croquis... Concernant la séparation de 4,5 m entre les axes des poteaux : cela dépend de votre configuration d'instalación y del tipo de postes. No podemos validar ni desaconsejar... ») puis bascule mid-phrase en espagnol. Tableau tarifaire entier en ES (« Red de camuflaje reforzada — precio unitario sin IVA », « Total sin IVA : 1 153,41 € », « IVA (21 %) : 242,22 € »). INTERDIT. Rédige TOUT en FR, y compris le tableau tarifaire.
+
 
 PIÈGE FRÉQUENT — TABLEAU TARIFAIRE CITÉ PAR LE CLIENT :
 Le client peut recopier un ancien tableau que nous lui avons envoyé, dans SA langue (Dutch, Deutsch, Español, Italiano, Português, English…). Tu REDESSINES ce tableau en FRANÇAIS avec les libellés FR ci-dessous, sans exception. Même si le client cite « corrige ce tableau », tu recopies la structure mais en FR.
@@ -231,7 +248,10 @@ RÈGLES :
 
     const messages = [
       ...history.map((m) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: message + stockInfo + LANGUE_REMINDER },
+      // Double sandwich linguistique : PREFIX court en tête + REMINDER
+      // détaillé en queue. Cf. cnv_1lbupzpz 10/07/2026 — historique 200 KB
+      // en ES écrasait le reminder de queue seul.
+      { role: 'user', content: LANGUE_PREFIX + message + stockInfo + LANGUE_REMINDER },
     ];
 
     // 6. Charger les images de la conversation Front (si disponible)

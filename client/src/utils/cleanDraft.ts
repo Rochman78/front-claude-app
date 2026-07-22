@@ -54,15 +54,20 @@ export function cleanDraft(text: string): string {
   // ⚠️ VÉRIFICATION/VERIFICATION : MAJUSCULES STRICTES (pas de flag `i`) + \n final obligatoire,
   // sinon on coupe le mail quand Claude écrit "Vérification catalogue —..." comme intro de
   // paragraphe dans le brouillon (bug Teresa Almenara cnv_xxx 04/06/2026).
+  //
+  // Le préfixe `(?:#{1,6}\s*)?` tolère les titres markdown H1-H6 (`## VÉRIFICATION`,
+  // `# QUESTIONS`, etc.). Régression cnv_1lwmc8d3 (15/07/2026) : Claude est passé
+  // en `## VÉRIFICATION` → ancien regex ne matchait pas → TOUT le bloc QUESTIONS
+  // envoyé au client. Correction : accepter 0-6 `#` comme les astérisques.
   const questionsPatterns = [
-    /\n\**\s*VÉRIFICATION\s*\**\s*\n/,
-    /\n\**\s*VERIFICATION\s*\**\s*\n/,
-    /\n\**\s*QUESTIONS?\s*\**\s*\n/i,
-    /\n\**\s*PREGUNTAS?\s*\**\s*\n/i,
-    /\n\**\s*FRAGEN\s*\**\s*\n/i,
-    /\n\**\s*VRAGEN\s*\**\s*\n/i,
-    /\n\**\s*DOMANDE\s*\**\s*\n/i,
-    /\n\**\s*PERGUNTAS?\s*\**\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*VÉRIFICATION\s*\**\s*\n/,
+    /\n(?:#{1,6}\s*)?\**\s*VERIFICATION\s*\**\s*\n/,
+    /\n(?:#{1,6}\s*)?\**\s*QUESTIONS?\s*\**\s*(?:GÉRANT|GERANT)?\s*(?:\([^)]*\))?\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*PREGUNTAS?\s*\**\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*FRAGEN\s*\**\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*VRAGEN\s*\**\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*DOMANDE\s*\**\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*PERGUNTAS?\s*\**\s*\n/i,
     /\nPas de question/i,
     /\nTu peux valider/i,
     /\nSin preguntas/i,
@@ -127,7 +132,31 @@ export function cleanDraft(text: string): string {
   // (« Bonjour CE.74E, », « Bonjour Ricarda, », « Bonjour CLG-XXX, »)
   // même quand le prompt l'interdit. Scrub garanti à la sortie du plugin.
   const greetRe = /^([ \t]*)(Bonjour|Hallo|Hola|Buongiorno|Goedendag|Beste|Bom dia|Buenos días|Dear|Hello|Hi)\b[^,\n]*,[ \t]*/im;
-  return lines.join('\n').replace(greetRe, '$1$2,').trim();
+  let result = lines.join('\n').replace(greetRe, '$1$2,').trim();
+
+  // ═══ FILET DE SÉCURITÉ ULTIME (Charles 15/07/2026, cnv_1lwmc8d3) ═══
+  // Si un marqueur interne survit malgré tout le nettoyage ci-dessus
+  // (format Claude inconnu, préfixe markdown atypique, langue non prévue),
+  // on coupe brutalement à la première occurrence. Objectif : garantir
+  // qu'AUCUN token interne ne puisse partir au client, même si le format
+  // évolue côté modèle sans qu'on ait mis les regex à jour.
+  const emergencyMarkers = [
+    /(?:^|\n)\s*(?:#{1,6}\s*)?\**\s*(?:QUESTIONS?|PREGUNTAS?|FRAGEN|VRAGEN|DOMANDE|PERGUNTAS?)\s*\**/i,
+    /(?:^|\n)\s*(?:#{1,6}\s*)?\**\s*V[EÉ]RIFICATION\s*\**/i,
+    // Emojis flag — attrape aussi le numéro d'item qui précède éventuellement
+    // (« 1. 🔴 BLOQUANT ») pour ne pas laisser de dangling « 1. » en fin.
+    /(?:\n\s*\d+\.\s*)?🔴\s*BLOQUANT/i,
+    /(?:\n\s*\d+\.\s*)?🟠\s*ATTENTION/i,
+    /(?:\n\s*\d+\.\s*)?🟢\s*INFO\b/i,
+  ];
+  for (const marker of emergencyMarkers) {
+    const m = result.match(marker);
+    if (m && m.index !== undefined && m.index > 0) {
+      result = result.slice(0, m.index).trim();
+    }
+  }
+
+  return result;
 }
 
 /**

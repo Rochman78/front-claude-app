@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { splitAssistantMessage } from '../utils/splitAssistantMessage';
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -41,6 +44,87 @@ function formatContent(text: string): string {
     .join('<br>');
 }
 
+/**
+ * Rendu d'un message assistant Claude, SÉPARÉ en 3 panneaux distincts :
+ *   1. Brouillon (bleu clair — le mail au client)
+ *   2. Vérification (vert d'eau — bloc informatif interne)
+ *   3. Points bloquants / Questions (orange — action requise du gérant)
+ *
+ * Objectif Charles 15/07/2026 (cnv_1lwmc8d3) : le brouillon ne doit
+ * JAMAIS être visuellement mélangé avec les questions internes, pour éviter
+ * qu'un push accidentel n'envoie les QUESTIONS au client.
+ * L'intro (raisonnement Claude, ex. INVENTAIRE DU CROQUIS) est repliée par
+ * défaut et dépliable via un lien discret.
+ */
+function AssistantSplitView({ content }: { content: string }) {
+  const [showIntro, setShowIntro] = useState(false);
+  const split = splitAssistantMessage(content);
+
+  // Fallback : si le parser n'a pas trouvé de structure claire, on affiche
+  // en mode legacy (une seule bulle). Évite de casser les messages atypiques
+  // (raw stream tronqué, ancien format, réponse hors-schéma).
+  if (!split.hasStructure) {
+    return (
+      <div
+        className="message-content"
+        dangerouslySetInnerHTML={{ __html: formatContent(content) }}
+      />
+    );
+  }
+
+  return (
+    <div className="assistant-split">
+      {split.intro && (
+        <div className="assistant-intro">
+          <button
+            type="button"
+            className="assistant-intro-toggle"
+            onClick={() => setShowIntro((v) => !v)}
+          >
+            {showIntro ? '▾' : '▸'} Analyse Claude (interne)
+          </button>
+          {showIntro && (
+            <div
+              className="assistant-intro-body"
+              dangerouslySetInnerHTML={{ __html: formatContent(split.intro) }}
+            />
+          )}
+        </div>
+      )}
+
+      {split.draft && (
+        <div className="assistant-block assistant-draft">
+          <div className="assistant-block-header">📧 Brouillon (mail au client)</div>
+          <div
+            className="assistant-block-body"
+            dangerouslySetInnerHTML={{ __html: formatContent(split.draft) }}
+          />
+        </div>
+      )}
+
+      {split.verification && (
+        <div className="assistant-block assistant-verification">
+          <div className="assistant-block-header">✅ Vérification (interne)</div>
+          <div
+            className="assistant-block-body"
+            dangerouslySetInnerHTML={{ __html: formatContent(split.verification) }}
+          />
+        </div>
+      )}
+
+      {split.questions && (
+        <div className="assistant-block assistant-questions">
+          <div className="assistant-block-header">❗ Points bloquants / Questions (JAMAIS envoyé au client)</div>
+          <div
+            className="assistant-block-body"
+            dangerouslySetInnerHTML={{ __html: formatContent(split.questions) }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div className={`message-bubble ${message.role}`}>
@@ -48,7 +132,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         {message.role === 'assistant' ? 'Claude' : 'Vous'}
       </div>
       {message.role === 'assistant' ? (
-        <div className="message-content" dangerouslySetInnerHTML={{ __html: formatContent(message.content) }} />
+        <AssistantSplitView content={message.content} />
       ) : (
         <div className="message-content">{message.content}</div>
       )}

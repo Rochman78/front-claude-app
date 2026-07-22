@@ -34,8 +34,10 @@ function extractQuestionsSection(content: string): string | null {
   // Cas Charles 08/07/2026 : Claude a écrit « **QUESTIONS** » (markdown gras)
   // au lieu de « QUESTIONS » nu. Le parser ne matchait pas, actionableQuestions
   // était vide, le bouton « 💬 Répondre à l'agent » était masqué à tort.
-  // Fix : tolérer 0-N `*` autour du mot QUESTIONS.
-  const m = content.match(/\*{0,3}\s*QUESTIONS\s*\*{0,3}\s*(?:GÉRANT)?\s*(?:\(.*?\))?\s*[\n\r]+([\s\S]*?)(?:\n---|\nMAIL FINAL|$)/i);
+  // Cas cnv_1lwmc8d3 (15/07/2026) : Claude a écrit « ## QUESTIONS » (H2). Ancien
+  // regex ne matchait pas → questions non détectées, tout parti au client.
+  // Fix : tolérer 0-6 `#` puis 0-N `*` autour du mot QUESTIONS.
+  const m = content.match(/(?:#{1,6}\s*)?\*{0,3}\s*QUESTIONS\s*\*{0,3}\s*(?:GÉRANT|GERANT)?\s*(?:\(.*?\))?\s*[\n\r]+([\s\S]*?)(?:\n(?:#{1,6}\s*)?---|\n(?:#{1,6}\s*)?MAIL FINAL|$)/i);
   return m ? m[1].trim() : null;
 }
 
@@ -86,13 +88,14 @@ function filterInfoFromQuestions(content: string): string {
     kept.push(rawItem);
   }
   if (kept.length === 0) {
-    // Toute la section QUESTIONS est de l'INFO → on retire la section entière
-    return content.replace(/(\n---\s*\n\s*QUESTIONS\b[\s\S]*)$/i, '').trim();
+    // Toute la section QUESTIONS est de l'INFO → on retire la section entière.
+    // Tolère `## QUESTIONS`, `**QUESTIONS**`, avec ou sans `---` séparateur.
+    return content.replace(/(\n(?:---\s*\n\s*)?(?:#{1,6}\s*)?\*{0,3}\s*QUESTIONS\b[\s\S]*)$/i, '').trim();
   }
   const renumbered = kept.map((it, i) => `${i + 1}. ${it}`).join('\n\n');
-  // Remplacer la section originale par la renumérotée
+  // Remplacer la section originale par la renumérotée (tolère ##, ** ou nu)
   return content.replace(
-    /(\*{0,3}\s*QUESTIONS\s*\*{0,3})(\s*(?:GÉRANT)?\s*(?:\(.*?\))?\s*[\n\r]+)([\s\S]*?)(?=\n---|\nMAIL FINAL|$)/i,
+    /((?:#{1,6}\s*)?\*{0,3}\s*QUESTIONS\s*\*{0,3})(\s*(?:GÉRANT|GERANT)?\s*(?:\(.*?\))?\s*[\n\r]+)([\s\S]*?)(?=\n(?:#{1,6}\s*)?---|\n(?:#{1,6}\s*)?MAIL FINAL|$)/i,
     (_full, headerWord, headerRest, _body) => `${headerWord}${headerRest}${renumbered}`,
   );
 }

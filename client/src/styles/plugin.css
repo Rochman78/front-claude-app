@@ -436,6 +436,102 @@ body {
   white-space: normal;
 }
 
+/* === Message assistant : rendu split (brouillon / vérif / questions) === */
+.assistant-split {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assistant-intro {
+  border: 1px dashed #cbd5e0;
+  background: #f7fafc;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.assistant-intro-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4a5568;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.assistant-intro-body {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #4a5568;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.assistant-block {
+  border-radius: 8px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+}
+
+.assistant-block-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 6px;
+}
+
+.assistant-block-body {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Brouillon = mail au client (bleu clair, calme) */
+.assistant-draft {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+.assistant-draft .assistant-block-header {
+  color: #1d4ed8;
+}
+.assistant-draft .assistant-block-body {
+  color: #1e293b;
+}
+
+/* Vérification = interne, discret (vert d'eau) */
+.assistant-verification {
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+}
+.assistant-verification .assistant-block-header {
+  color: #047857;
+}
+.assistant-verification .assistant-block-body {
+  color: #065f46;
+  font-size: 12px;
+}
+
+/* Questions = ATTENTION gérant, ne JAMAIS envoyer au client (orange vif) */
+.assistant-questions {
+  background: #fff7ed;
+  border-color: #fb923c;
+  border-width: 2px;
+}
+.assistant-questions .assistant-block-header {
+  color: #c2410c;
+}
+.assistant-questions .assistant-block-body {
+  color: #7c2d12;
+}
+
 /* Streaming dots */
 .streaming-dots {
   display: flex;

@@ -1,0 +1,82 @@
+═══════════════════════════════════════════════════════════════════════════════
+PRIX STANDARDS CATALOGUE — FORMAT TABULAIRE STRICT
+═══════════════════════════════════════════════════════════════════════════════
+
+Chaque ligne DÉCRIT UN PRODUIT UNIQUE via 6 CRITÈRES puis SON PRIX.
+
+COLONNES (dans l'ordre) :
+  1. typologie   : filet | voile coco | accessoire | echantillon
+  2. forme       : rectangle | carré | triangle | corde | cable | rislan | mât télescopique | base ancrage | kit de fixation | corde à cliquets | borne solaire
+  3. matiere     : polyester | câble acier | coco | acier | n/a
+  4. couleur     : sable | blanc | vert | militaire | noir | gris | bleu | naturel | n/a
+  5. taille      : dimensions (ex : 3x4, 5x5x5, 7,5m, 1 pièce)
+  6. SKU         : identifiant unique 13 chiffres
+  7. TTC         : prix TTC en euros
+  8-19. HT XX%   : prix HT selon taux TVA du pays de livraison (0 %, 17 %, ..., 27 %)
+
+⚠️ RÈGLE ABSOLUE DE MATCHING (4 CRITÈRES STRICTS) :
+Pour qu'un produit soit qualifié STANDARD, les 4 critères ci-dessous doivent
+correspondre PARFAITEMENT à UNE ligne :
+  (a) TYPOLOGIE du produit
+  (b) FORME (rectangle/carré/triangle ne sont PAS interchangeables — un
+      client qui demande un « carré 3x3 » n'accepte pas un « rectangle 3x3 »
+      même si la surface est identique, ce sont des SKU différents)
+  (c) MATIÈRE (polyester ≠ câble acier ≠ coco ; NE JAMAIS matcher sur une
+      ligne polyester quand le client demande câble acier — cas cnv_1lrhc3br)
+  (d) COULEUR (sable ≠ blanc ≠ vert etc.)
+  (e) TAILLE (exacte ou inversée si rectangle : 3x4 = 4x3, mais 3x4 ≠ 3x5)
+
+Si UN SEUL des critères ne matche pas → SUR-MESURE (via prix-ht-sur-mesure.txt)
+ou refus si combinaison impossible (ex : triangle câble acier = SUR-MESURE
+uniquement, aucun standard triangle acier n'existe).
+
+⚠️ LECTURE DU PRIX HT selon pays de livraison client :
+  France FR 20 %       → colonne HT 20%
+  Allemagne DE 19 %    → colonne HT 19%
+  Pays-Bas NL 21 %     → colonne HT 21%
+  Belgique BE 21 %     → colonne HT 21%
+  Espagne ES 21 %      → colonne HT 21%
+  Portugal PT 23 %     → colonne HT 23%
+  Italie IT 22 %       → colonne HT 22%
+  Luxembourg LU 17 %   → colonne HT 17%
+  Autriche AT 20 %     → colonne HT 20%
+  Royaume-Uni GB 20 %  → colonne HT 20%
+  Hors UE / export     → colonne HT 0% (TTC)
+  B2B intra UE avec TVA valide hors pays boutique → colonne HT 0%
+
+═══════════════════════════════════════════════════════════════════════════════
+
+
+typologie   | forme              | matiere      | couleur      | taille     | SKU            |     TTC |   HT 0% |  HT 17% |  HT 18% |  HT 19% |  HT 20% |  HT 21% |  HT 22% |  HT 23% |  HT 24% |  HT 25% | HT 25,5% |  HT 27%
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+accessoire  | corde              | coco         | naturel      | 20m        | 3760388678426  |   19.90 |   19.90 |   17.01 |   16.86 |   16.72 |   16.58 |   16.45 |   16.31 |   16.18 |   16.05 |   15.92 |    15.86 |   15.67
+
+voile coco  | carré              | coco         | naturel      | 2x2        | 3760388678358  |  109.90 |  109.90 |   93.93 |   93.14 |   92.35 |   91.58 |   90.83 |   90.08 |   89.35 |   88.63 |   87.92 |    87.57 |   86.54
+rideau coco | rectangle          | coco         | naturel      | 2x2        | 3760388679218  |   98.90 |   98.90 |   84.53 |   83.81 |   83.11 |   82.42 |   81.74 |   81.07 |   80.41 |   79.76 |   79.12 |    78.80 |   77.87
+voile coco  | carré              | coco         | naturel      | 3.5x3.5    | 3760388678334  |  299.90 |  299.90 |  256.32 |  254.15 |  252.02 |  249.92 |  247.85 |  245.82 |  243.82 |  241.85 |  239.92 |   238.96 |  236.14
+voile coco  | carré              | coco         | naturel      | 3x3        | 3760388678341  |  219.90 |  219.90 |  187.95 |  186.36 |  184.79 |  183.25 |  181.74 |  180.25 |  178.78 |  177.34 |  175.92 |   175.22 |  173.15
+voile coco  | carré              | coco         | naturel      | 4x4        | 3760388678327  |  399.90 |  399.90 |  341.79 |  338.90 |  336.05 |  333.25 |  330.50 |  327.79 |  325.12 |  322.50 |  319.92 |   318.65 |  314.88
+
+voile coco  | rectangle          | coco         | naturel      | 2x3        | 3760388678310  |  149.90 |  149.90 |  128.12 |  127.03 |  125.97 |  124.92 |  123.88 |  122.87 |  121.87 |  120.89 |  119.92 |   119.44 |  118.03
+voile coco  | rectangle          | coco         | naturel      | 2x4        | 3760388678303  |  199.90 |  199.90 |  170.85 |  169.41 |  167.98 |  166.58 |  165.21 |  163.85 |  162.52 |  161.21 |  159.92 |   159.28 |  157.40
+rideau coco | rectangle          | coco         | naturel      | 2x4        | 3760388679201  |  189.90 |  189.90 |  162.31 |  160.93 |  159.58 |  158.25 |  156.94 |  155.66 |  154.39 |  153.15 |  151.92 |   151.31 |  149.53
+rideau coco | rectangle          | coco         | naturel      | 2x3        | 3760388679461  |  144.90 |  144.90 |  123.85 |  122.80 |  121.76 |  120.75 |  119.75 |  118.77 |  117.80 |  116.85 |  115.92 |   115.46 |  114.09
+rideau coco | rectangle          | coco         | naturel      | 2x5        | 3760388679454  |  235.90 |  235.90 |  201.62 |  199.92 |  198.24 |  196.58 |  194.96 |  193.36 |  191.79 |  190.24 |  188.72 |   187.97 |  185.75
+rideau coco | rectangle          | coco         | naturel      | 2x6        | 3760388679447  |  280.90 |  280.90 |  240.09 |  238.05 |  236.05 |  234.08 |  232.15 |  230.25 |  228.37 |  226.53 |  224.72 |   223.82 |  221.18
+rideau coco | rectangle          | coco         | naturel      | 2x7        | 3760388679430  |  326.90 |  326.90 |  279.40 |  277.03 |  274.71 |  272.42 |  270.17 |  267.95 |  265.77 |  263.63 |  261.52 |   260.48 |  257.40
+voile coco  | rectangle          | coco         | naturel      | 2x5        | 3760388678297  |  249.90 |  249.90 |  213.59 |  211.78 |  210.00 |  208.25 |  206.53 |  204.84 |  203.17 |  201.53 |  199.92 |   199.12 |  196.77
+voile coco  | rectangle          | coco         | naturel      | 2x6        | 3760388678280  |  299.90 |  299.90 |  256.32 |  254.15 |  252.02 |  249.92 |  247.85 |  245.82 |  243.82 |  241.85 |  239.92 |   238.96 |  236.14
+voile coco  | rectangle          | coco         | naturel      | 3x4        | 3760388678273  |  299.90 |  299.90 |  256.32 |  254.15 |  252.02 |  249.92 |  247.85 |  245.82 |  243.82 |  241.85 |  239.92 |   238.96 |  236.14
+voile coco  | rectangle          | coco         | naturel      | 3x5        | 3760388678266  |  369.90 |  369.90 |  316.15 |  313.47 |  310.84 |  308.25 |  305.70 |  303.20 |  300.73 |  298.31 |  295.92 |   294.74 |  291.26
+voile coco  | rectangle          | coco         | naturel      | 3x6        | 3760388678259  |  449.90 |  449.90 |  384.53 |  381.27 |  378.07 |  374.92 |  371.82 |  368.77 |  365.77 |  362.82 |  359.92 |   358.49 |  354.25
+voile coco  | rectangle          | coco         | naturel      | 3x7        | 3760388678242  |  519.90 |  519.90 |  444.36 |  440.59 |  436.89 |  433.25 |  429.67 |  426.15 |  422.68 |  419.27 |  415.92 |   414.26 |  409.37
+voile coco  | rectangle          | coco         | naturel      | 4x5        | 3760388678235  |  499.90 |  499.90 |  427.26 |  423.64 |  420.08 |  416.58 |  413.14 |  409.75 |  406.42 |  403.15 |  399.92 |   398.33 |  393.62
+voile coco  | rectangle          | coco         | naturel      | 4x6        | 3760388678228  |  599.90 |  599.90 |  512.74 |  508.39 |  504.12 |  499.92 |  495.79 |  491.72 |  487.72 |  483.79 |  479.92 |   478.01 |  472.36
+
+voile coco  | triangle           | coco         | naturel      | 2x2x2      | 3760388678419  |   79.90 |   79.90 |   68.29 |   67.71 |   67.14 |   66.58 |   66.03 |   65.49 |   64.96 |   64.44 |   63.92 |    63.67 |   62.91
+voile coco  | triangle           | coco         | naturel      | 3.5x3.5x3. | 3760388678396  |  169.90 |  169.90 |  145.21 |  143.98 |  142.77 |  141.58 |  140.41 |  139.26 |  138.13 |  137.02 |  135.92 |   135.38 |  133.78
+voile coco  | triangle           | coco         | naturel      | 3x3x3      | 3760388678402  |  129.90 |  129.90 |  111.03 |  110.08 |  109.16 |  108.25 |  107.36 |  106.48 |  105.61 |  104.76 |  103.92 |   103.51 |  102.28
+voile coco  | triangle           | coco         | naturel      | 3x4x5      | 3760388678389  |  189.90 |  189.90 |  162.31 |  160.93 |  159.58 |  158.25 |  156.94 |  155.66 |  154.39 |  153.15 |  151.92 |   151.31 |  149.53
+voile coco  | triangle           | coco         | naturel      | 4x4x4      | 3760388678372  |  219.90 |  219.90 |  187.95 |  186.36 |  184.79 |  183.25 |  181.74 |  180.25 |  178.78 |  177.34 |  175.92 |   175.22 |  173.15
+voile coco  | triangle           | coco         | naturel      | 5x5x5      | 3760388678365  |  339.90 |  339.90 |  290.51 |  288.05 |  285.63 |  283.25 |  280.91 |  278.61 |  276.34 |  274.11 |  271.92 |   270.84 |  267.64
+

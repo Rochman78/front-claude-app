@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import pool, { initDB } from '@/lib/db';
 import { archiveConversation, frontFetch, textToHtml } from '@/lib/services/frontappService';
 import { getStoreByInboxName } from '@/lib/stores';
-import { cleanDraft } from '@/lib/cleanDraft';
+import { cleanDraft, hasOpenQuestions } from '@/lib/cleanDraft';
 import { callClaude } from '@/lib/services/claudeService';
 import { POST as analyzePOST } from '@/app/api/plugin/analyze/route';
 import { POST as pushDraftPOST } from '@/app/api/plugin/push-draft/route';
@@ -359,6 +359,30 @@ ${fullBody}`;
     if (!emailText || emailText.length < 20) {
       await record(conversationId, store.code, 'error', 'brouillon vide après nettoyage');
       return { conversationId, status: 'error', reason: 'brouillon vide' };
+    }
+
+    // 6-BIS. GARDE-FOU ANTI-FUITE INTERNE (Charles 29/07/2026, cnv_1ly9eljr) :
+    // même après cleanDraft, on vérifie qu'AUCUN marqueur interne n'a survécu.
+    // Si oui → refus total de poser (ni auto-send, ni brouillon). Le mail est
+    // à traiter manuellement via le plugin, qui a son propre découpage visuel
+    // par section.
+    //
+    // Cas déclencheur : cnv_1ly9eljr (RED, 29/07/2026) — Claude a écrit
+    // `## BROUILLON` et `## QUESTIONS` (heading H2 markdown). Le regex serveur
+    // n'acceptait pas le préfixe `##` (fix client-side du #222 non porté ici),
+    // donc TOUT le bloc QUESTIONS (dont "🟠 ATTENTION — Client professionnel...")
+    // est parti au client en auto-send. Le fix regex ci-dessus (ligne 84+) et
+    // le filet ULTIME dans cleanDraft règlent le cas connu ; ce garde-fou est
+    // le dernier rempart si un futur format échappe encore aux deux.
+    if (hasOpenQuestions(emailText)) {
+      const why = 'marqueur interne (QUESTIONS / VÉRIFICATION / [⚠️]) a survécu à cleanDraft — refus total de poser';
+      console.warn(`[auto-draft] ${conversationId} ${why}`);
+      await record(conversationId, store.code, 'error', why);
+      await postComment(
+        conversationId,
+        '⚠️ Auto-draft Claude BLOQUÉ : la réponse contient encore un marqueur interne (QUESTIONS, VÉRIFICATION, ou alerte [⚠️]) après le nettoyage. Aucun brouillon posé pour ne PAS risquer de fuiter ces notes au client — à traiter via le plugin.'
+      );
+      return { conversationId, status: 'error', reason: why };
     }
 
     // 6a. Garde-fou qualité PERMISSIF : on ne bloque que les cas franchement

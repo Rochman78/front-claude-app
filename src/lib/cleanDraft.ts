@@ -81,15 +81,22 @@ export function cleanDraft(text: string): string {
     cleaned = cleaned.substring(bonjourIndex);
   }
 
+  // Le préfixe `(?:#{1,6}\s*)?` tolère les titres markdown H1-H6 (`## VÉRIFICATION`,
+  // `# QUESTIONS`, etc.). Sans ce préfixe, un heading H2 (`## QUESTIONS\n`) ne matche
+  // pas et le bloc QUESTIONS interne part au client.
+  // Régressions couvertes : cnv_1lwmc8d3 (15/07/2026, plugin manuel) — corrigé
+  // côté client-side dans #222 (commit e4cdcc3) mais oublié ici ; cnv_1ly9eljr
+  // (29/07/2026, auto-send) — même bug côté server-side, TOUT le bloc QUESTIONS
+  // envoyé au client via auto-send.
   const questionsPatterns = [
-    /\n\**\s*VÉRIFICATION\s*\**/i,
-    /\n\**\s*VERIFICATION\s*\**/i,
-    /\n\**\s*QUESTIONS?\s*\**\s*\n/i,
-    /\n\**\s*PREGUNTAS?\s*\**\s*\n/i,
-    /\n\**\s*FRAGEN\s*\**\s*\n/i,
-    /\n\**\s*VRAGEN\s*\**\s*\n/i,
-    /\n\**\s*DOMANDE\s*\**\s*\n/i,
-    /\n\**\s*PERGUNTAS?\s*\**\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*VÉRIFICATION\s*\**\s*\n/,
+    /\n(?:#{1,6}\s*)?\**\s*VERIFICATION\s*\**\s*\n/,
+    /\n(?:#{1,6}\s*)?\**\s*QUESTIONS?\s*\**\s*(?:GÉRANT|GERANT)?\s*(?:\([^)]*\))?\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*PREGUNTAS?\s*\**\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*FRAGEN\s*\**\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*VRAGEN\s*\**\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*DOMANDE\s*\**\s*\n/i,
+    /\n(?:#{1,6}\s*)?\**\s*PERGUNTAS?\s*\**\s*\n/i,
     /\nPas de question/i,
     /\nTu peux valider/i,
     /\nSin preguntas/i,
@@ -139,16 +146,51 @@ export function cleanDraft(text: string): string {
     }
   }
 
-  return lines.join('\n').trim();
+  let result = lines.join('\n').trim();
+
+  // ═══ FILET DE SÉCURITÉ ULTIME (Charles 15/07/2026, cnv_1lwmc8d3 puis
+  //     cnv_1ly9eljr 29/07/2026 côté server-side) ═══
+  // Si un marqueur interne survit à tout le nettoyage ci-dessus (format Claude
+  // inattendu, préfixe markdown atypique, langue non prévue), coupe brutalement
+  // à la première occurrence. Objectif : garantir qu'AUCUN token interne ne
+  // parte au client, même si le format évolue côté modèle sans mise à jour des
+  // regex. Doublon du filet côté client — sync obligatoire des deux fichiers.
+  const emergencyMarkers = [
+    /(?:^|\n)\s*(?:#{1,6}\s*)?\**\s*(?:QUESTIONS?|PREGUNTAS?|FRAGEN|VRAGEN|DOMANDE|PERGUNTAS?)\s*\**/i,
+    /(?:^|\n)\s*(?:#{1,6}\s*)?\**\s*V[EÉ]RIFICATION\s*\**/i,
+    /(?:\n\s*\d+\.\s*)?🔴\s*BLOQUANT/i,
+    /(?:\n\s*\d+\.\s*)?🟠\s*ATTENTION/i,
+    /(?:\n\s*\d+\.\s*)?🟢\s*INFO\b/i,
+  ];
+  for (const marker of emergencyMarkers) {
+    const m = result.match(marker);
+    if (m && m.index !== undefined && m.index > 0) {
+      result = result.slice(0, m.index).trim();
+    }
+  }
+
+  return result;
 }
 
 /**
- * Détecte si la réponse Claude contient des questions/points à vérifier en attente.
+ * Détecte si la réponse Claude contient des questions ou points internes qui
+ * n'ont pas leur place dans un mail client (headings section, alertes 🔴/🟠/🟢,
+ * blocs [⚠️...]). MAJUSCULE STRICTE sur les headings pour éviter les faux
+ * positifs sur des vraies phrases (« pour toute autre question, ... »).
+ *
+ * Utilisé par autoDraftService comme dernier rempart avant auto-send : si TRUE,
+ * on refuse de poser quoi que ce soit.
  */
 export function hasOpenQuestions(text: string): boolean {
-  if (/\bQUESTIONS?\s*\n/i.test(text)) return true;
-  if (/\bVÉRIFICATION\b/i.test(text)) return true;
+  // Headers section internes — tolère `##`, `**`, `QUESTIONS GÉRANT`, etc.
+  // MAJUSCULE STRICTE (pas de /i) : évite « des questions » en fin de mail.
+  if (/(?:^|\n)\s*(?:#{1,6}\s*)?\**\s*(?:QUESTIONS?|PREGUNTAS?|FRAGEN|VRAGEN|DOMANDE|PERGUNTAS?)\s*\**\s*(?:GÉRANT|GERANT)?\s*(?:\([^)]*\))?\s*(?:\n|$)/.test(text)) return true;
+  if (/(?:^|\n)\s*(?:#{1,6}\s*)?\**\s*V[EÉ]RIFICATION\s*\**/.test(text)) return true;
+  // Commentaires internes de l'agent
   if (/\[⚠️/.test(text)) return true;
+  // Emojis flags de gravité (systématiquement internes)
+  if (/🔴\s*BLOQUANT|🟠\s*ATTENTION|🟢\s*INFO\b/.test(text)) return true;
+  // Questions numérotées après le "Bonjour" (« 1. ... ? »)
   const afterBonjour = text.indexOf('Bonjour');
   const bodyAfterDraft = afterBonjour >= 0 ? text.substring(afterBonjour) : text;
   if (/\n\d+\.\s+.+\?/.test(bodyAfterDraft)) return true;

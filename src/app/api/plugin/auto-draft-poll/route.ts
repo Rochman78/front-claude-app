@@ -57,8 +57,14 @@ async function run(req: NextRequest) {
         ((c.tags as Record<string, unknown>[]) || []).some((t) => String(t.name || '').toLowerCase() === 'devis')
       );
       candidates += tagged.length;
-      for (const c of tagged) {
-        results.push(await processAutoDraft(c.id as string));
+      // Throttle 400ms entre chaque conv → étale la charge Front API. Sans ce
+      // throttle, le poll tape ~3 appels Front en burst × 30 candidates → on
+      // dépasse la limite Front ~100 req/min → 429 en cascade → re-storm à
+      // chaque poll (30/07/2026 pattern observé). Avec 400ms × 30 = 12s
+      // d'étalement, on reste sous la limite avec marge.
+      for (let idx = 0; idx < tagged.length; idx++) {
+        if (idx > 0) await new Promise((r) => setTimeout(r, 400));
+        results.push(await processAutoDraft(tagged[idx].id as string));
       }
     }
 

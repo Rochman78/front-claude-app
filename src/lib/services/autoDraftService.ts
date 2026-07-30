@@ -119,7 +119,19 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
 
     // 1. Conversation + tags
     const convRes = await frontFetch(`/conversations/${conversationId}`);
-    if (!convRes.ok) return { conversationId, status: 'error', reason: `conv ${convRes.status}` };
+    if (!convRes.ok) {
+      const why = `conv ${convRes.status}`;
+      // Record les vraies erreurs (500, 502, 404, 401…) pour déclencher le
+      // cooldown 12h et éviter de re-brûler la même conv à chaque poll.
+      // Exception : 429 (rate-limit Front) — c'est transient (< 60s), le
+      // retry-in-frontFetch gère la majorité, et pour les 429 qui échappent
+      // aux 3 retries on préfère retenter au prochain poll (2 min) plutôt
+      // que de mettre 12 h de cooldown et rater la fenêtre auto-draft.
+      if (convRes.status !== 429) {
+        await record(conversationId, '', 'error', why);
+      }
+      return { conversationId, status: 'error', reason: why };
+    }
     const conv = await convRes.json();
     const tags: string[] = (conv.tags || []).map((t: Record<string, unknown>) => String(t.name || '').toLowerCase());
     if (!tags.includes('devis')) return skip('pas de tag Devis');
@@ -137,7 +149,15 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
     //    S'il y a un brouillon, une réponse, ou plusieurs entrants → c'est qu'il s'est
     //    déjà passé quelque chose → on laisse le humain s'en occuper.
     const msgsRes = await frontFetch(`/conversations/${conversationId}/messages`);
-    if (!msgsRes.ok) return { conversationId, status: 'error', reason: `messages ${msgsRes.status}` };
+    if (!msgsRes.ok) {
+      const why = `messages ${msgsRes.status}`;
+      // Idem ligne 1 : record les vraies erreurs, laisse passer les 429
+      // pour retry naturel au prochain poll.
+      if (msgsRes.status !== 429) {
+        await record(conversationId, store.code, 'error', why);
+      }
+      return { conversationId, status: 'error', reason: why };
+    }
     const msgs: Record<string, unknown>[] = (await msgsRes.json())._results || [];
     if (msgs.length !== 1) return skip(`la conv contient ${msgs.length} messages (auto-draft = 1 seul mail attendu)`, store.code);
     const sole = msgs[0];

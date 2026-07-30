@@ -14,11 +14,48 @@ function headers(): Record<string, string> {
   };
 }
 
+// Retry sur 429 (rate-limit Front). Front peut renvoyer un header Retry-After
+// (secondes) qu'on respecte ; sinon backoff 500 ms, 1 s, 2 s. Cap à 30 s pour
+// éviter qu'un cron bloque des minutes sur un seul appel.
+// Cause : cron auto-draft-poll qui scanne 10 boutiques × ~100 conv × 3 appels
+// Front par conv Devis → burst qui dépasse la limite Front ~100 req/min.
+// Avant fix : 429 propagé au caller → route auto-draft-poll renvoyait 502 au cron
+// Render → cron failed status 22 (30/07/2026 11:30, 12:00 sur cnv_1lynhw7r,
+// cnv_1lynl74n et une dizaine d'autres).
+async function fetchWithRetry(path: string, init: RequestInit): Promise<Response> {
+  const MAX_RETRIES = 3;
+  let lastRes: Response | null = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const t0 = Date.now();
+    const res = await fetch(`${FRONT_API_URL}${path}`, init);
+    console.log(
+      `[frontapp] ${init.method || 'GET'} ${path} → ${res.status} (${Date.now() - t0}ms)${
+        attempt > 0 ? ` retry=${attempt}` : ''
+      }`
+    );
+    lastRes = res;
+    if (res.status !== 429) return res;
+    if (attempt >= MAX_RETRIES) break;
+    // Consomme le corps pour libérer le socket avant l'attente
+    try { await res.text(); } catch { /* ignore */ }
+    const retryAfterHeader = res.headers.get('retry-after') || '';
+    const retryAfter = parseInt(retryAfterHeader, 10);
+    const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
+      ? Math.min(retryAfter * 1000, 30000)
+      : 500 * Math.pow(2, attempt);
+    console.warn(
+      `[frontapp] 429 sur ${path} — sleep ${waitMs}ms (Retry-After="${retryAfterHeader}") avant retry ${attempt + 1}/${MAX_RETRIES}`
+    );
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+  return lastRes as Response;
+}
+
 export async function frontFetch(path: string, options?: RequestInit): Promise<Response> {
-  const t0 = Date.now();
-  const res = await fetch(`${FRONT_API_URL}${path}`, { ...options, headers: { ...headers(), ...(options?.headers || {}) } });
-  console.log(`[frontapp] ${options?.method || 'GET'} ${path} → ${res.status} (${Date.now() - t0}ms)`);
-  return res;
+  return fetchWithRetry(path, {
+    ...options,
+    headers: { ...headers(), ...(options?.headers || {}) },
+  });
 }
 
 export async function listInboxes(): Promise<{ id: string; name: string; address: string }[]> {

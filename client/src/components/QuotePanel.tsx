@@ -1635,18 +1635,11 @@ export default function QuotePanel({
         vatRate: '',
       }));
 
-      // Livraison offerte — plus de lignes transport/remise dans le devis
-      // Pennylane exige le code pays en MAJUSCULES (ex: FR_200) sinon retourne une erreur
-      // générique trompeuse sur invoice_lines. On force l'uppercase + slice(0,2) pour parer
-      // aux saisies "France", "fr", "Fr-FR", etc.
+      // Pays de facturation — utilisé pour l'adresse client Pennylane et le
+      // check d'exonération LIC/exportation (§ freeTextLines plus bas).
+      // Pennylane exige MAJUSCULES + 2 lettres exactes → uppercase + slice(0,2).
       const rawCountry = f.vatNumber?.match(/^([A-Za-z]{2})/)?.[1] || f.country || 'FR';
       const country = String(rawCountry).toUpperCase().slice(0, 2);
-      const vatCode = vatPercent === 0 ? 'exempt' : `${country}_${Math.round(vatPercent * 10)}`;
-
-      // Appliquer le vatCode à toutes les lignes
-      for (const line of allLines) {
-        line.vatRate = vatCode;
-      }
 
       // Résoudre l'adresse de livraison finale : soit distincte, soit copie
       // de la facturation. On envoie TOUJOURS une deliveryAddress à Pennylane
@@ -1661,6 +1654,24 @@ export default function QuotePanel({
         ? (f.deliveryCountry || f.country || 'FR')
         : (f.country || 'FR');
       const deliveryCountry = String(rawDeliveryCountry).toUpperCase().slice(0, 2);
+
+      // vat_rate Pennylane : code XX_NNN où XX = pays de la juridiction
+      // fiscale (= pays de LIVRAISON en règle OSS B2C, cf. CLAUDE.md § TVA).
+      // Utiliser le pays de facturation ici cause un mismatch pays/taux quand
+      // livraison ≠ facturation.
+      // Cas Antje Verhoeven-Helf 25/08/2026 (cnv_1m169d07, TAR) : facturation
+      // Düsseldorf DE + livraison Estellencs ES + TVA 21 % (correct OSS pour
+      // ES) → code construit `DE_210` alors que DE = 19 % → Pennylane 400
+      // « invoice_lines schema mismatch » (message trompeur, cf. CLAUDE.md).
+      // La bonne réponse : `ES_210`.
+      const vatCode = vatPercent === 0
+        ? 'exempt'
+        : `${deliveryCountry}_${Math.round(vatPercent * 10)}`;
+
+      // Appliquer le vatCode à toutes les lignes
+      for (const line of allLines) {
+        line.vatRate = vatCode;
+      }
 
       // Construire le payload
       const payload = {

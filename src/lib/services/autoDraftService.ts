@@ -246,6 +246,10 @@ ${fullBody}`;
     // code promo ECHANGE15, et l'auto-send a transmis au client.
     let forceBrouillonMode = false;
     let savReason = '';
+    // Détection montant élevé — évaluée après cleanDraft (§6a-ter). Portée
+    // hoistée ici car réutilisée après le post pour tagger la conv "Important".
+    let isHighAmount = false;
+    let detectedTotal = 0;
 
     // 3b. (Supprimé 08/07/2026) L'ancien check "premier contact client" qui
     //     appelait /conversations/search/{email} produisait des faux positifs
@@ -478,6 +482,31 @@ ${fullBody}`;
       return { conversationId, status: 'error', reason: 'empty prices in draft' };
     }
 
+    // 6a-ter. Garde-fou "montant élevé" (Charles 27/08/2026, cnv_1m5sm3rr).
+    // Cas déclencheur : Marinha Portuguesa (RED) — 180 filets 2,2×3 m à
+    // 82,50 € HT = 14 850 € HT auto-envoyé au client. Décision commerciale
+    // trop importante pour partir sans validation humaine.
+    // Règle : dès qu'un total dans le brouillon dépasse 3 000 €, on force le
+    // mode brouillon (pas d'auto-send) et on tag la conv "Important" côté
+    // Front (§9-bis plus bas) pour visibilité immédiate.
+    // Parse sur le texte FR (avant traduction). Cherche "Total ... : X €"
+    // dans toutes ses variantes (Total HT, Total TTC, Prix total, Montant
+    // total, Grand total, éventuellement avec parenthèse "(TVA X% incluse)").
+    const TOTAL_LINE_RE = /(?:total|montant\s+total|prix\s+total|grand\s+total)\s*(?:[a-zà-ÿ]{1,30})?\s*(?:\([^)]*\))?\s*:\s*(\d[\d\s.,]*)\s*€/gi;
+    for (const match of Array.from(emailText.matchAll(TOTAL_LINE_RE))) {
+      // Format FR : "14 850,00" (espace = milliers, virgule = décimal)
+      const normalized = match[1].replace(/\s/g, '').replace(/,/g, '.');
+      const num = parseFloat(normalized);
+      if (Number.isFinite(num) && num > detectedTotal) detectedTotal = num;
+    }
+    const HIGH_AMOUNT_THRESHOLD = 3000;
+    if (detectedTotal > HIGH_AMOUNT_THRESHOLD) {
+      isHighAmount = true;
+      forceBrouillonMode = true;
+      savReason = `montant devis ${detectedTotal.toFixed(2)} € > ${HIGH_AMOUNT_THRESHOLD} € — décision commerciale requise`;
+      console.log(`[auto-draft] ${conversationId} montant élevé ${detectedTotal.toFixed(2)} € > ${HIGH_AMOUNT_THRESHOLD} € → force brouillon mode + tag Important`);
+    }
+
     // 6b. Traduction pour les boutiques non francophones (Claude rédige toujours en FR).
     // Si la traduction échoue, on NE poste PAS : mieux vaut pas de brouillon qu'un
     // brouillon en français envoyé à un client étranger.
@@ -541,6 +570,26 @@ ${fullBody}`;
       ? `⚠️ Brouillon créé automatiquement par Claude — auto-send BLOQUÉ : ${savReason}. Décision humaine requise avant envoi. Détail dans le plugin.`
       : '✍️ Brouillon créé automatiquement par Claude. Tout le détail est dans le plugin si besoin d\'aller vérifier.';
     await postComment(conversationId, comment);
+
+    // 8-bis. Tag "Important" sur Front si montant > seuil (§6a-ter). Sert
+    // à la visibilité côté file de conv Devis pour que le gérant traite en
+    // priorité. tag_5bouzb = Tag "Important" (‼️) du workspace Zephyr OSC.
+    if (isHighAmount) {
+      try {
+        const tagRes = await frontFetch(`/conversations/${conversationId}/tags`, {
+          method: 'POST',
+          body: JSON.stringify({ tag_ids: ['tag_5bouzb'] }),
+        });
+        if (tagRes.ok) {
+          console.log(`[auto-draft] ${conversationId} tag "Important" ajouté (montant ${detectedTotal.toFixed(2)} €)`);
+        } else {
+          console.warn(`[auto-draft] ${conversationId} tag "Important" échec ${tagRes.status}`);
+        }
+      } catch (e) {
+        const m = e instanceof Error ? e.message : 'tag err';
+        console.warn(`[auto-draft] ${conversationId} tag "Important" erreur: ${m}`);
+      }
+    }
 
     // 9. En mode auto-send, archiver la conv : le devis est parti, plus besoin
     // qu'elle reste dans la file. Front la rouvrira automatiquement si le

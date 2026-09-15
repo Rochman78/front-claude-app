@@ -65,6 +65,57 @@ function normAttr(s: string): string {
     .trim();
 }
 
+// Synonymes multilingues → valeur canonique. Appliqué des DEUX côtés (demande
+// Sonnet ET catalogue) : le catalogue écrit « coco » / « acier » là où le
+// prompt demande « fibre de coco » / « câble acier », et Sonnet dérive parfois
+// sur le vocabulaire du client (« arena », « kaki », « acero inox »).
+type AttrKind = 'typology' | 'shape' | 'material' | 'color';
+const SYNONYM_GROUPS: Record<AttrKind, Record<string, string[]>> = {
+  typology: {
+    filet: ['red', 'red de camuflaje', 'rete', 'rete mimetica', 'netz', 'tarnnetz', 'net', 'camouflagenet', 'rede', 'rede de camuflagem'],
+    accessoire: ['accesorio', 'accessorio', 'acessorio', 'zubehor', 'accessory', 'accessoires'],
+  },
+  shape: {
+    rectangle: ['rectangulaire', 'rectangular', 'rechteck', 'rechteckig', 'rechthoek', 'rechthoekig', 'rettangolo', 'rettangolare', 'retangular'],
+    carre: ['square', 'cuadrado', 'quadrato', 'quadrado', 'vierkant', 'quadrat', 'quadratisch'],
+    triangle: ['triangulaire', 'triangular', 'triangolare', 'triangolo', 'triangulo', 'driehoek', 'driehoekig', 'dreieck', 'dreieckig'],
+    trapeze: ['trapezoidal', 'trapezoidale', 'trapecio', 'trapezio', 'trapez', 'trapezium', 'trapeziumvormig'],
+  },
+  material: {
+    'cable acier': ['acier', 'inox', 'inoxydable', 'acier inox', 'cable inox', 'cable acier inox', 'cable', 'acero', 'acero inox', 'acero inoxidable', 'cable de acero', 'cable acero', 'acciaio', 'cavo acciaio', 'cavo d acciaio', 'staal', 'staalkabel', 'stahl', 'stahlseil', 'aco', 'cabo de aco', 'cabo aco', 'steel', 'steel cable'],
+    polyester: ['poliester', 'poliestere'],
+    coco: ['fibre de coco', 'fibre coco', 'fibra de coco', 'coir', 'cocos', 'kokos'],
+  },
+  color: {
+    sable: ['arena', 'beige', 'sabbia', 'areia', 'zand', 'sand'],
+    blanc: ['blanco', 'bianco', 'branco', 'wit', 'weiss', 'weiß', 'white'],
+    vert: ['verde', 'groen', 'grun', 'green'],
+    noir: ['negro', 'nero', 'preto', 'zwart', 'schwarz', 'black'],
+    gris: ['grigio', 'cinzento', 'grijs', 'grau', 'gray', 'grey', 'anthracite'],
+    bleu: ['azul', 'blu', 'blauw', 'blau', 'blue'],
+    militaire: ['militar', 'militare', 'militair', 'bundeswehr', 'military', 'kaki', 'khaki', 'vert militaire'],
+    naturel: ['natural', 'natur', 'naturale', 'naturel', 'natuur', 'naturlich'],
+  },
+};
+const SYNONYMS: Record<AttrKind, Map<string, string>> = (() => {
+  const out = {} as Record<AttrKind, Map<string, string>>;
+  for (const kind of Object.keys(SYNONYM_GROUPS) as AttrKind[]) {
+    const m = new Map<string, string>();
+    for (const [canon, alts] of Object.entries(SYNONYM_GROUPS[kind])) {
+      m.set(normAttr(canon), normAttr(canon));
+      for (const alt of alts) m.set(normAttr(alt), normAttr(canon));
+    }
+    out[kind] = m;
+  }
+  return out;
+})();
+
+/** normAttr + mapping synonymes → canonique (valeur inconnue = inchangée). */
+function canonAttr(kind: AttrKind, s: string): string {
+  const n = normAttr(s);
+  return SYNONYMS[kind].get(n) ?? n;
+}
+
 /** Normalise une taille : « 4×5 », « 4x5 », « 5x4 », « 4 x 5 » → « 4x5 » (petit×grand). */
 function normSize(s: string): string {
   const n = normAttr(s);
@@ -82,17 +133,17 @@ function findSkuByProductMatch(
   pm: { typology?: string; shape?: string; material?: string; color?: string; size?: string },
 ): string | null {
   if (!pm.typology || !pm.shape || !pm.material || !pm.color || !pm.size) return null;
-  const wantTypo = normAttr(pm.typology);
-  const wantShape = normAttr(pm.shape);
-  const wantMat = normAttr(pm.material);
-  const wantColor = normAttr(pm.color);
+  const wantTypo = canonAttr('typology', pm.typology);
+  const wantShape = canonAttr('shape', pm.shape);
+  const wantMat = canonAttr('material', pm.material);
+  const wantColor = canonAttr('color', pm.color);
   const wantSize = normSize(pm.size);
   const matches: string[] = [];
   for (const [sku, entry] of Object.entries(catalog)) {
-    if (normAttr(entry.typology) !== wantTypo) continue;
-    if (normAttr(entry.shape) !== wantShape) continue;
-    if (normAttr(entry.material) !== wantMat) continue;
-    if (normAttr(entry.color) !== wantColor) continue;
+    if (canonAttr('typology', entry.typology) !== wantTypo) continue;
+    if (canonAttr('shape', entry.shape) !== wantShape) continue;
+    if (canonAttr('material', entry.material) !== wantMat) continue;
+    if (canonAttr('color', entry.color) !== wantColor) continue;
     if (normSize(entry.size) !== wantSize) continue;
     matches.push(sku);
   }

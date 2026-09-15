@@ -72,14 +72,28 @@ function normAttr(s: string): string {
 type AttrKind = 'typology' | 'shape' | 'material' | 'color';
 const SYNONYM_GROUPS: Record<AttrKind, Record<string, string[]>> = {
   typology: {
-    filet: ['red', 'red de camuflaje', 'rete', 'rete mimetica', 'netz', 'tarnnetz', 'net', 'camouflagenet', 'rede', 'rede de camuflagem'],
+    filet: ['red', 'red de camuflaje', 'rete', 'rete mimetica', 'netz', 'tarnnetz', 'net', 'camouflagenet', 'rede', 'rede de camuflagem', 'filet de camouflage'],
     accessoire: ['accesorio', 'accessorio', 'acessorio', 'zubehor', 'accessory', 'accessoires'],
+    'voile coco': ['toile coco', 'voile d ombrage coco', 'voile d ombrage en fibre de coco', 'toile de coco', 'vela de coco', 'vela in cocco', 'kokos schattensegel', 'kokosdoek'],
+    'rideau coco': ['rideau', 'rideau de coco', 'cortina de coco', 'tenda in cocco', 'kokos vorhang', 'kokosgordijn'],
+    echantillon: ['echantillons', 'muestra', 'campione', 'amostra', 'muster', 'sample', 'staaltje'],
   },
   shape: {
     rectangle: ['rectangulaire', 'rectangular', 'rechteck', 'rechteckig', 'rechthoek', 'rechthoekig', 'rettangolo', 'rettangolare', 'retangular'],
     carre: ['square', 'cuadrado', 'quadrato', 'quadrado', 'vierkant', 'quadrat', 'quadratisch'],
     triangle: ['triangulaire', 'triangular', 'triangolare', 'triangolo', 'triangulo', 'driehoek', 'driehoekig', 'dreieck', 'dreieckig'],
     trapeze: ['trapezoidal', 'trapezoidale', 'trapecio', 'trapezio', 'trapez', 'trapezium', 'trapeziumvormig'],
+    // Accessoires : le catalogue range le nom de l'accessoire dans la colonne forme.
+    // « mât » seul n'est volontairement PAS mappé (télescopique ou bois ?).
+    cable: ['cable acier', 'cable acier au metre', 'cable inox', 'bobine cable', 'cable de acero', 'stahlseil', 'staalkabel', 'cavo d acciaio', 'cavo acciaio', 'cabo de aco', 'steel cable'],
+    corde: ['corde polyester', 'corde tressee', 'corde de fixation', 'corde coco', 'corde fibre de coco', 'cordage', 'cuerda', 'seil', 'touw', 'corda', 'rope'],
+    'corde a cliquets': ['cordes a cliquets', 'corde cliquet', 'sangle a cliquet', 'sangles a cliquets', 'cuerdas de trinquete', 'cuerda de trinquete', 'ratschenseile', 'ratschenseil', 'corde a cricchetto', 'cordas de catraca', 'ratelkoorden'],
+    'base ancrage': ['base d ancrage', 'base de anclaje', 'ankerbasis', 'base di ancoraggio', 'base de ancoragem', 'ankerbasis voet'],
+    'borne solaire': ['balise solaire', 'lampe solaire', 'baliza solar', 'solarleuchte', 'lampada solare', 'baliza solar led', 'solarlamp'],
+    'kit de fixation': ['kit fixation', 'kit de fijacion', 'befestigungsset', 'bevestigingsset', 'kit di fissaggio', 'kit de fixacao'],
+    'mat telescopique': ['mat alu', 'mat aluminium', 'mat telescopique aluminium', 'poteau telescopique', 'mastil telescopico', 'teleskopmast', 'telescopische mast', 'palo telescopico', 'mastro telescopico'],
+    'mat en bois': ['mat bois', 'mat en bois robinier', 'mat robinier', 'mat bois robinier', 'poteau bois', 'mastil de madera', 'holzmast', 'houten mast', 'palo in legno', 'mastro de madeira'],
+    rislan: ['rilsan', 'collier de serrage', 'colliers de serrage', 'serre cable', 'bridas', 'kabelbinder', 'tie wraps', 'fascette', 'abracadeiras', 'cable ties'],
   },
   material: {
     'cable acier': ['acier', 'inox', 'inoxydable', 'acier inox', 'cable inox', 'cable acier inox', 'cable', 'acero', 'acero inox', 'acero inoxidable', 'cable de acero', 'cable acero', 'acciaio', 'cavo acciaio', 'cavo d acciaio', 'staal', 'staalkabel', 'stahl', 'stahlseil', 'aco', 'cabo de aco', 'cabo aco', 'steel', 'steel cable'],
@@ -88,9 +102,9 @@ const SYNONYM_GROUPS: Record<AttrKind, Record<string, string[]>> = {
   },
   color: {
     sable: ['arena', 'beige', 'sabbia', 'areia', 'zand', 'sand'],
-    blanc: ['blanco', 'bianco', 'branco', 'wit', 'weiss', 'weiß', 'white'],
+    blanc: ['blanco', 'blanca', 'bianco', 'bianca', 'branco', 'branca', 'wit', 'weiss', 'weiß', 'white'],
     vert: ['verde', 'groen', 'grun', 'green'],
-    noir: ['negro', 'nero', 'preto', 'zwart', 'schwarz', 'black'],
+    noir: ['negro', 'negra', 'nero', 'nera', 'preto', 'preta', 'zwart', 'schwarz', 'black'],
     gris: ['grigio', 'cinzento', 'grijs', 'grau', 'gray', 'grey', 'anthracite'],
     bleu: ['azul', 'blu', 'blauw', 'blau', 'blue'],
     militaire: ['militar', 'militare', 'militair', 'bundeswehr', 'military', 'kaki', 'khaki', 'vert militaire'],
@@ -110,46 +124,113 @@ const SYNONYMS: Record<AttrKind, Map<string, string>> = (() => {
   return out;
 })();
 
+/** Valeur « sans objet » (n/a, vide, aucun…) → 'na', utilisée comme joker au matching. */
+const NA = 'na';
+const NA_VALUES = new Set(['', 'na', 'n a', 'none', 'aucun', 'aucune', 'sans', 'sans objet', 'null', 'undefined']);
+
 /** normAttr + mapping synonymes → canonique (valeur inconnue = inchangée). */
 function canonAttr(kind: AttrKind, s: string): string {
   const n = normAttr(s);
+  if (NA_VALUES.has(n)) return NA;
   return SYNONYMS[kind].get(n) ?? n;
 }
 
-/** Normalise une taille : « 4×5 », « 4x5 », « 5x4 », « 4 x 5 » → « 4x5 » (petit×grand). */
+/** Mot isolé (tous types d'attributs) → mots canoniques FR, pour l'overlap de labels. */
+const TOKEN_SYNONYMS: Map<string, string[]> = (() => {
+  const m = new Map<string, string[]>();
+  for (const kind of Object.keys(SYNONYM_GROUPS) as AttrKind[]) {
+    for (const [canon, alts] of Object.entries(SYNONYM_GROUPS[kind])) {
+      for (const alt of alts) {
+        const a = normAttr(alt);
+        if (a.includes(' ')) continue;
+        m.set(a, [...(m.get(a) ?? []), ...normAttr(canon).split(' ')]);
+      }
+    }
+  }
+  return m;
+})();
+
+/** Normalise une taille, unités et virgules comprises :
+ *  « 5×4 » / « 4 x 5 m » → « 4x5 » ; « 7,5 m » / « 7.5m » → « 7.5 » ;
+ *  « 1 pièce » / « N/A » → joker ; « lot de 4 » → « lot4 ». */
 function normSize(s: string): string {
-  const n = normAttr(s);
-  const m = n.match(/^(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)(?:\s*x\s*(\d+(?:[.,]\d+)?))?$/);
-  if (!m) return n;
-  const nums = [m[1], m[2], m[3]].filter(Boolean).map((v) => parseFloat(v.replace(',', '.')));
+  const raw = String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/×/g, 'x').replace(/,/g, '.').trim();
+  if (NA_VALUES.has(normAttr(raw)) || /^1\s*(pieces?|pcs?|units?|unites?|unidad(es)?|stucks?|stuks?|pezz[oi]|unidades?)$/.test(raw)) return NA;
+  const lot = raw.match(/^(?:lot|pack|set)\s*(?:de|of|di|van|von)?\s*(\d+)$/);
+  if (lot) return `lot${lot[1]}`;
+  const compact = raw.replace(/(\d)\s*(metres?|metros?|meters?|metri|meter|m)\b\.?/g, '$1').replace(/\s+/g, '');
+  const m = compact.match(/^(\d+(?:\.\d+)?)(?:x(\d+(?:\.\d+)?))?(?:x(\d+(?:\.\d+)?))?$/);
+  if (!m) return normAttr(s);
   // Filets réversibles : rectangle 5x4 = 4x5. Triangle 3 côtés : ordre canonique = trié.
-  nums.sort((a, b) => a - b);
-  return nums.map((v) => (Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.0', ''))).join('x');
+  const nums = [m[1], m[2], m[3]].filter(Boolean).map(Number).sort((a, b) => a - b);
+  return nums.map((v) => String(Math.round(v * 100) / 100)).join('x');
 }
 
-/** Lookup déterministe : trouve un SKU par match exact des 5 attributs (typo, forme, matière, couleur, taille). */
-function findSkuByProductMatch(
-  catalog: Record<string, CatalogEntry>,
-  pm: { typology?: string; shape?: string; material?: string; color?: string; size?: string },
-): string | null {
-  if (!pm.typology || !pm.shape || !pm.material || !pm.color || !pm.size) return null;
-  const wantTypo = canonAttr('typology', pm.typology);
-  const wantShape = canonAttr('shape', pm.shape);
-  const wantMat = canonAttr('material', pm.material);
-  const wantColor = canonAttr('color', pm.color);
-  const wantSize = normSize(pm.size);
-  const matches: string[] = [];
-  for (const [sku, entry] of Object.entries(catalog)) {
-    if (canonAttr('typology', entry.typology) !== wantTypo) continue;
-    if (canonAttr('shape', entry.shape) !== wantShape) continue;
-    if (canonAttr('material', entry.material) !== wantMat) continue;
-    if (canonAttr('color', entry.color) !== wantColor) continue;
-    if (normSize(entry.size) !== wantSize) continue;
-    matches.push(sku);
+type ProductMatch = { typology?: string; shape?: string; material?: string; color?: string; size?: string };
+type CanonAttrs = { typology: string; shape: string; material: string; color: string; size: string };
+const ATTR_KEYS = ['typology', 'shape', 'material', 'color', 'size'] as const;
+
+function canonProduct(pm: ProductMatch): CanonAttrs {
+  return {
+    typology: canonAttr('typology', pm.typology || ''),
+    shape: canonAttr('shape', pm.shape || ''),
+    material: canonAttr('material', pm.material || ''),
+    color: canonAttr('color', pm.color || ''),
+    size: normSize(pm.size || ''),
+  };
+}
+
+const canonCatalogCache = new WeakMap<Record<string, CatalogEntry>, [string, CanonAttrs][]>();
+function canonCatalog(catalog: Record<string, CatalogEntry>): [string, CanonAttrs][] {
+  let out = canonCatalogCache.get(catalog);
+  if (!out) {
+    out = Object.entries(catalog).map(([sku, e]) => [sku, canonProduct(e)]);
+    canonCatalogCache.set(catalog, out);
   }
-  // Un seul match = déterministe. Plusieurs = ambigu (couleur générique
-  // qui match plusieurs SKU) → null (fallback inférence par prix).
-  return matches.length === 1 ? matches[0] : null;
+  return out;
+}
+
+/** Attributs demandés, canonicalisés. Rattrape l'ancien format de prompt où
+ *  le nom de l'accessoire était écrit dans « material » au lieu de « shape ». */
+function resolveWanted(catalog: Record<string, CatalogEntry>, pm: ProductMatch): CanonAttrs {
+  const want = canonProduct(pm);
+  const knownShapes = new Set(canonCatalog(catalog).map(([, c]) => c.shape));
+  const shapeFromMaterial = canonAttr('shape', pm.material || '');
+  if (!knownShapes.has(want.shape) && knownShapes.has(shapeFromMaterial)) {
+    want.shape = shapeFromMaterial;
+    want.material = NA;
+  }
+  return want;
+}
+
+/** Lookup déterministe du SKU à partir des attributs du produit, par paliers
+ *  de tolérance croissante. Chaque palier n'accepte qu'un match UNIQUE :
+ *   1. les 5 attributs identiques ;
+ *   2. attributs « n/a » ou absents traités comme jokers (accessoires) ;
+ *   3. idem en ignorant la typologie (échantillon ou voile coco annoncé « filet »). */
+function findSkuByProductMatch(catalog: Record<string, CatalogEntry>, pm: ProductMatch): string | null {
+  const entries = canonCatalog(catalog);
+  const want = resolveWanted(catalog, pm);
+
+  // Sans forme ni taille, on ne sait pas de quel produit il s'agit.
+  if (want.shape === NA && want.size === NA) return null;
+
+  const pickUnique = (ok: (c: CanonAttrs) => boolean): string | null => {
+    let found: string | null = null;
+    for (const [sku, c] of entries) {
+      if (!ok(c)) continue;
+      if (found) return null;
+      found = sku;
+    }
+    return found;
+  };
+  const same = (k: keyof CanonAttrs, c: CanonAttrs) => want[k] === c[k];
+  const compatible = (k: keyof CanonAttrs, c: CanonAttrs) => want[k] === c[k] || want[k] === NA || c[k] === NA;
+
+  return pickUnique((c) => ATTR_KEYS.every((k) => same(k, c)))
+    ?? pickUnique((c) => ATTR_KEYS.every((k) => compatible(k, c)))
+    ?? pickUnique((c) => ATTR_KEYS.every((k) => k === 'typology' || compatible(k, c)));
 }
 
 /** Charge le prix-ht-standards.txt d'un store depuis la BDD.
@@ -199,6 +280,7 @@ function inferSkuFromCatalog(
   priceInMail: number,
   vatColIdx: number,
   lineLabel: string,
+  pm?: ProductMatch,
 ): string | null {
   if (priceInMail <= 0) return null;
   const TOL = 0.01;
@@ -214,10 +296,25 @@ function inferSkuFromCatalog(
     if (htMatch || ttcMatch) candidates.push(sku);
   }
 
+  // Forme connue du catalogue et contredite (ex. demande « corde », candidat
+  // « rislan » au même prix) → candidat écarté plutôt qu'un mauvais SKU.
+  const want = pm ? resolveWanted(catalog, pm) : null;
+  const canonBySku = new Map(canonCatalog(catalog));
+  const knownShapes = new Set(Array.from(canonBySku.values()).map((c) => c.shape));
+  const contradicts = (sku: string) => {
+    const cand = canonBySku.get(sku);
+    return !!(want && cand && want.shape !== NA && cand.shape !== NA && knownShapes.has(want.shape) && want.shape !== cand.shape);
+  };
+  for (let i = candidates.length - 1; i >= 0; i--) if (contradicts(candidates[i])) candidates.splice(i, 1);
+
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0];
 
-  // Étape 2 : désambiguer par overlap de tokens (label saisi ∩ label catalogue)
+  // Étape 2 : désambiguer. Les attributs productMatch pèsent le plus (un
+  // attribut contradictoire élimine presque le candidat), puis l'overlap de
+  // tokens entre le label saisi et le label catalogue. Les tokens du label
+  // sont traduits via les synonymes : le label est dans la langue de la
+  // boutique (« Cuerda de poliéster negra ») alors que le catalogue est en FR.
   const norm = (s: string) => s
     .toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip accents
@@ -225,7 +322,11 @@ function inferSkuFromCatalog(
     .trim();
   const stopwords = new Set(['de', 'du', 'des', 'le', 'la', 'les', 'un', 'une', 'en', 'et', 'a', 'au', 'aux', 'sur', 'pour', 'avec', 'sans', 'pièce', 'piece', 'unité', 'unite']);
   const tokenize = (s: string) => norm(s).split(' ').filter((t) => t.length >= 3 && !stopwords.has(t));
-  const lineTokens = new Set(tokenize(lineLabel));
+  const lineTokens = new Set<string>();
+  for (const t of tokenize(lineLabel)) {
+    lineTokens.add(t);
+    for (const canon of TOKEN_SYNONYMS.get(t) ?? []) lineTokens.add(canon);
+  }
 
   let best: { sku: string; score: number } | null = null;
   let tied = false;
@@ -234,6 +335,13 @@ function inferSkuFromCatalog(
     const catTokens = tokenize(entry.label);
     let score = 0;
     for (const t of catTokens) if (lineTokens.has(t)) score++;
+    const cand = canonBySku.get(sku);
+    if (want && cand) {
+      for (const k of ATTR_KEYS) {
+        if (want[k] === NA || cand[k] === NA) continue;
+        score += want[k] === cand[k] ? 3 : -3;
+      }
+    }
     if (best === null || score > best.score) {
       best = { sku, score };
       tied = false;
@@ -245,6 +353,53 @@ function inferSkuFromCatalog(
   // 1 seule ligne dans la liste → retour du best. Sinon ambiguïté → null.
   if (best && !tied && best.score > 0) return best.sku;
   return null;
+}
+
+/** Bloc de prompt listant les valeurs productMatch autorisées, tirées du catalogue de la boutique. */
+function buildProductMatchSpec(catalog: Record<string, CatalogEntry>): string {
+  const entries = Object.values(catalog);
+  const header = `Format productMatch (5 clés OBLIGATOIRES pour toute ligne piece) :
+{ "typology": "...", "shape": "...", "material": "...", "color": "...", "size": "..." }
+
+Recopie les valeurs EXACTEMENT telles qu'écrites ci-dessous : c'est le catalogue réel de la boutique, en français. Jamais une valeur dans la langue du client (« arena », « negro », « Stahlseil », « acero inoxidable » → interdit ; écris « sable », « noir », « cable », « câble acier »).`;
+  const footer = `Si le produit demandé n'existe dans AUCUNE de ces valeurs (ex. « poteau carré 2,80 m »), n'invente pas un produit proche : décris-le fidèlement (ex. shape "poteau carré") — le serveur ne trouvera pas de SKU et alertera le gérant.`;
+
+  if (entries.length === 0) {
+    return `${header}
+  typology : filet | voile coco | rideau coco | accessoire | echantillon
+  shape    : rectangle | carré | triangle — pour un accessoire, son nom (ex. "kit de fixation", "mât télescopique")
+  material : polyester | câble acier | coco | n/a
+  color    : sable | blanc | vert | noir | gris | bleu | militaire | naturel | n/a
+  size     : "AxB" en mètres SANS unité (petit×grand), triangle "AxBxC", accessoire "1 pièce" / "7,5m" / "lot de 4"
+
+${footer}`;
+  }
+
+  const sizesHint = 'size = "AxB" en mètres SANS unité, petit×grand (ex. "3x4") ; triangle = "AxBxC"';
+  const groups = new Map<string, { shapes: Set<string>; materials: Set<string>; colors: Set<string> }>();
+  const listed = new Set<string>();
+  for (const e of entries) {
+    if (e.typology === 'accessoire' || e.typology === 'echantillon') {
+      listed.add(`  ${e.typology} | ${e.shape} | ${e.material} | ${e.color} | ${e.size}`);
+      continue;
+    }
+    const g = groups.get(e.typology) ?? { shapes: new Set(), materials: new Set(), colors: new Set() };
+    g.shapes.add(e.shape); g.materials.add(e.material); g.colors.add(e.color);
+    groups.set(e.typology, g);
+  }
+  const join = (set: Set<string>) => Array.from(set).sort().join(' | ');
+  const groupLines = Array.from(groups.entries()).map(([typo, g]) =>
+    `  typology "${typo}" → shape : ${join(g.shapes)} — material : ${join(g.materials)} — color : ${join(g.colors)}`);
+
+  return `${header}
+
+Filets et toiles (${sizesHint}) :
+${groupLines.join('\n')}
+
+Accessoires et échantillons — recopie UNE de ces lignes entière dans l'ordre typology | shape | material | color | size, « n/a » compris :
+${Array.from(listed).sort().join('\n')}
+
+${footer}`;
 }
 
 /**
@@ -270,6 +425,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'claudeText ou mailThread requis' }, { status: 400 });
     }
 
+    // Catalogue chargé AVANT l'appel Claude : les valeurs autorisées de
+    // productMatch sont tirées du catalogue réel de la boutique.
+    let storeCatalog: Record<string, CatalogEntry> = {};
+    if (storeCode) {
+      try {
+        storeCatalog = await loadPriceCatalog(storeCode);
+      } catch (e) {
+        console.warn('[extract-quote] chargement catalogue pour le prompt KO:', e);
+      }
+    }
+    const productMatchSpec = buildProductMatchSpec(storeCatalog);
+
     const systemPrompt = `Tu extrais les données d'un devis depuis un mail de service client. Retourne un JSON structuré.
 
 === RÈGLE N°1 : STANDARD vs SUR MESURE ===
@@ -286,16 +453,7 @@ export async function POST(req: NextRequest) {
 === RÈGLE N°2 BIS : PRODUCTMATCH POUR LES STANDARDS ===
 Pour CHAQUE ligne avec unit="piece" (standard catalogue), tu DOIS remplir le champ productMatch avec les 5 attributs canoniques du produit — le SERVEUR cherchera lui-même le SKU dans son catalogue (déterministe). Ne cherche PAS le SKU toi-même dans le fichier prix-ht-standards.txt : c'est un travail de code, pas de LLM. Ne mets rien dans description (le serveur ajoutera "SKU : xxx" après lookup).
 
-Format productMatch (5 clés OBLIGATOIRES pour toute ligne piece) :
-{
-  "typology": "filet" | "accessoire",           // filet camouflage OU accessoire (mât, kit fixation, câble, corde, borne, base d'ancrage...)
-  "shape":    "rectangle" | "carré" | "triangle" | "trapèze",  // toujours en français canonique
-  "material": "polyester" | "câble acier" | "fibre de coco" | "polyester ignifugé" | "câble acier ignifugé",  // français canonique
-  "color":    "sable" | "blanc" | "vert" | "noir" | "gris" | "bleu" | "militaire",  // français canonique
-  "size":     "AxB"  // A et B en mètres SANS unité (ex: "4x5", "2x2", "3x6"). Pour triangle: "AxBxC" (3 côtés). RÉVERSIBLE : mets petit×grand.
-}
-
-Pour les ACCESSOIRES (mât, kit, câble au mètre, corde…) où color/size peuvent ne pas avoir de sens : mets typology="accessoire" et remplis material avec le libellé exact (ex: "mât", "kit fixation", "corde polyester"). Le serveur fera l'inférence par prix si le lookup échoue.
+${productMatchSpec}
 
 === RÈGLE N°3 : LABEL (TOUJOURS dans la langue de la boutique) ===
 - Le brouillon est en français mais le label du devis PDF DOIT être dans la LANGUE DE LA BOUTIQUE.
@@ -378,7 +536,7 @@ ${claudeText || '(aucun chiffrage service client — extraire depuis le fil de m
   "totalTTC": 0,
   "lines": [
     { "type": "product|accessory|transport|transport_discount", "label": "", "quantity": 0, "unitPrice": 0, "unit": "m2|piece", "description": "",
-      "productMatch": { "typology": "filet|accessoire", "shape": "rectangle|carré|triangle|trapèze", "material": "polyester|câble acier|fibre de coco|polyester ignifugé|câble acier ignifugé", "color": "sable|blanc|vert|noir|gris|bleu|militaire", "size": "AxB" } }
+      "productMatch": { "typology": "", "shape": "", "material": "", "color": "", "size": "" } }
   ]
 }
 
@@ -603,7 +761,7 @@ Note : "deliveryAddress" doit être :
             console.log(`[extract-quote] SKU ${sku} trouvé par productMatch(${JSON.stringify(productMatch)})`);
           } else {
             const claudeWrote = extractSku(String(line.label || ''), String(line.description || ''));
-            const byPrice = inferSkuFromCatalog(catalog, priceInMail, vatColIdx, String(line.label || ''));
+            const byPrice = inferSkuFromCatalog(catalog, priceInMail, vatColIdx, String(line.label || ''), productMatch);
             if (byPrice) {
               sku = byPrice;
               console.log(`[extract-quote] SKU ${sku} inféré par prix (productMatch KO). Claude avait écrit: ${claudeWrote || '(rien)'}.`);
@@ -662,7 +820,7 @@ Note : "deliveryAddress" doit être :
           // le prix ET le label collent, on remplace silencieusement le
           // SKU de Claude par le bon SKU. Warning informatif.
           if (!matchesTtc && !matchesHt) {
-            const reinferred = inferSkuFromCatalog(catalog, priceInMail, vatColIdx, String(line.label || ''));
+            const reinferred = inferSkuFromCatalog(catalog, priceInMail, vatColIdx, String(line.label || ''), productMatch);
             if (reinferred && reinferred !== sku && catalog[reinferred]) {
               const newEntry = catalog[reinferred];
               console.log(`[extract-quote] SKU corrigé : ${sku} (TTC ${entry.ttc}) → ${reinferred} (TTC ${newEntry.ttc}) via label "${(line.label || '').substring(0, 40)}" à ${priceInMail} €`);

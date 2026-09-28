@@ -53,6 +53,7 @@ import { buildDocumentsText } from '@/lib/documentSelector';
 import { getConversationImages } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
 import { buildCatalogFactsBlock, buildIssuedQuoteBlock } from '@/lib/services/promptFacts';
+import { extraireFilets, buildSurMesureBlock } from '@/lib/services/surMesureCalc';
 import { callClaude } from '@/lib/services/claudeService';
 import { parseStandardsRows, findFamilySkus, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 
@@ -252,6 +253,20 @@ RÈGLES :
     if (conversation.front_conversation_id && agent.store_code) {
       const issuedQuote = await buildIssuedQuoteBlock(conversation.front_conversation_id, agent.store_code);
       if (issuedQuote) stockInfo += `\n\n${issuedQuote}`;
+    }
+
+    // Calcul sur-mesure par le code sur le contexte récent (le client donne
+    // souvent ses dimensions dans une réponse). Jamais pour COCO.
+    const grilleDoc = allFiles.find((f) => f.name === 'prix-ht-sur-mesure.txt');
+    const standardsForSm = allFiles.find((f) => f.name === 'prix-ht-standards.txt');
+    if (agent.store_code !== 'COCO' && grilleDoc && standardsForSm) {
+      try {
+        const context = history.slice(-4).map((m) => m.content).join('\n') + '\n' + message;
+        const block = buildSurMesureBlock(await extraireFilets(context), grilleDoc.content, standardsForSm.content);
+        if (block) stockInfo += `\n\n${block}`;
+      } catch (err) {
+        console.warn('[plugin/message] calcul sur-mesure impossible (non bloquant):', err);
+      }
     }
 
     const messages = [

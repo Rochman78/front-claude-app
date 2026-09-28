@@ -9,6 +9,7 @@ import { callClaude } from '@/lib/services/claudeService';
 import { dedupeRepeatedBlocks } from '@/lib/mailDedup';
 import { parseStandardsRows, findFamilySkus, canBeMadeToMeasure, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 import { buildCatalogFactsBlock, buildIssuedQuoteBlock } from '@/lib/services/promptFacts';
+import { extraireFilets, buildSurMesureBlock } from '@/lib/services/surMesureCalc';
 
 // Rappel final ajouté en queue de message user, juste avant que Claude
 // rédige. Position dictée par le "recency bias" des LLM : les instructions
@@ -167,6 +168,16 @@ export async function POST(req: NextRequest) {
       'SELECT role, content FROM claude_messages WHERE conversation_id = $1 ORDER BY created_at',
       [conversation.id]
     );
+
+    // 5-bis. Calcul sur-mesure par le code (surface, tranche, prix/m²), lancé en
+    // parallèle du pré-passage SKU. Jamais pour COCO (pas de sur-mesure).
+    const grilleDoc = allFiles.find((f) => f.name === 'prix-ht-sur-mesure.txt');
+    const standardsForSm = allFiles.find((f) => f.name === 'prix-ht-standards.txt');
+    const surMesurePromise: Promise<string> = storeCode !== 'COCO' && grilleDoc && standardsForSm
+      ? extraireFilets(mailContent)
+          .then((filets) => buildSurMesureBlock(filets, grilleDoc.content, standardsForSm.content))
+          .catch((err) => { console.warn('[plugin/analyze] calcul sur-mesure impossible (non bloquant):', err); return ''; })
+      : Promise.resolve('');
 
     // 5. Identifier les SKUs pertinents via Haiku + vérifier stock Octopia (non bloquant)
     let stockInfo = '';
@@ -441,6 +452,11 @@ ${altUnknown.map((a) => `  • SKU ${a.sku} | ${a.label}`).join('\n')}
     // Devis Pennylane déjà émis sur cette conversation (montant TTC exact, remises comprises)
     const issuedQuote = await buildIssuedQuoteBlock(frontConversationId, storeCode);
     if (issuedQuote) stockInfo += `\n\n${issuedQuote}`;
+    const surMesureBlock = await surMesurePromise;
+    if (surMesureBlock) {
+      stockInfo += `\n\n${surMesureBlock}`;
+      console.log('[plugin/analyze] bloc calcul sur-mesure injecté');
+    }
 
     // 6. Construire le message utilisateur avec le contexte mail + stock
     // forceFresh : ignore l'historique précédent (utilisé par l'auto-draft pour

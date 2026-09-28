@@ -33,6 +33,7 @@ import { Client } from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
 import { buildMessages, buildSystemBlock } from '../../src/lib/services/claudeService';
 import { buildDocumentsText } from '../../src/lib/documentSelector';
+import { extraireFilets, buildSurMesureBlock } from '../../src/lib/services/surMesureCalc';
 
 // ─── env ──────────────────────────────────────────────────────────
 const envPath = join(process.cwd(), '.env');
@@ -49,6 +50,9 @@ const argValues = (name: string) =>
   args.flatMap((a, i) => (a === name && args[i + 1] ? [args[i + 1]] : a.startsWith(`${name}=`) ? [a.slice(name.length + 1)] : []));
 const argValue = (name: string) => argValues(name)[0] ?? null;
 const DRY = args.includes('--dry-run');
+// --sur-mesure : recalcule le bloc « 📐 CALCUL SUR-MESURE » (surMesureCalc.ts)
+// et l'insère dans le message rejoué, comme /api/plugin/analyze depuis le 28/09.
+const WITH_SM = args.includes('--sur-mesure');
 
 // Cas documentés dans CLAUDE.md (erreurs passées connues)
 const DEFAULT_CASES = [
@@ -157,7 +161,7 @@ async function main() {
   if (DRY) { cases.forEach((c) => console.log(`  ${c.cnv} ${c.store} ${c.date}`)); await db.end(); return; }
 
   // Prompt système + documents par boutique (comme /api/plugin/analyze)
-  const promptCache = new Map<string, { system: string; documents: string }>();
+  const promptCache = new Map<string, { system: string; documents: string; grille?: string; standards?: string }>();
   const instructionsDir = argValue('--instructions-dir');
   async function promptFor(c: Case) {
     if (promptCache.has(c.store)) return promptCache.get(c.store)!;
@@ -175,7 +179,12 @@ async function main() {
       ...files.map((f) => ({ name: f.name, content: f.content, shared: false })),
       ...sharedOk.map((f) => ({ name: f.name, content: f.content, shared: true })),
     ]);
-    const p = { system, documents };
+    const p = {
+      system,
+      documents,
+      grille: files.find((f) => f.name === 'prix-ht-sur-mesure.txt')?.content as string | undefined,
+      standards: files.find((f) => f.name === 'prix-ht-standards.txt')?.content as string | undefined,
+    };
     promptCache.set(c.store, p);
     return p;
   }
@@ -187,7 +196,17 @@ async function main() {
 
   for (const c of cases) {
     baselineChecks.set(c.cnv, c.baseline ? runChecks(c.store, c.user, c.baseline) : []);
-    const { system, documents } = await promptFor(c);
+    const { system, documents, grille, standards } = await promptFor(c);
+    let userMsg = c.user;
+    if (WITH_SM && c.store !== 'COCO' && grille && standards) {
+      const block = buildSurMesureBlock(await extraireFilets(c.user), grille, standards);
+      if (block) {
+        // même position qu'en prod : après les blocs stock, avant le rappel final
+        const reminder = userMsg.lastIndexOf('\n\n══════════════════════════════════════════════════════\n🚨 RAPPEL FINAL');
+        userMsg = reminder >= 0 ? `${userMsg.slice(0, reminder)}\n\n${block}${userMsg.slice(reminder)}` : `${userMsg}\n\n${block}`;
+        console.log(`📐 ${c.cnv} : bloc sur-mesure injecté\n${block.split('\n').slice(3, -4).join('\n')}`);
+      }
+    }
     for (const cfg of configs) {
       const t0 = Date.now();
       try {
@@ -196,7 +215,7 @@ async function main() {
           max_tokens: cfg.thinking || (thinksByDefault(cfg.model) && !cfg.off) ? 32000 : 4096,
           ...(cfg.effort ? { output_config: { effort: cfg.effort } } : {}),
           system: buildSystemBlock(system),
-          messages: buildMessages([{ role: 'user', content: c.user }], documents),
+          messages: buildMessages([{ role: 'user', content: userMsg }], documents),
           ...(cfg.thinking ? { thinking: { type: 'adaptive' as const } } : cfg.off ? { thinking: { type: 'disabled' as const } } : {}),
         });
         const msg = await stream.finalMessage();
@@ -204,7 +223,7 @@ async function main() {
         const u = msg.usage;
         if (msg.stop_reason === 'max_tokens') console.warn(`⚠️ ${c.cnv} [${cfg.name}] tronqué (max_tokens)`);
         const usage = `in=${u.input_tokens} cache_w=${u.cache_creation_input_tokens ?? 0} cache_r=${u.cache_read_input_tokens ?? 0} out=${u.output_tokens}`;
-        const checks = runChecks(c.store, c.user, output);
+        const checks = runChecks(c.store, userMsg, output);
         results.push({ cnv: c.cnv, store: c.store, config: cfg.name, output, checks, ms: Date.now() - t0, usage });
         console.log(`✔ ${c.cnv} ${c.store} [${cfg.name}] ${checks.filter((k) => k.ok).length}/${checks.length} ok — ${Math.round((Date.now() - t0) / 1000)} s — ${usage}`);
       } catch (err) {

@@ -15,6 +15,9 @@ banc de rejeu du 28/09/2026 (scripts/replay-agents/, run 2026-09-28-13-22).
    modèle oublie de le remplacer, le garde-fou prix vide d'autoDraftService le
    détecte toujours (pas de chiffre, moins de 4 lettres).
 
+3. (ajout 28/09 après-midi) prix-ht-sur-mesure.txt : la note « ℹ️ QUADRILATÈRE
+   QUELCONQUE » répétait « 4 angles obligatoires, diagonale non acceptée ».
+
 Idempotent. Backup : backups/quadri-diagonale-gabarit-prix-<ts>/backup.json
 """
 import json
@@ -46,6 +49,15 @@ NEW_QUADRI = """  • Quadrilatère quelconque (4 côtés + 1 DIAGONALE, d'un co
            les 4 côtés + UNE diagonale (en une seule fois s'il en manque plusieurs).
            NE JAMAIS demander d'angles (règle du 02/07/2026)."""
 
+OLD_NOTE = """ℹ️ QUADRILATÈRE QUELCONQUE = même tarif que Triangle-Trapèze (mêmes lignes,
+   mêmes colonnes, mêmes finitions). Le quadrilatère quelconque exige cependant
+   un croquis annoté avec LES 4 ANGLES AUX SOMMETS — OBLIGATOIRES (la diagonale
+   n'est pas une alternative acceptée) — voir le bloc dédié dans les instructions agent."""
+
+NEW_NOTE = """ℹ️ QUADRILATÈRE QUELCONQUE = même tarif que Triangle-Trapèze (mêmes lignes,
+   mêmes colonnes, mêmes finitions). Le quadrilatère quelconque exige cependant
+   les 4 côtés + 1 DIAGONALE (jamais les angles) — voir le bloc dédié dans les instructions agent."""
+
 OLD_GABARIT = 'Filet prix unitaire hors TVA :\n'
 NEW_GABARIT = 'Filet prix unitaire hors TVA : X,XX € HT\n'
 
@@ -60,15 +72,20 @@ def main():
     )
     backup, ops = [], []
     for file_id, store, name, content in cur.fetchall():
-        old, new_txt = (OLD_QUADRI, NEW_QUADRI) if name == 'prix-ht-sur-mesure.txt' else (OLD_GABARIT, NEW_GABARIT)
-        if new_txt in content:
+        pairs = [(OLD_QUADRI, NEW_QUADRI), (OLD_NOTE, NEW_NOTE)] if name == 'prix-ht-sur-mesure.txt' else [(OLD_GABARIT, NEW_GABARIT)]
+        new = content
+        for old, new_txt in pairs:
+            if new_txt in new:
+                continue
+            if new.count(old) != 1:
+                print(f'  ⚠️ {store} {name} : bloc introuvable ou multiple ({new.count(old)}) → skip')
+                continue
+            new = new.replace(old, new_txt)
+        if new == content:
             print(f'  {store} {name} : déjà à jour')
             continue
-        if content.count(old) != 1:
-            print(f'  ⚠️ {store} {name} : bloc introuvable ou multiple ({content.count(old)}) → skip')
-            continue
         backup.append({'id': file_id, 'store_code': store, 'name': name, 'content': content})
-        ops.append((content.replace(old, new_txt), file_id))
+        ops.append((new, file_id))
         print(f'  {store} {name} : patch')
     if not ops or dry:
         print(f'{"[DRY-RUN] " if dry else ""}{len(ops)} fichier(s) à modifier')

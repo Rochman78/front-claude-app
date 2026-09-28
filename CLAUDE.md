@@ -75,6 +75,13 @@ front-claude-app/
 - 9 boutiques (LFC, LVO, MON, UNI, TAR, HET, RED, REDE, RETE) : 2 options brouillon = (1) site + (2) sur-mesure. COCO : 1 seule option = site (pas de sur-mesure en coco).
 - Encodé × 10 agents en BDD (remplace l'ancienne formulation "nous pouvons vous prévenir par email dès que le réassort sera disponible").
 
+### Instructions agents — SOURCE UNIQUE dans le repo (28/09/2026)
+- `agents.instructions` est désormais GÉNÉRÉ depuis `agents/prompt/instructions.md` (gabarit commun) + `agents/prompt/stores.json` (nom, préfixe de commande, spécialité, flags `coco` / `mat_bois` par boutique). Syntaxe : `{{VARIABLE}}` et lignes `{% if flag %}` / `{% if store in HET,RED %}` / `{% else %}` / `{% endif %}`.
+- **Ne plus patcher la base à la main ni par chercher-remplacer.** Workflow : éditer le gabarit → `python3 scripts/agents-prompt/prompt.py check` puis `diff <CODE>` → rejouer le banc si le fond change → `push --yes` (backup auto dans `backups/agents-prompt-<ts>/`) → commit + PR. `check` doit afficher `0 boutique(s) à pousser` sur main.
+- Les différences entre boutiques sont voulues quand elles sont écrites dans le gabarit ou `stores.json` : c'est là qu'elles se documentent.
+- Premier push (backup `backups/agents-prompt-20260928-165508/`) : mât en bois ajouté aux instructions LVO/MON, REDE se présentait comme « RED DE CAMUFLAJE », spécialités boutique (COCO toiles coco, LVO voiles d'ombrage, MON tout), règle « devis déjà émis = montants repris à l'identique, remise comprise », côtés manquants + diagonale en une fois, délais de livraison lus dans POLITIQUE EXPEDITION.docx du pays du client (fin du « France 48-72 h / Europe 3-6 j » figé ; jamais 21 jours pour un standard).
+- Risque observé au banc : 1 rejeu sur 5 du cas `cnv_1lktrcev` (RETE) a rédigé tout le brouillon en italien avec Sonnet 5 effort low. À surveiller.
+
 ### Modèle des brouillons — Sonnet 5 effort low (28/09/2026)
 - `resolveModel('sonnet')` (`claudeService.ts`) → `claude-sonnet-5`, `output_config.effort = low`, `max_tokens` ≥ 16000 (la réflexion de Sonnet 5 consomme max_tokens : à 4096, 10 brouillons sur 11 étaient tronqués au rejeu). Couvre analyze, message, auto-draft, chat. Les pré-passes (extraction SKU, extract-quote, translate) restent sur Sonnet 4.6.
 - Choix basé sur le rejeu de 31 conversations (`scripts/replay-agents/replay.ts`) : 3 erreurs graves vs 4 (Sonnet 4.6), 9 pour Sonnet 5 sans réflexion ; 15 s vs 19 s. Sonnet 4.6 + réflexion écarté : 3-9 min par brouillon.

@@ -663,7 +663,7 @@ Merci pour ces précisions. Pour votre zone de [DIMENSIONS] m, deux solutions vo
 
 1) SUR MESURE aux dimensions exactes [DIMENSIONS] m : nous fabriquons un filet exactement à vos cotes. Prix : [PRIX_SM] € HT (délai d'environ 21 jours).
 
-2) STANDARD catalogue : la taille la plus proche disponible est [TAILLE_STD] m, au prix de [PRIX_STD] € TTC (livraison France gratuite, 48-72 h).
+2) STANDARD catalogue : la taille la plus proche disponible est [TAILLE_STD] m, au prix de [PRIX_STD] € TTC ([DÉLAI_STD] : délai et frais de livraison lus dans POLITIQUE EXPEDITION.docx pour le pays du client).
 
 À vous de nous indiquer la solution qui vous convient le mieux. »
 
@@ -1067,8 +1067,7 @@ INFOS BOUTIQUE
 ═══════════════════════════════════════
 
 - Entreprise : SAS ZEPHYR O.S.C — 5 rue Fénelon, 33000 Bordeaux
-- Livraison France standard : GRATUITE, 48-72H
-- Livraison Europe : PAYANTE, 3-6 jours
+- LIVRAISON (tarifs, délais, transporteurs, pays desservis) : la SEULE source est POLITIQUE EXPEDITION.docx de CETTE boutique, lue pour le PAYS DE LIVRAISON du client (gratuit ou payant et délais varient selon la boutique et le pays). Délai annoncé pour un produit STANDARD = préparation + transport vers ce pays, tels qu'écrits dans ce document. JAMAIS « environ 21 jours » pour un produit standard : ce délai concerne UNIQUEMENT le sur-mesure. Pays absent du document → ne pas inventer, signaler en QUESTIONS.
 - Satisfait ou remboursé : 30 jours
 - Paiement : CB, PayPal, Apple Pay, Klarna (3x sans frais) — ⚠️ UNIQUEMENT pour les commandes STANDARD passées en ligne. Pour tout devis (PDF Pennylane, sur-mesure ou grosse quantité) : VIREMENT BANCAIRE UNIQUEMENT, RIB transmis séparément par le gérant.
 - Service client : lundi-vendredi, 8h30-17h30

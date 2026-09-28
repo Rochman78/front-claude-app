@@ -115,8 +115,22 @@ export function buildSystemBlock(systemPrompt: string): Anthropic.Messages.TextB
 /**
  * Résout le model ID à partir du nom court.
  */
+// Modèle principal des brouillons (analyze, message, auto-draft, chat).
+// Sonnet 5 en effort « low » retenu le 28/09/2026 après rejeu de 31 conversations
+// (scripts/replay-agents/) : moins d'erreurs graves que Sonnet 4.6, pas de
+// raisonnement qui fuit dans la sortie, plus rapide. Retour arrière sans
+// déploiement : CLAUDE_MAIN_MODEL=claude-sonnet-4-6 sur Render.
+const MAIN_MODEL = process.env.CLAUDE_MAIN_MODEL || 'claude-sonnet-5';
+const MAIN_EFFORT = (process.env.CLAUDE_MAIN_EFFORT || 'low') as 'low' | 'medium' | 'high';
+
+/** Sonnet 5 / Opus 5 / Fable réfléchissent par défaut : la réflexion consomme
+ *  max_tokens et se règle par l'effort (Sonnet 4.6 : ni l'un ni l'autre). */
+function thinksByDefault(model: string): boolean {
+  return /sonnet-5|opus-5|fable/.test(model);
+}
+
 export function resolveModel(model?: string): string {
-  return model === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
+  return model === 'sonnet' ? MAIN_MODEL : 'claude-haiku-4-5-20251001';
 }
 
 /**
@@ -139,9 +153,12 @@ export function createChatStream(options: StreamChatOptions): { stream: Readable
   const readable = new ReadableStream({
     async start(controller) {
       try {
+        const thinks = thinksByDefault(model);
         const stream = await client.messages.stream({
           model,
-          max_tokens: options.maxTokens || 4096,
+          // Marge pour la réflexion (sinon brouillon tronqué, cf. rejeu 28/09/2026)
+          max_tokens: thinks ? Math.max(options.maxTokens || 0, 16000) : options.maxTokens || 4096,
+          ...(thinks ? { output_config: { effort: MAIN_EFFORT } } : {}),
           system: systemBlock,
           messages: allMessages,
         });
@@ -156,7 +173,7 @@ export function createChatStream(options: StreamChatOptions): { stream: Readable
 
         const finalMessage = await stream.finalMessage();
         const usage = finalMessage.usage as unknown as Record<string, number>;
-        console.log(`[claude] done in ${Date.now() - t0}ms | input=${usage.input_tokens} cache_create=${usage.cache_creation_input_tokens ?? 0} cache_read=${usage.cache_read_input_tokens ?? 0} output=${usage.output_tokens}`);
+        console.log(`[claude] done in ${Date.now() - t0}ms | stop=${finalMessage.stop_reason} | input=${usage.input_tokens} cache_create=${usage.cache_creation_input_tokens ?? 0} cache_read=${usage.cache_read_input_tokens ?? 0} output=${usage.output_tokens}`);
       } catch (streamErr) {
         const rawMsg = streamErr instanceof Error ? streamErr.message : 'Erreur stream';
         console.error('[claude] Stream error:', rawMsg);

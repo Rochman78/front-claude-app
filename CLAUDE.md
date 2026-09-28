@@ -75,6 +75,12 @@ front-claude-app/
 - 9 boutiques (LFC, LVO, MON, UNI, TAR, HET, RED, REDE, RETE) : 2 options brouillon = (1) site + (2) sur-mesure. COCO : 1 seule option = site (pas de sur-mesure en coco).
 - Encodé × 10 agents en BDD (remplace l'ancienne formulation "nous pouvons vous prévenir par email dès que le réassort sera disponible").
 
+### Stock partiel / rupture coco & accessoires — JAMAIS de sur-mesure (28/09/2026)
+- Seuls les **filets** polyester / câble acier se fabriquent sur mesure. Coco (toiles, rideaux), accessoires, échantillons et toute la boutique COCO : standard uniquement.
+- `/api/plugin/analyze` injecte les blocs `🚨 RUPTURE STOCK` / `⚠️ STOCK PARTIEL` avec une formulation type. Ils sont maintenant scindés via `canBeMadeToMeasure()` (`stockFamilyExpansion.ts`) : filets = « solde fabriqué sur mesure (21 j) » ; le reste = qté dispo + notification réassort sur la fiche produit, sur-mesure interdit. Ce bloc injecté l'emporte sur les instructions agent → toute nouvelle formulation type doit respecter cette distinction.
+- Instructions × 10 agents : exception coco/accessoires ajoutée aux puces RUPTURE et PARTIEL de l'ÉTAPE 2 + bloc « ⚠️ COCO — AUCUN SUR-MESURE, JAMAIS » après la RÈGLE MÉTA chez COCO. Script `scripts/patch_stock_coco_pas_sur_mesure.py`, backup `backups/stock-coco-pas-sur-mesure-20260928-113827/`.
+- Cas déclencheur : `cnv_1mcdaown` (COCO) — 2 toiles coco triangle 3×3×3, 1 en stock → « la seconde fabriquée sur mesure aux mêmes dimensions (21 jours) ».
+
 ### Salutation — TOUJOURS « Bonjour, » seul (03/07/2026)
 - Charles : « ne mets plus le prénom après le bonjour sur toutes les boutiques, ya trop d'erreur, tu peux mettre juste bonjour ». Trop d'erreurs récurrentes : confusion prénom/nom, contamination inter-messages, boîte de service prise pour un prénom, casse/accents erronés.
 - Règle stricte agents × 10 boutiques : **TOUJOURS « Bonjour, » seul**. Jamais de prénom, nom, titre, fonction. La traduction au push adapte automatiquement (« Hallo, » DE / « Goedendag, » NL / « Buenos días, » ES / « Buongiorno, » IT / « Bom dia, » PT).

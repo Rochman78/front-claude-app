@@ -75,6 +75,13 @@ front-claude-app/
 - 9 boutiques (LFC, LVO, MON, UNI, TAR, HET, RED, REDE, RETE) : 2 options brouillon = (1) site + (2) sur-mesure. COCO : 1 seule option = site (pas de sur-mesure en coco).
 - Encodé × 10 agents en BDD (remplace l'ancienne formulation "nous pouvons vous prévenir par email dès que le réassort sera disponible").
 
+### Faits injectés par le code dans l'analyse (28/09/2026)
+- `src/lib/services/promptFacts.ts`, appelé par analyze (1re analyse, reprise, auto-draft) et message :
+  - **💶 PRIX CATALOGUE EXACTS** : pour chaque SKU trouvé par le pré-passage (Sonnet 4.6), recopie de la ligne `prix-ht-standards.txt` (TTC + 12 colonnes HT). Le modèle ne cherche plus le prix dans les ~100 000 caractères du catalogue.
+  - **📄 DEVIS DÉJÀ ÉMIS** : dernier devis de `conversation_quotes` (n°, date, TTC, remises comprises) → les rappels de prix reprennent ce montant.
+- Limite : un produit que le pré-passage ne reconnaît pas n'a pas de bloc prix → l'agent retombe sur la lecture du catalogue. `conversation_quotes` ne garde qu'un devis par conversation et boutique (le dernier).
+- Le banc de rejeu utilise les messages stockés : seules les analyses faites après ce déploiement contiennent ces blocs.
+
 ### Instructions agents — SOURCE UNIQUE dans le repo (28/09/2026)
 - `agents.instructions` est désormais GÉNÉRÉ depuis `agents/prompt/instructions.md` (gabarit commun) + `agents/prompt/stores.json` (nom, préfixe de commande, spécialité, flags `coco` / `mat_bois` par boutique). Syntaxe : `{{VARIABLE}}` et lignes `{% if flag %}` / `{% if store in HET,RED %}` / `{% else %}` / `{% endif %}`.
 - **Ne plus patcher la base à la main ni par chercher-remplacer.** Workflow : éditer le gabarit → `python3 scripts/agents-prompt/prompt.py check` puis `diff <CODE>` → rejouer le banc si le fond change → `push --yes` (backup auto dans `backups/agents-prompt-<ts>/`) → commit + PR. `check` doit afficher `0 boutique(s) à pousser` sur main.

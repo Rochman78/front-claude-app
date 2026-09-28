@@ -216,6 +216,26 @@ front-claude-app/
   Exemples : `FR_200` (20%), `FR_55` (5,5%), `DE_190`, `ES_210`, `IT_220`, `NL_210`, `BE_210`, `LU_170`. 0% → `exempt`.
 - **Tout code invalide** (`"20"`, `"fr_200"`, `"FR_20"` pour 20%, `"tax_free_0"`, `"France_200"`) provoque une erreur 400 **trompeuse** : `"The schema of the object invoice_lines isn't one of the following: 'Product-based Invoice Line' ..."`. Le message ne mentionne JAMAIS vat_rate.
 - `pennylaneService.normalizeVatRate()` normalise robustement (accepte nombre, format dégradé, casse mixte) → toujours passer par cette fonction côté serveur.
+- **Le code pays du vat_rate = pays de LIVRAISON**, jamais celui de facturation (juridiction fiscale OSS, cohérent avec la règle « TVA = pays de livraison »). Cas Antje Verhoeven-Helf 25/08/2026 (`cnv_1m169d07`, TAR) : facturation Düsseldorf DE + livraison Estellencs ES + TVA 21 % → code `DE_210` alors que DE n'a pas de taux 21 % → 400 trompeuse. Le bon code était `ES_210`. Fix dans `QuotePanel.tsx` : `deliveryCountry` est calculé AVANT `vatCode`. La variable `country` (facturation) reste utilisée pour l'adresse client Pennylane et les mentions LIC / exportation.
+
+### Matching SKU dans extract-quote (`productMatch`) — 15/09/2026
+- Le SKU d'une ligne standard n'est JAMAIS écrit par Claude : il sort d'un lookup déterministe côté serveur (`findSkuByProductMatch`) sur 5 attributs (typologie / forme / matière / couleur / taille) comparés au `prix-ht-standards.txt` de la boutique.
+- **Le prompt liste les valeurs autorisées générées depuis le catalogue réel** (`buildProductMatchSpec`, catalogue chargé AVANT l'appel Claude). Les accessoires et échantillons y figurent ligne par ligne, à recopier telles quelles (`accessoire | kit de fixation | n/a | n/a | 1 pièce`). Ne pas revenir à une liste de valeurs écrite en dur : elle se désynchronise du catalogue.
+- **Structure du catalogue à connaître** : pour un accessoire, le NOM est dans la colonne *forme* (`mât télescopique`, `kit de fixation`, `cable`…), pas dans *matière*. Typologies réelles : `filet`, `voile coco`, `rideau coco`, `accessoire`, `echantillon`. Matières réelles : `polyester`, `câble acier`, `coco`, `acier`, `bois`, `n/a` (le catalogue écrit `coco`, pas « fibre de coco »).
+- Matching par paliers, chacun n'acceptant qu'un match UNIQUE : (1) 5 attributs égaux, (2) `n/a`/absent traité en joker, (3) idem en ignorant la typologie. Synonymes multilingues appliqué des DEUX côtés (demande ET catalogue) : `arena`/`beige`→sable, `kaki`→militaire, `acero inox`→câble acier, `Teleskopmast`→mât télescopique…
+- Fallback par prix (`inferSkuFromCatalog`) : 25 à 32 accessoires/échantillons par boutique partagent un prix TTC (câble 7,5 m et cordes 30 m à 14,90 €…). Le départage utilise les attributs `productMatch` + les tokens du label traduits via les synonymes (le label est en langue boutique, le catalogue en FR). Un candidat dont la forme contredit la demande est écarté → mieux vaut pas de SKU qu'un mauvais SKU.
+- Avant toute modif de ce matching : rejouer la simulation sur les 3 918 lignes des 10 catalogues (attributs exacts = 100 %, accessoires 268/268, échantillons 42/42, 0 mauvais SKU, produits hors catalogue sans SKU).
+- Donnée connue non corrigée : voile coco triangle SKU `3760388678396`, taille tronquée « 3.5x3.5x3. » dans le catalogue et dans `scripts/catalogue/sku_metadata.csv` (reconnue via son prix unique).
+
+### Auto-send — seuil 3 000 € + tag Important (27/08/2026)
+- `autoDraftService.ts` §6a-ter : si un total du brouillon dépasse **3 000 €**, `forceBrouillonMode = true` → brouillon posé, jamais d'envoi automatique. Parsing sur le texte FR avant traduction (`Total`, `Total HT`, `Total TTC`, `Prix total`, `Montant total`, `Grand total`, format `14 850,00 €`).
+- §8-bis : la conv est taguée **Important** (`tag_5bouzb`, workspace Zephyr OSC) via l'API Front. Best-effort, un échec ne bloque pas le flow.
+- Cas déclencheur : `cnv_1m5sm3rr` (RED, Marinha Portuguesa) — 180 filets à 14 850 € HT partis en auto-send.
+
+### Rate-limit Front API (429) — 30/07/2026
+- Le cron `auto-draft-poll` scanne 10 boutiques × ~100 conv et fait 3 appels Front par conv taguée Devis → dépassement du quota Front (~100 req/min) → 429 en cascade, puis 502 renvoyé au cron Render (`curl exit 22`).
+- Deux garde-fous : `frontFetch` retente sur 429 (3 essais, respecte `Retry-After`, sinon 500 ms / 1 s / 2 s) ; le poll attend **400 ms entre chaque conv**. Ne pas retirer le throttle — le retry seul ne suffit pas, il n'abaisse pas le débit.
+- Les 429 ne sont PAS enregistrés dans `auto_drafts` : le cooldown 12 h est réservé aux vraies erreurs, un rate-limit doit être retenté au poll suivant.
 
 ### cleanDraft (nettoyage avant push)
 - Doit supprimer : QUESTIONS/PREGUNTAS/FRAGEN/etc., commentaires [⚠️...], signatures (toutes langues)

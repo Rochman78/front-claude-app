@@ -75,6 +75,12 @@ front-claude-app/
 - 9 boutiques (LFC, LVO, MON, UNI, TAR, HET, RED, REDE, RETE) : 2 options brouillon = (1) site + (2) sur-mesure. COCO : 1 seule option = site (pas de sur-mesure en coco).
 - Encodé × 10 agents en BDD (remplace l'ancienne formulation "nous pouvons vous prévenir par email dès que le réassort sera disponible").
 
+### Modèle des brouillons — Sonnet 5 effort low (28/09/2026)
+- `resolveModel('sonnet')` (`claudeService.ts`) → `claude-sonnet-5`, `output_config.effort = low`, `max_tokens` ≥ 16000 (la réflexion de Sonnet 5 consomme max_tokens : à 4096, 10 brouillons sur 11 étaient tronqués au rejeu). Couvre analyze, message, auto-draft, chat. Les pré-passes (extraction SKU, extract-quote, translate) restent sur Sonnet 4.6.
+- Choix basé sur le rejeu de 31 conversations (`scripts/replay-agents/replay.ts`) : 3 erreurs graves vs 4 (Sonnet 4.6), 9 pour Sonnet 5 sans réflexion ; 15 s vs 19 s. Sonnet 4.6 + réflexion écarté : 3-9 min par brouillon.
+- **Retour arrière sans déploiement** : `CLAUDE_MAIN_MODEL=claude-sonnet-4-6` sur Render (`CLAUDE_MAIN_EFFORT` pour l'effort).
+- Avant tout changement de modèle ou de prompt : rejouer le banc (`npx tsx scripts/replay-agents/replay.ts --recent 19 --config …`), ~0,20 $ par brouillon.
+
 ### Stock partiel / rupture coco & accessoires — JAMAIS de sur-mesure (28/09/2026)
 - Seuls les **filets** polyester / câble acier se fabriquent sur mesure. Coco (toiles, rideaux), accessoires, échantillons et toute la boutique COCO : standard uniquement.
 - `/api/plugin/analyze` injecte les blocs `🚨 RUPTURE STOCK` / `⚠️ STOCK PARTIEL` avec une formulation type. Ils sont maintenant scindés via `canBeMadeToMeasure()` (`stockFamilyExpansion.ts`) : filets = « solde fabriqué sur mesure (21 j) » ; le reste = qté dispo + notification réassort sur la fiche produit, sur-mesure interdit. Ce bloc injecté l'emporte sur les instructions agent → toute nouvelle formulation type doit respecter cette distinction.

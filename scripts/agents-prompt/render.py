@@ -5,7 +5,7 @@ Syntaxe (lignes de contrôle seules sur leur ligne) :
     {% if not coco %}
     {% if store in HET,RED %}     liste de codes boutique
     {% elif ... %} / {% else %} / {% endif %}   (imbrication autorisée)
-Variables dans le texte : {{NAME_UPPER}}, {{CODE}}, {{PREFIX}}, {{BARE}}, {{OTHER_PREFIXES}}.
+Variables dans le texte : {{NAME_UPPER}}, {{CODE}}, {{PREFIX}}, {{BARE}}, {{OTHER_PREFIXES}}, {{SPECIALITE}}.
 """
 import json
 import re
@@ -33,6 +33,7 @@ def store_vars(code, stores):
         'PREFIX': s['prefix'],
         'BARE': s['bare'],
         'OTHER_PREFIXES': ', '.join(others),
+        'SPECIALITE': s['specialite'],
     }
 
 

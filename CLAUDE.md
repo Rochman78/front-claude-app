@@ -82,6 +82,12 @@ front-claude-app/
 - Cas déclencheur : `cnv_1mcdaown` (COCO) — 2 toiles coco triangle 3×3×3, 1 en stock → « la seconde fabriquée sur mesure aux mêmes dimensions (21 jours) ».
 - Purge COCO (même jour) : 5 blocs filet sur-mesure hérités supprimés des instructions COCO (CROQUIS SELON LA FORME, QUADRILATÈRE QUELCONQUE, TAILLE FILET, TRANCHE SUR-MESURE, PÉRIMÈTRE DU SUR-MESURE), 101 k → 86 k car. Script `scripts/patch_coco_purge_blocs_sur_mesure.py`, backup `backups/coco-purge-sur-mesure-20260928-114257/`. Ne pas les réinjecter chez COCO lors d'un futur patch × 10 agents.
 
+### Mât en bois Robinier — LFC / COCO / LVO / MON uniquement, livraison France (28/09/2026)
+- SKU `3770043027001`, 249,99 € TTC. Vendu **uniquement** sur LFC, COCO, LVO, MON et **uniquement pour une livraison en France** (transport C Chez vous). Hors France → pas proposé, alternative mât télescopique alu `3760263850060`.
+- HET, RED, REDE, RETE, TAR, UNI : ligne retirée de `prix-ht-standards.txt`, `FT-Mat-Bois-Robinier.txt` supprimé, ligne SKU retirée des instructions. `regen_prix_ht_standards.py` ne ré-ajoute pas une ligne absente → le retrait tient.
+- Script `scripts/patch_mat_bois_perimetre.py`, backup `backups/mat-bois-perimetre-20260928-135356/`. Fiche technique : prix résiduel 219,99 € corrigé en 249,99 €.
+- Les différences de gamme entre boutiques sont VOULUES : ne jamais « réaligner » un produit sur les 10 agents sans vérifier que la boutique le vend (`scripts/agents-audit/diff_agents.py` liste, ne corrige pas).
+
 ### Salutation — TOUJOURS « Bonjour, » seul (03/07/2026)
 - Charles : « ne mets plus le prénom après le bonjour sur toutes les boutiques, ya trop d'erreur, tu peux mettre juste bonjour ». Trop d'erreurs récurrentes : confusion prénom/nom, contamination inter-messages, boîte de service prise pour un prénom, casse/accents erronés.
 - Règle stricte agents × 10 boutiques : **TOUJOURS « Bonjour, » seul**. Jamais de prénom, nom, titre, fonction. La traduction au push adapte automatiquement (« Hallo, » DE / « Goedendag, » NL / « Buenos días, » ES / « Buongiorno, » IT / « Bom dia, » PT).

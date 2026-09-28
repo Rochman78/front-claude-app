@@ -1,12 +1,12 @@
 {
-  "LFC":  {"name_upper": "LE FILET DE CAMOUFLAGE",   "prefix": "#LFC",  "bare": "LFC",  "flags": {"coco": false}},
-  "COCO": {"name_upper": "MA TOILE COCO",            "prefix": "#COCO", "bare": "COCO", "flags": {"coco": true}},
-  "LVO":  {"name_upper": "LE VOILE D'OMBRAGE",       "prefix": "#LVO",  "bare": "LVO",  "flags": {"coco": false}},
-  "MON":  {"name_upper": "MON OMBRAGE",              "prefix": "#MO",   "bare": "MO",   "flags": {"coco": false}},
-  "UNI":  {"name_upper": "L'UNIVERS DU CAMOUFLAGE",  "prefix": "#UC",   "bare": "UC",   "flags": {"coco": false}},
-  "TAR":  {"name_upper": "TARNNETZ",                 "prefix": "#TZ",   "bare": "TZ",   "flags": {"coco": false}},
-  "HET":  {"name_upper": "HET CAMOUFLAGENET",        "prefix": "HC",    "bare": "HC",   "flags": {"coco": false}},
-  "RED":  {"name_upper": "RED DE CAMUFLAJE",         "prefix": "RDC",   "bare": "RDC",  "flags": {"coco": false}},
-  "REDE": {"name_upper": "RED DE CAMUFLAJE",         "prefix": "RDC",   "bare": "RDC",  "flags": {"coco": false}},
-  "RETE": {"name_upper": "RETE MIMETICA",            "prefix": "#RM",   "bare": "RM",   "flags": {"coco": false}}
+  "LFC":  {"name_upper": "LE FILET DE CAMOUFLAGE", "prefix": "#LFC", "bare": "LFC", "specialite": "les filets de camouflage et accessoires de fixation", "flags": {"coco": false, "mat_bois": true}},
+  "COCO": {"name_upper": "MA TOILE COCO", "prefix": "#COCO", "bare": "COCO", "specialite": "les toiles et rideaux en fibre de coco et leurs accessoires de fixation", "flags": {"coco": true, "mat_bois": true}},
+  "LVO":  {"name_upper": "LE VOILE D'OMBRAGE", "prefix": "#LVO", "bare": "LVO", "specialite": "les voiles d'ombrage et accessoires de fixation", "flags": {"coco": false, "mat_bois": true}},
+  "MON":  {"name_upper": "MON OMBRAGE", "prefix": "#MO", "bare": "MO", "specialite": "les filets de camouflage, voiles d'ombrage, toiles et rideaux en fibre de coco, et leurs accessoires de fixation", "flags": {"coco": false, "mat_bois": true}},
+  "UNI":  {"name_upper": "L'UNIVERS DU CAMOUFLAGE", "prefix": "#UC", "bare": "UC", "specialite": "les filets de camouflage et accessoires de fixation", "flags": {"coco": false, "mat_bois": false}},
+  "TAR":  {"name_upper": "TARNNETZ", "prefix": "#TZ", "bare": "TZ", "specialite": "les filets de camouflage et accessoires de fixation", "flags": {"coco": false, "mat_bois": false}},
+  "HET":  {"name_upper": "HET CAMOUFLAGENET", "prefix": "HC", "bare": "HC", "specialite": "les filets de camouflage et accessoires de fixation", "flags": {"coco": false, "mat_bois": false}},
+  "RED":  {"name_upper": "RED DE CAMUFLAJE", "prefix": "RDC", "bare": "RDC", "specialite": "les filets de camouflage et accessoires de fixation", "flags": {"coco": false, "mat_bois": false}},
+  "REDE": {"name_upper": "REDE CAMUFLAGEM", "prefix": "RDC", "bare": "RDC", "specialite": "les filets de camouflage et accessoires de fixation", "flags": {"coco": false, "mat_bois": false}},
+  "RETE": {"name_upper": "RETE MIMETICA", "prefix": "#RM", "bare": "RM", "specialite": "les filets de camouflage et accessoires de fixation", "flags": {"coco": false, "mat_bois": false}}
 }

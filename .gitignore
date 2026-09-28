@@ -44,3 +44,4 @@ next-env.d.ts
 
 # client dependencies
 /client/node_modules
+scripts/replay-agents/runs/

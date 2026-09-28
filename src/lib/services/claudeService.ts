@@ -53,7 +53,7 @@ export function buildMessages(messages: { role: string; content: string }[], doc
         },
         {
           role: 'assistant' as const,
-          content: 'Bien noté. Je dispose des documents de référence et je suis prêt à analyser le mail du client selon le workflow en 3 étapes.',
+          content: 'Bien noté. Je dispose des documents de référence et je suis prêt à analyser le mail du client selon le process décrit dans mes instructions.',
         },
       ]
     : [];

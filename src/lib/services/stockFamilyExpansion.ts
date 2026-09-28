@@ -72,3 +72,20 @@ export function findFamilySkus(
   }
   return found;
 }
+
+/** Le produit peut-il être proposé en sur-mesure en cas de rupture / stock
+ *  partiel ? Seuls les FILETS polyester / câble acier se fabriquent sur
+ *  mesure. Coco (toiles, rideaux), accessoires et échantillons : standard
+ *  uniquement, et la boutique COCO n'a aucun sur-mesure (cas cnv_1mcdaown
+ *  28/09/2026 : « solde fabriqué sur mesure » proposé sur une toile coco).
+ *  Ligne catalogue introuvable → on se rabat sur le nom renvoyé par le
+ *  matching SKU. */
+export function canBeMadeToMeasure(
+  row: CatalogRow | undefined,
+  productName: string,
+  storeCode: string
+): boolean {
+  if (storeCode.toUpperCase() === 'COCO') return false;
+  if (row) return row.typologie === 'filet' && !row.matiere.includes('coco');
+  return !/coco|accessoire|échantillon|echantillon|mât|kit|corde|collier|borne/i.test(productName);
+}

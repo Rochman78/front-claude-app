@@ -7,7 +7,7 @@ import { getConversationAttachments } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
 import { callClaude } from '@/lib/services/claudeService';
 import { dedupeRepeatedBlocks } from '@/lib/mailDedup';
-import { parseStandardsRows, findFamilySkus, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
+import { parseStandardsRows, findFamilySkus, canBeMadeToMeasure, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 
 // Rappel final ajouté en queue de message user, juste avant que Claude
 // rédige. Position dictée par le "recency bias" des LLM : les instructions
@@ -240,6 +240,15 @@ Exemple de réponse :
 
             const ruptures = rows.filter((r) => r.available === 0);
             const partials = rows.filter((r) => r.available !== null && r.available !== 0 && r.available < r.qtyDemanded);
+            // Coco / accessoires / échantillons / boutique COCO : jamais de
+            // sur-mesure → procédure réassort site à la place (cnv_1mcdaown).
+            const stockCatalogRows = parseStandardsRows(standardsDoc.content);
+            const madeToMeasure = (r: StockRow) =>
+              canBeMadeToMeasure(stockCatalogRows.find((c) => c.sku === r.sku), r.name, storeCode);
+            const rupturesMtm = ruptures.filter(madeToMeasure);
+            const rupturesStd = ruptures.filter((r) => !madeToMeasure(r));
+            const partialsMtm = partials.filter(madeToMeasure);
+            const partialsStd = partials.filter((r) => !madeToMeasure(r));
             const sufficient = rows.filter((r) => r.available !== null && r.available >= r.qtyDemanded);
             const unknown = rows.filter((r) => r.available === null);
 
@@ -254,7 +263,7 @@ Exemple de réponse :
             type AltStockRow = { sku: string; label: string; available: number | null };
             const familyAlternatives: AltStockRow[] = [];
             if (ruptures.length > 0) {
-              const catalogRows = parseStandardsRows(standardsDoc.content);
+              const catalogRows = stockCatalogRows;
               const alreadyChecked = new Set(rows.map((r) => r.sku));
               const familySkuMap: Record<string, CatalogRow> = {};
               for (const rupture of ruptures) {
@@ -283,37 +292,75 @@ Exemple de réponse :
 
             const blocks: string[] = [];
 
-            if (ruptures.length > 0) {
+            if (rupturesMtm.length > 0) {
               blocks.push(
                 `══════════════════════════════════════════════════════
 🚨 RUPTURE STOCK — PROCESS OBLIGATOIRE
 
 Le(s) SKU catalogue correspondant à la demande du client sont ACTUELLEMENT EN RUPTURE :
-${ruptures.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : 0 | client demande : ${r.qtyDemanded}`).join('\n')}
+${rupturesMtm.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : 0 | client demande : ${r.qtyDemanded}`).join('\n')}
 
 TU DOIS :
 1. NE PAS proposer ces produits au prix catalogue.
 2. Dans le BROUILLON, informer poliment le client que la référence est actuellement en rupture sur notre site.
 3. PROPOSER DIRECTEMENT un filet SUR-MESURE aux dimensions exactes demandées (utiliser prix-ht-sur-mesure.txt : forme × finition × tranche surface du devis pour le HT/m², puis chiffrer complètement HT / TVA / TTC).
-4. SI le produit n'a pas d'équivalent sur-mesure (fibre de coco, accessoires, cordes, mâts, kits de fixation), proposer en plus l'inscription à la notification de réassort sur la fiche produit du site (mécanisme existant — règle "réassort site bouton").
+4. NE PAS mentionner de quantité restante puisque stock = 0.
+══════════════════════════════════════════════════════`
+              );
+            }
+
+            if (rupturesStd.length > 0) {
+              blocks.push(
+                `══════════════════════════════════════════════════════
+🚨 RUPTURE STOCK — PRODUIT STANDARD UNIQUEMENT (PAS DE SUR-MESURE)
+
+Le(s) SKU catalogue suivant(s) sont ACTUELLEMENT EN RUPTURE :
+${rupturesStd.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : 0 | client demande : ${r.qtyDemanded}`).join('\n')}
+
+Ces produits (fibre de coco, accessoires, échantillons) N'EXISTENT PAS EN SUR-MESURE.
+
+TU DOIS :
+1. NE PAS proposer ces produits au prix catalogue.
+2. Dans le BROUILLON, informer poliment le client que la référence est actuellement en rupture sur notre site.
+3. Inviter le client à s'inscrire à la notification de réassort : sur la fiche produit du site (accessible même hors stock), un bouton permet de saisir son e-mail pour être prévenu dès le retour en stock.
+4. INTERDIT : proposer une fabrication sur mesure, un délai de 21 jours ou une grille au m² pour ces produits.
 5. NE PAS mentionner de quantité restante puisque stock = 0.
 ══════════════════════════════════════════════════════`
               );
             }
 
-            if (partials.length > 0) {
+            if (partialsMtm.length > 0) {
               blocks.push(
                 `══════════════════════════════════════════════════════
 ⚠️ STOCK PARTIEL — PROCESS OBLIGATOIRE
 
 Stock < quantité demandée :
-${partials.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : ${r.available} | client demande : ${r.qtyDemanded}`).join('\n')}
+${partialsMtm.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : ${r.available} | client demande : ${r.qtyDemanded}`).join('\n')}
 
 TU DOIS :
 1. Chiffrer le standard catalogue normalement.
 2. Mentionner EXPLICITEMENT dans le brouillon le stock immédiat disponible et le solde à fabriquer en sur-mesure.
 3. Formulation type : « Nous avons actuellement X unités en stock immédiat sur les Y demandées. Pour le solde de Z unités, nous pouvons les fabriquer sur mesure aux mêmes dimensions (délai d'environ 21 jours). Souhaitez-vous procéder ainsi ou ajuster votre commande ? »
 4. NE PAS chiffrer le sur-mesure avant la confirmation du client.
+══════════════════════════════════════════════════════`
+              );
+            }
+
+            if (partialsStd.length > 0) {
+              blocks.push(
+                `══════════════════════════════════════════════════════
+⚠️ STOCK PARTIEL — PRODUIT STANDARD UNIQUEMENT (PAS DE SUR-MESURE)
+
+Stock < quantité demandée :
+${partialsStd.map((r) => `  • SKU ${r.sku} | ${r.name} | stock : ${r.available} | client demande : ${r.qtyDemanded}`).join('\n')}
+
+Ces produits (fibre de coco, accessoires, échantillons) N'EXISTENT PAS EN SUR-MESURE.
+
+TU DOIS :
+1. Chiffrer le standard catalogue pour la quantité disponible.
+2. Mentionner EXPLICITEMENT dans le brouillon le stock immédiat disponible.
+3. Formulation type : « Nous avons actuellement X unité(s) en stock sur les Y demandées. Pour le solde, vous pouvez être averti du réassort grâce au bouton de notification présent sur la fiche produit de notre site. »
+4. INTERDIT : proposer de fabriquer le solde sur mesure, un délai de 21 jours ou une grille au m² pour ces produits.
 ══════════════════════════════════════════════════════`
               );
             }

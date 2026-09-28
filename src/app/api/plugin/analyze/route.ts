@@ -479,7 +479,7 @@ ${altUnknown.map((a) => `  • SKU ${a.sku} | ${a.label}`).join('\n')}
 
     // Adapter le prompt pour le canal chat (réponses plus courtes et directes)
     if (channel === 'chat') {
-      systemPrompt += `\n\n═══════════════════════════════════════\nMODE CHAT (CONVERSATION EN DIRECT)\n═══════════════════════════════════════\n\nCette conversation vient du CHAT EN DIRECT (pas d'un email). Adapte ton style :\n- Réponses COURTES et DIRECTES, comme un chat en temps réel\n- Pas de formules longues ni de paragraphes développés\n- Tutoiement ou vouvoiement selon ce que le client utilise\n- Commence par "Bonjour [Prénom]," puis va droit au but\n- Pas de "Nous vous remercions pour votre message" ni de formules d'introduction longues\n- Maximum 3-4 phrases par réponse sauf si un chiffrage détaillé est nécessaire\n- Ton conversationnel, chaleureux mais efficace`;
+      systemPrompt += `\n\n═══════════════════════════════════════\nMODE CHAT (CONVERSATION EN DIRECT)\n═══════════════════════════════════════\n\nCette conversation vient du CHAT EN DIRECT (pas d'un email). Adapte ton style :\n- Réponses COURTES et DIRECTES, comme un chat en temps réel\n- Pas de formules longues ni de paragraphes développés\n- Vouvoiement, comme pour les emails\n- Commence par "Bonjour," seul (jamais de prénom) puis va droit au but\n- Pas de "Nous vous remercions pour votre message" ni de formules d'introduction longues\n- Maximum 3-4 phrases par réponse sauf si un chiffrage détaillé est nécessaire\n- Ton conversationnel, chaleureux mais efficace`;
     }
 
     // Récupérer les images ET les PJ oversized depuis l'API Front.

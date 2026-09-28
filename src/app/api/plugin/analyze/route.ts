@@ -8,6 +8,7 @@ import { getStockBySkuList } from '@/lib/services/octopiaService';
 import { callClaude } from '@/lib/services/claudeService';
 import { dedupeRepeatedBlocks } from '@/lib/mailDedup';
 import { parseStandardsRows, findFamilySkus, canBeMadeToMeasure, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
+import { buildCatalogFactsBlock, buildIssuedQuoteBlock } from '@/lib/services/promptFacts';
 
 // Rappel final ajouté en queue de message user, juste avant que Claude
 // rédige. Position dictée par le "recency bias" des LLM : les instructions
@@ -291,6 +292,9 @@ Exemple de réponse :
             }
 
             const blocks: string[] = [];
+            // Prix exacts des SKU détectés (évite la relecture du catalogue complet)
+            const catalogFacts = buildCatalogFactsBlock(standardsDoc.content, skus);
+            if (catalogFacts) blocks.push(catalogFacts);
 
             if (rupturesMtm.length > 0) {
               blocks.push(
@@ -433,6 +437,10 @@ ${altUnknown.map((a) => `  • SKU ${a.sku} | ${a.label}`).join('\n')}
     } catch (err) {
       console.warn('[plugin/analyze] stock check failed (non-blocking):', err);
     }
+
+    // Devis Pennylane déjà émis sur cette conversation (montant TTC exact, remises comprises)
+    const issuedQuote = await buildIssuedQuoteBlock(frontConversationId, storeCode);
+    if (issuedQuote) stockInfo += `\n\n${issuedQuote}`;
 
     // 6. Construire le message utilisateur avec le contexte mail + stock
     // forceFresh : ignore l'historique précédent (utilisé par l'auto-draft pour

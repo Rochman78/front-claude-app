@@ -52,6 +52,7 @@ La traduction sera faite automatiquement par le code au moment du push dans Fron
 import { buildDocumentsText } from '@/lib/documentSelector';
 import { getConversationImages } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
+import { buildCatalogFactsBlock, buildIssuedQuoteBlock } from '@/lib/services/promptFacts';
 import { callClaude } from '@/lib/services/claudeService';
 import { parseStandardsRows, findFamilySkus, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 
@@ -239,11 +240,18 @@ RÈGLES :
               }
             }
             stockInfo = `\n\n[STOCK OCTOPIA — données temps réel — USAGE INTERNE UNIQUEMENT]\n${stockLines.join('\n')}\nMentionne ces infos dans la section QUESTIONS, pas dans le brouillon client.${altBlock}`;
+            const catalogFacts = buildCatalogFactsBlock(standardsDoc.content, skus);
+            if (catalogFacts) stockInfo += `\n\n${catalogFacts}`;
           }
         }
       }
     } catch (err) {
       console.warn('[plugin/message] stock check failed (non-blocking):', err);
+    }
+
+    if (conversation.front_conversation_id && agent.store_code) {
+      const issuedQuote = await buildIssuedQuoteBlock(conversation.front_conversation_id, agent.store_code);
+      if (issuedQuote) stockInfo += `\n\n${issuedQuote}`;
     }
 
     const messages = [

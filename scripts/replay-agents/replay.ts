@@ -56,12 +56,17 @@ const DEFAULT_CASES = [
   'cnv_1lmrvoev', 'cnv_1lnflc5z', 'cnv_1lrf14if', 'cnv_1ls66p1z', 'cnv_1m169d07', 'cnv_1m5sm3rr', 'cnv_1mcdaown',
 ];
 
-interface Config { name: string; model: string; thinking: boolean }
+// --config nom=modèle[:adaptive|:off][@effort] — ex. s5=claude-sonnet-5@medium,
+// think=claude-sonnet-4-6:adaptive@low. Sonnet 5 réfléchit par défaut : la
+// réflexion consomme max_tokens, d'où une marge large dès qu'elle est active.
+interface Config { name: string; model: string; thinking: boolean; off: boolean; effort?: 'low' | 'medium' | 'high' }
 const configs: Config[] = (argValues('--config').length ? argValues('--config') : ['prod=claude-sonnet-4-6']).map((c) => {
   const [name, spec] = c.split('=');
-  const [model, mode] = spec.split(':');
-  return { name, model, thinking: mode === 'adaptive' };
+  const [modelMode, effort] = spec.split('@');
+  const [model, mode] = modelMode.split(':');
+  return { name, model, thinking: mode === 'adaptive', off: mode === 'off', effort: effort as Config['effort'] };
 });
+const thinksByDefault = (model: string) => /sonnet-5|opus-5|fable/.test(model);
 
 // ─── vérifications automatiques ───────────────────────────────────
 type Check = { id: string; ok: boolean; detail?: string };
@@ -188,14 +193,16 @@ async function main() {
       try {
         const stream = client.messages.stream({
           model: cfg.model,
-          max_tokens: cfg.thinking ? 32000 : 4096,
+          max_tokens: cfg.thinking || (thinksByDefault(cfg.model) && !cfg.off) ? 32000 : 4096,
+          ...(cfg.effort ? { output_config: { effort: cfg.effort } } : {}),
           system: buildSystemBlock(system),
           messages: buildMessages([{ role: 'user', content: c.user }], documents),
-          ...(cfg.thinking ? { thinking: { type: 'adaptive' as const } } : {}),
+          ...(cfg.thinking ? { thinking: { type: 'adaptive' as const } } : cfg.off ? { thinking: { type: 'disabled' as const } } : {}),
         });
         const msg = await stream.finalMessage();
         const output = msg.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
         const u = msg.usage;
+        if (msg.stop_reason === 'max_tokens') console.warn(`⚠️ ${c.cnv} [${cfg.name}] tronqué (max_tokens)`);
         const usage = `in=${u.input_tokens} cache_w=${u.cache_creation_input_tokens ?? 0} cache_r=${u.cache_read_input_tokens ?? 0} out=${u.output_tokens}`;
         const checks = runChecks(c.store, c.user, output);
         results.push({ cnv: c.cnv, store: c.store, config: cfg.name, output, checks, ms: Date.now() - t0, usage });
@@ -212,7 +219,7 @@ async function main() {
   const outDir = join('scripts', 'replay-agents', 'runs');
   mkdirSync(outDir, { recursive: true });
   const score = (ch: Check[]) => (ch.length ? `${ch.filter((k) => k.ok).length}/${ch.length}` : '—');
-  const lines: string[] = [`# Rejeu agents — ${ts}`, '', `Configs : ${configs.map((c) => `${c.name} = ${c.model}${c.thinking ? ' + réflexion' : ''}`).join(' · ')}`, ''];
+  const lines: string[] = [`# Rejeu agents — ${ts}`, '', `Configs : ${configs.map((c) => `${c.name} = ${c.model}${c.thinking ? ' + réflexion' : ''}${c.effort ? ` (effort ${c.effort})` : ''}`).join(' · ')}`, ''];
   lines.push(`| Cas | Boutique | Origine | ${configs.map((c) => c.name).join(' | ')} |`, `|---|---|---|${configs.map(() => '---').join('|')}|`);
   for (const c of cases) {
     lines.push(`| ${c.cnv} | ${c.store} | ${score(baselineChecks.get(c.cnv)!)} | ${configs.map((cfg) => score(results.find((r) => r.cnv === c.cnv && r.config === cfg.name)?.checks ?? [])).join(' | ')} |`);

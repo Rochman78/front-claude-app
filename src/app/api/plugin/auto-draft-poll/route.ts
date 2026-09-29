@@ -64,7 +64,7 @@ async function run(req: NextRequest) {
       // d'étalement, on reste sous la limite avec marge.
       for (let idx = 0; idx < tagged.length; idx++) {
         if (idx > 0) await new Promise((r) => setTimeout(r, 400));
-        results.push(await processAutoDraft(tagged[idx].id as string));
+        results.push(await processAutoDraft(tagged[idx].id as string, { conv: tagged[idx], inboxName: String(inb.name || '') }));
       }
     }
 

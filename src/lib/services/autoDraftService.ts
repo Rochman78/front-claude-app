@@ -72,7 +72,12 @@ async function record(conversationId: string, storeCode: string, status: string,
  * Idempotent et plein de garde-fous : ne touche jamais une conv déjà répondue,
  * déjà traitée, hors LFC, ou sans tag "Devis". Ne fait QUE des brouillons.
  */
-export async function processAutoDraft(conversationId: string): Promise<AutoDraftResult> {
+/** `prefetched` : conv (tags, sujet) et nom d'inbox déjà connus par le poll,
+ *  qui les lit dans la liste de l'inbox → évite 2 appels Front par conv. */
+export async function processAutoDraft(
+  conversationId: string,
+  prefetched?: { conv: Record<string, unknown>; inboxName: string }
+): Promise<AutoDraftResult> {
   await initDB();
 
   // 0a. Skip rapide si on a déjà tenté et échoué récemment sur cette conv.
@@ -81,10 +86,20 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
   //     demandes ambiguës, SAV mal-tagués). Au-delà de 12 h on re-tente
   //     (au cas où le contexte change).
   const seen = await pool.query(
-    'SELECT status, created_at FROM auto_drafts WHERE conversation_id = $1',
+    'SELECT status, reason, created_at FROM auto_drafts WHERE conversation_id = $1',
     [conversationId]
   );
-  const seenRow: { status: string; created_at: string } | null = seen.rows[0] || null;
+  const seenRow: { status: string; reason: string; created_at: string } | null = seen.rows[0] || null;
+
+  // Verdicts définitifs : le classifieur a dit « pas un devis », ou une PJ
+  // dépasse la limite Anthropic. Tant que la conv n'a qu'un message, rien ne
+  // peut changer ce verdict ; dès qu'un 2e message arrive, la règle « 1 seul
+  // mail » l'écarte de toute façon. Sans ce court-circuit, chaque poll (2 min)
+  // relançait le classifieur Sonnet, voire tout analyze + un commentaire Front
+  // en double pour la PJ, tant que la conv restait dans le top 200.
+  if (seenRow?.status === 'skipped' && /^(classifier LLM: non-demande|PJ trop volumineuse)/.test(seenRow.reason)) {
+    return { conversationId, status: 'skipped', reason: `déjà écartée : ${seenRow.reason}` };
+  }
 
   // `skip` log désormais TOUS les skip dans auto_drafts (sauf "erreur récente"
   // pour ne pas écraser l'entrée error qui sert au cooldown 12 h, et sauf si on
@@ -118,30 +133,37 @@ export async function processAutoDraft(conversationId: string): Promise<AutoDraf
     //     hasReply) plus loin qui tranche.
 
     // 1. Conversation + tags
-    const convRes = await frontFetch(`/conversations/${conversationId}`);
-    if (!convRes.ok) {
-      const why = `conv ${convRes.status}`;
-      // Record les vraies erreurs (500, 502, 404, 401…) pour déclencher le
-      // cooldown 12h et éviter de re-brûler la même conv à chaque poll.
-      // Exception : 429 (rate-limit Front) — c'est transient (< 60s), le
-      // retry-in-frontFetch gère la majorité, et pour les 429 qui échappent
-      // aux 3 retries on préfère retenter au prochain poll (2 min) plutôt
-      // que de mettre 12 h de cooldown et rater la fenêtre auto-draft.
-      if (convRes.status !== 429) {
-        await record(conversationId, '', 'error', why);
+    let conv: Record<string, unknown>;
+    if (prefetched) {
+      conv = prefetched.conv;
+    } else {
+      const convRes = await frontFetch(`/conversations/${conversationId}`);
+      if (!convRes.ok) {
+        const why = `conv ${convRes.status}`;
+        // Record les vraies erreurs (500, 502, 404, 401…) pour déclencher le
+        // cooldown 12h et éviter de re-brûler la même conv à chaque poll.
+        // Exception : 429 (rate-limit Front) — c'est transient (< 60s), le
+        // retry-in-frontFetch gère la majorité, et pour les 429 qui échappent
+        // aux 3 retries on préfère retenter au prochain poll (2 min) plutôt
+        // que de mettre 12 h de cooldown et rater la fenêtre auto-draft.
+        if (convRes.status !== 429) {
+          await record(conversationId, '', 'error', why);
+        }
+        return { conversationId, status: 'error', reason: why };
       }
-      return { conversationId, status: 'error', reason: why };
+      conv = await convRes.json();
     }
-    const conv = await convRes.json();
-    const tags: string[] = (conv.tags || []).map((t: Record<string, unknown>) => String(t.name || '').toLowerCase());
+    const tags: string[] = ((conv.tags as Record<string, unknown>[]) || []).map((t: Record<string, unknown>) => String(t.name || '').toLowerCase());
     if (!tags.includes('devis')) return skip('pas de tag Devis');
 
     // 2. Inbox → boutique (v1 : LFC only)
-    let inboxName = '';
-    try {
-      const inbRes = await frontFetch(`/conversations/${conversationId}/inboxes`);
-      if (inbRes.ok) inboxName = ((await inbRes.json())._results || [])[0]?.name || '';
-    } catch { /* ignore */ }
+    let inboxName = prefetched?.inboxName || '';
+    if (!prefetched) {
+      try {
+        const inbRes = await frontFetch(`/conversations/${conversationId}/inboxes`);
+        if (inbRes.ok) inboxName = ((await inbRes.json())._results || [])[0]?.name || '';
+      } catch { /* ignore */ }
+    }
     const store = getStoreByInboxName(inboxName);
     if (!store) return skip(`inbox non mappée: "${inboxName}"`);
 

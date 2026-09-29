@@ -5,10 +5,9 @@ import { buildDocumentsText } from '@/lib/documentSelector';
 import { getStoreByCode } from '@/lib/stores';
 import { getConversationAttachments } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
-import { callClaude } from '@/lib/services/claudeService';
 import { dedupeRepeatedBlocks } from '@/lib/mailDedup';
 import { parseStandardsRows, findFamilySkus, canBeMadeToMeasure, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
-import { buildCatalogFactsBlock, buildIssuedQuoteBlock } from '@/lib/services/promptFacts';
+import { buildCatalogFactsBlock, buildIssuedQuoteBlock, detectStandardSkus } from '@/lib/services/promptFacts';
 import { extraireFilets, buildSurMesureBlock } from '@/lib/services/surMesureCalc';
 
 // Rappel final ajouté en queue de message user, juste avant que Claude
@@ -81,7 +80,7 @@ export async function POST(req: NextRequest) {
     }
 
     await initDB();
-    const { storeCode, customerEmail, customerName, mailContent, frontConversationId, subject, channel, forceFresh, skipOversizedCheck } = await req.json();
+    const { storeCode, customerEmail, customerName, mailContent, frontConversationId, subject, channel, forceFresh, skipOversizedCheck, autoSend } = await req.json();
 
     if (!storeCode || !mailContent || !frontConversationId) {
       return NextResponse.json({ error: 'storeCode, mailContent et frontConversationId requis' }, { status: 400 });
@@ -190,48 +189,11 @@ export async function POST(req: NextRequest) {
         console.warn('[plugin/analyze] prix-ht-standards.txt introuvable → stock check sauté');
       }
       if (standardsDoc && process.env.OCTOPIA_SELLER_ID) {
-        const skuExtractPrompt = `Tu es un assistant qui identifie les produits demandés par le client dans un mail, et qui retrouve les SKU correspondants dans la liste des produits standards.
-
-MAIL DU CLIENT :
-${mailContent.substring(0, 4000)}
-
-LISTE DES PRODUITS STANDARDS (format colonnes : Nom | Variante | SKU | TTC | HT par taux TVA) :
-${standardsDoc.content}
-
-RÈGLES :
-- La liste contient des filets standards (par couleur / matière / taille) ET des accessoires (mâts, kits de fixation, cordes, colliers, etc.). Parcourir TOUTE la liste.
-- Identifier les produits CATALOGUE STANDARD que le client demande (couleur, taille, finition, ou accessoire précis).
-- Vérifier ATTENTIVEMENT que la COULEUR ET la TAILLE demandées correspondent EXACTEMENT à une ligne avant de retourner un SKU. Les tailles sont RÉVERSIBLES (3x4 = 4x3). Si la correspondance n'est pas exacte (taille proche, couleur proche), NE PAS retourner de SKU — ne JAMAIS inventer ni proposer un SKU "approchant".
-- Si le client demande du sur mesure (dimensions non standard), ne retourner AUCUN SKU.
-- Retourner UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
-- Si aucun produit standard identifié, retourner : AUCUN
-
-Exemple de réponse :
-3760388670833|Filet camouflage noir 2x2|5
-3760388670796|Filet camouflage noir 2x3|3`;
-
-        // Rebasculé sur Sonnet 4.6 le 01/07/2026 après retours qualité :
-        // Haiku confondait couleurs proches (ex sable ↔ beige) et tailles
-        // inversées, ce qui injectait le mauvais bloc STOCK dans le prompt
-        // → décisions Claude fausses en cascade. Sur ce genre de matching
-        // exact "couleur + taille + finition", Sonnet vaut la différence
-        // de coût.
+        // Pré-passage SKU (Sonnet 4.6), partagé avec le banc de rejeu
         console.log('[plugin/analyze] calling Sonnet to extract SKUs from mail...');
-        const skuResult = await callClaude(
-          [{ role: 'user', content: skuExtractPrompt }],
-          { model: 'claude-sonnet-4-6', maxTokens: 500 }
-        );
+        const skuMap = await detectStandardSkus(mailContent, standardsDoc.content);
 
-        if (skuResult && !skuResult.includes('AUCUN')) {
-          const skuLines = skuResult.trim().split('\n').filter((l) => l.includes('|'));
-          const skuMap: Record<string, { name: string; qtyDemanded: string }> = {};
-          for (const line of skuLines) {
-            const [sku, name, qty] = line.split('|');
-            if (sku && /^37\d{11}$/.test(sku.trim())) {
-              skuMap[sku.trim()] = { name: (name || '').trim(), qtyDemanded: (qty || '?').trim() };
-            }
-          }
-
+        if (skuMap) {
           const skus = Object.keys(skuMap);
           if (skus.length > 0 && skus.length <= 20) {
             console.log(`[plugin/analyze] Haiku found ${skus.length} SKUs, checking Octopia stock...`);
@@ -452,6 +414,18 @@ ${altUnknown.map((a) => `  • SKU ${a.sku} | ${a.label}`).join('\n')}
     // Devis Pennylane déjà émis sur cette conversation (montant TTC exact, remises comprises)
     const issuedQuote = await buildIssuedQuoteBlock(frontConversationId, storeCode);
     if (issuedQuote) stockInfo += `\n\n${issuedQuote}`;
+    // Envoi automatique (autoDraftService) : le brouillon peut partir sans
+    // relecture → périmètre DEVIS uniquement (Charles 29/09/2026). Dans le
+    // plugin, l'agent traite aussi le SAV (instructions §8).
+    if (autoSend) {
+      stockInfo += `\n\n══════════════════════════════════════════════════════
+🤖 MODE ENVOI AUTOMATIQUE — DEVIS UNIQUEMENT
+
+Ce brouillon peut être envoyé au client sans relecture. Tu ne traites QUE le chiffrage demandé.
+Si le mail contient aussi un sujet SAV (retour, remboursement, échange, garantie, annulation, modification ou changement d'adresse d'une commande passée, suivi de colis, code promo, geste commercial) : n'écris RIEN sur ce sujet dans le brouillon (ni décision, ni « nous revenons vers vous »), chiffre uniquement le devis, et remonte le sujet en 🔴 BLOQUANT dans QUESTIONS en résumant la demande du client en 2 lignes.
+══════════════════════════════════════════════════════`;
+    }
+
     const surMesureBlock = await surMesurePromise;
     if (surMesureBlock) {
       stockInfo += `\n\n${surMesureBlock}`;

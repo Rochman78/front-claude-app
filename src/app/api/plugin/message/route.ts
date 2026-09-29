@@ -54,7 +54,7 @@ import { getConversationImages } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
 import { buildCatalogFactsBlock, buildIssuedQuoteBlock, detectStandardSkus } from '@/lib/services/promptFacts';
 import { extraireFilets, buildSurMesureBlock } from '@/lib/services/surMesureCalc';
-import { parseStandardsRows, findFamilySkus, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
+import { parseStandardsRows, findFamilySkus, STOCK_HORS_OCTOPIA, buildStockHorsOctopiaBlock, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 
 /**
  * POST /api/plugin/message
@@ -166,11 +166,14 @@ export async function POST(req: NextRequest) {
         if (skuMap) {
           const skus = Object.keys(skuMap);
           if (skus.length > 0 && skus.length <= 20) {
-            console.log(`[plugin/message] checking stock for ${skus.length} SKUs`);
-            const stockData = await getStockBySkuList(skus);
+            // Stock géré hors Octopia (mât en bois, parasol, socle) : cf. analyze
+            const octopiaSkus = skus.filter((s) => !STOCK_HORS_OCTOPIA[s]);
+            const horsOctopia = skus.filter((s) => STOCK_HORS_OCTOPIA[s]);
+            console.log(`[plugin/message] checking stock for ${octopiaSkus.length}/${skus.length} SKUs`);
+            const stockData = octopiaSkus.length > 0 ? await getStockBySkuList(octopiaSkus) : {};
             const stockLines: string[] = [];
             const ruptureSkus: string[] = [];
-            for (const sku of skus) {
+            for (const sku of octopiaSkus) {
               const available = stockData[sku];
               const info = skuMap[sku];
               stockLines.push(available !== undefined
@@ -184,7 +187,7 @@ export async function POST(req: NextRequest) {
             let altBlock = '';
             if (ruptureSkus.length > 0) {
               const catalogRows = parseStandardsRows(standardsDoc.content);
-              const alreadyChecked = new Set(skus);
+              const alreadyChecked = new Set([...skus, ...Object.keys(STOCK_HORS_OCTOPIA)]);
               const familySkuMap: Record<string, CatalogRow> = {};
               for (const rSku of ruptureSkus) {
                 const baseRow = catalogRows.find((r) => r.sku === rSku);
@@ -210,7 +213,11 @@ export async function POST(req: NextRequest) {
                 altBlock = `\n\n[ALTERNATIVES FAMILLE (rupture pré-checkée)]\n${altLines.join('\n')}\nSi tu proposes des alternatives au client, propose UNIQUEMENT les ✅. Ne mentionne pas les ❌ / ⚠️.`;
               }
             }
-            stockInfo = `\n\n[STOCK OCTOPIA — données temps réel — USAGE INTERNE UNIQUEMENT]\n${stockLines.join('\n')}\nMentionne ces infos dans la section QUESTIONS, pas dans le brouillon client.${altBlock}`;
+            if (stockLines.length > 0) {
+              stockInfo = `\n\n[STOCK OCTOPIA — données temps réel — USAGE INTERNE UNIQUEMENT]\n${stockLines.join('\n')}\nMentionne ces infos dans la section QUESTIONS, pas dans le brouillon client.${altBlock}`;
+            }
+            const horsOctopiaBlock = buildStockHorsOctopiaBlock(horsOctopia.map((sku) => ({ sku, ...skuMap[sku] })));
+            if (horsOctopiaBlock) stockInfo += `\n\n${horsOctopiaBlock}`;
             const catalogFacts = buildCatalogFactsBlock(standardsDoc.content, skus);
             if (catalogFacts) stockInfo += `\n\n${catalogFacts}`;
           }

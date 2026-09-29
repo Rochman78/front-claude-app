@@ -6,7 +6,7 @@ import { getStoreByCode } from '@/lib/stores';
 import { getConversationAttachments } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
 import { dedupeRepeatedBlocks } from '@/lib/mailDedup';
-import { parseStandardsRows, findFamilySkus, canBeMadeToMeasure, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
+import { parseStandardsRows, findFamilySkus, canBeMadeToMeasure, STOCK_HORS_OCTOPIA, buildStockHorsOctopiaBlock, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 import { buildCatalogFactsBlock, buildIssuedQuoteBlock, detectStandardSkus } from '@/lib/services/promptFacts';
 import { extraireFilets, buildSurMesureBlock } from '@/lib/services/surMesureCalc';
 
@@ -196,11 +196,15 @@ export async function POST(req: NextRequest) {
         if (skuMap) {
           const skus = Object.keys(skuMap);
           if (skus.length > 0 && skus.length <= 20) {
-            console.log(`[plugin/analyze] Haiku found ${skus.length} SKUs, checking Octopia stock...`);
-            const stockData = await getStockBySkuList(skus);
+            // Stock géré hors Octopia (mât en bois, parasol, socle) : pas
+            // d'appel Octopia, l'agent demande le stock au gérant.
+            const octopiaSkus = skus.filter((s) => !STOCK_HORS_OCTOPIA[s]);
+            const horsOctopia = skus.filter((s) => STOCK_HORS_OCTOPIA[s]);
+            console.log(`[plugin/analyze] ${skus.length} SKUs found, checking Octopia stock for ${octopiaSkus.length}...`);
+            const stockData = octopiaSkus.length > 0 ? await getStockBySkuList(octopiaSkus) : {};
 
             type StockRow = { sku: string; name: string; qtyDemanded: number; available: number | null };
-            const rows: StockRow[] = skus.map((sku) => {
+            const rows: StockRow[] = octopiaSkus.map((sku) => {
               const info = skuMap[sku];
               const qty = parseInt(info.qtyDemanded.replace(/\D/g, ''), 10);
               const av = stockData[sku];
@@ -238,7 +242,7 @@ export async function POST(req: NextRequest) {
             const familyAlternatives: AltStockRow[] = [];
             if (ruptures.length > 0) {
               const catalogRows = stockCatalogRows;
-              const alreadyChecked = new Set(rows.map((r) => r.sku));
+              const alreadyChecked = new Set([...rows.map((r) => r.sku), ...Object.keys(STOCK_HORS_OCTOPIA)]);
               const familySkuMap: Record<string, CatalogRow> = {};
               for (const rupture of ruptures) {
                 const baseRow = catalogRows.find((r) => r.sku === rupture.sku);
@@ -268,6 +272,8 @@ export async function POST(req: NextRequest) {
             // Prix exacts des SKU détectés (évite la relecture du catalogue complet)
             const catalogFacts = buildCatalogFactsBlock(standardsDoc.content, skus);
             if (catalogFacts) blocks.push(catalogFacts);
+            const horsOctopiaBlock = buildStockHorsOctopiaBlock(horsOctopia.map((sku) => ({ sku, ...skuMap[sku] })));
+            if (horsOctopiaBlock) blocks.push(horsOctopiaBlock);
 
             if (rupturesMtm.length > 0) {
               blocks.push(

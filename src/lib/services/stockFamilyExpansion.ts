@@ -89,3 +89,28 @@ export function canBeMadeToMeasure(
   if (row) return row.typologie === 'filet' && !row.matiere.includes('coco');
   return !/coco|accessoire|échantillon|echantillon|mât|kit|corde|collier|borne/i.test(productName);
 }
+
+/** SKU dont le stock n'est PAS suivi par Octopia (Charles 29/09/2026) : on
+ *  n'interroge pas Octopia (qui répondrait 0 ou rien → fausse rupture) et
+ *  l'agent demande le stock au gérant. Vaut pour toutes les boutiques qui
+ *  vendent ces produits. Ajouter ici tout nouveau produit géré ailleurs. */
+export const STOCK_HORS_OCTOPIA: Record<string, string> = {
+  '3770043027001': 'mât en bois Robinier',
+  '3760388679379': 'parasol en fibre de coco',
+  '3760388679386': 'socle pour parasol coco',
+};
+
+export function buildStockHorsOctopiaBlock(items: { sku: string; name: string; qtyDemanded: string }[]): string {
+  if (items.length === 0) return '';
+  return `══════════════════════════════════════════════════════
+📦 STOCK GÉRÉ HORS SYSTÈME — À DEMANDER AU GÉRANT
+
+Le stock de ces produits n'est pas suivi automatiquement :
+${items.map((i) => `  • SKU ${i.sku} | ${STOCK_HORS_OCTOPIA[i.sku] || i.name} | client demande : ${i.qtyDemanded}`).join('\n')}
+
+TU DOIS :
+1. Chiffrer normalement au tarif catalogue.
+2. Demander en QUESTIONS (🟠) au gérant si la quantité demandée est disponible.
+3. Dans le brouillon, n'annoncer AUCUNE quantité en stock, aucune rupture et aucun délai de réassort pour ces produits. La mention « sous réserve de disponibilité au moment de la validation de votre devis » reste valable.
+══════════════════════════════════════════════════════`;
+}

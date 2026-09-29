@@ -121,6 +121,10 @@ front-claude-app/
 - Cas déclencheur : `cnv_1mcdaown` (COCO) — 2 toiles coco triangle 3×3×3, 1 en stock → « la seconde fabriquée sur mesure aux mêmes dimensions (21 jours) ».
 - Purge COCO (même jour) : 5 blocs filet sur-mesure hérités supprimés des instructions COCO (CROQUIS SELON LA FORME, QUADRILATÈRE QUELCONQUE, TAILLE FILET, TRANCHE SUR-MESURE, PÉRIMÈTRE DU SUR-MESURE), 101 k → 86 k car. Script `scripts/patch_coco_purge_blocs_sur_mesure.py`, backup `backups/coco-purge-sur-mesure-20260928-114257/`. Ne pas les réinjecter chez COCO lors d'un futur patch × 10 agents.
 
+### Stock géré hors Octopia — mât en bois, parasol coco, socle (29/09/2026)
+- `STOCK_HORS_OCTOPIA` (`stockFamilyExpansion.ts`) : SKU jamais envoyés à Octopia (qui répondrait 0 → fausse rupture). analyze et message injectent à la place le bloc « 📦 STOCK GÉRÉ HORS SYSTÈME » : prix catalogue normal, question stock au gérant en QUESTIONS, aucune quantité ni rupture annoncée au client. Vaut pour toutes les boutiques qui vendent ces produits.
+- Tout nouveau produit dont le stock est géré ailleurs s'ajoute à cette liste (pas dans les prompts).
+
 ### Parasol coco + socle — COCO (Ma Toile Coco) uniquement (29/09/2026)
 - `3760388679379` Parasol en fibre de coco 699,99 € TTC (typologie `parasol coco`) et `3760388679386` Socle pour parasol coco 49,90 € TTC (`accessoire | socle parasol`). Vendus **uniquement sur MTC** : ne pas les ajouter aux 9 autres boutiques.
 - Ils n'avaient jamais été dans `prix-ht-standards.txt`, car le pipeline des prix part du catalogue LFC, qui ne les vend pas. Un produit propre à une boutique s'ajoute à la main (script dédié) ; `regen_prix_ht_standards.py` laisse ces lignes intactes.

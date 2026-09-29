@@ -8,6 +8,7 @@
  * et le devis Pennylane déjà émis sur la conversation.
  */
 import pool from '@/lib/db';
+import { callClaude } from '@/lib/services/claudeService';
 
 interface CatalogPriceRow {
   sku: string;
@@ -80,4 +81,48 @@ Tout rappel de prix de ce devis dans le brouillon reprend EXACTEMENT ce montant 
     console.warn('[promptFacts] lecture conversation_quotes impossible (non bloquant):', err);
     return '';
   }
+}
+
+
+/** Pré-passage SKU (Sonnet 4.6) : identifie les produits STANDARD demandés
+ *  dans le mail et renvoie { SKU → nom, quantité }, ou null si aucun.
+ *  Rebasculé sur Sonnet 4.6 le 01/07/2026 : Haiku confondait couleurs proches
+ *  (sable ↔ beige) et tailles inversées → mauvais bloc STOCK en cascade.
+ *  Utilisé par /api/plugin/analyze et par scripts/replay-agents/replay.ts. */
+export async function detectStandardSkus(
+  mailContent: string,
+  standardsContent: string
+): Promise<Record<string, { name: string; qtyDemanded: string }> | null> {
+  const skuExtractPrompt = `Tu es un assistant qui identifie les produits demandés par le client dans un mail, et qui retrouve les SKU correspondants dans la liste des produits standards.
+
+MAIL DU CLIENT :
+${mailContent.substring(0, 4000)}
+
+LISTE DES PRODUITS STANDARDS (format colonnes : Nom | Variante | SKU | TTC | HT par taux TVA) :
+${standardsContent}
+
+RÈGLES :
+- La liste contient des filets standards (par couleur / matière / taille) ET des accessoires (mâts, kits de fixation, cordes, colliers, etc.). Parcourir TOUTE la liste.
+- Identifier les produits CATALOGUE STANDARD que le client demande (couleur, taille, finition, ou accessoire précis).
+- Vérifier ATTENTIVEMENT que la COULEUR ET la TAILLE demandées correspondent EXACTEMENT à une ligne avant de retourner un SKU. Les tailles sont RÉVERSIBLES (3x4 = 4x3). Si la correspondance n'est pas exacte (taille proche, couleur proche), NE PAS retourner de SKU — ne JAMAIS inventer ni proposer un SKU "approchant".
+- Si le client demande du sur mesure (dimensions non standard), ne retourner AUCUN SKU.
+- Retourner UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
+- Si aucun produit standard identifié, retourner : AUCUN
+
+Exemple de réponse :
+3760388670833|Filet camouflage noir 2x2|5
+3760388670796|Filet camouflage noir 2x3|3`;
+  const skuResult = await callClaude(
+    [{ role: 'user', content: skuExtractPrompt }],
+    { model: 'claude-sonnet-4-6', maxTokens: 500 }
+  );
+  if (!skuResult || skuResult.includes('AUCUN')) return null;
+  const skuMap: Record<string, { name: string; qtyDemanded: string }> = {};
+  for (const line of skuResult.trim().split('\n').filter((l) => l.includes('|'))) {
+    const [sku, name, qty] = line.split('|');
+    if (sku && /^37\d{11}$/.test(sku.trim())) {
+      skuMap[sku.trim()] = { name: (name || '').trim(), qtyDemanded: (qty || '?').trim() };
+    }
+  }
+  return Object.keys(skuMap).length > 0 ? skuMap : null;
 }

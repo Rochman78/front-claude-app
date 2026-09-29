@@ -34,6 +34,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { buildMessages, buildSystemBlock } from '../../src/lib/services/claudeService';
 import { buildDocumentsText } from '../../src/lib/documentSelector';
 import { extraireFilets, buildSurMesureBlock } from '../../src/lib/services/surMesureCalc';
+import { detectStandardSkus, buildCatalogFactsBlock } from '../../src/lib/services/promptFacts';
 
 // ─── env ──────────────────────────────────────────────────────────
 const envPath = join(process.cwd(), '.env');
@@ -53,6 +54,9 @@ const DRY = args.includes('--dry-run');
 // --sur-mesure : recalcule le bloc « 📐 CALCUL SUR-MESURE » (surMesureCalc.ts)
 // et l'insère dans le message rejoué, comme /api/plugin/analyze depuis le 28/09.
 const WITH_SM = args.includes('--sur-mesure');
+// --prix : recalcule le bloc « 💶 PRIX CATALOGUE EXACTS » (pré-passage SKU partagé
+// avec analyze) — les messages stockés avant le 28/09 ne l'ont pas.
+const WITH_PRIX = args.includes('--prix');
 
 // Cas documentés dans CLAUDE.md (erreurs passées connues)
 const DEFAULT_CASES = [
@@ -198,12 +202,20 @@ async function main() {
     baselineChecks.set(c.cnv, c.baseline ? runChecks(c.store, c.user, c.baseline) : []);
     const { system, documents, grille, standards } = await promptFor(c);
     let userMsg = c.user;
+    const insertBlock = (block: string) => {
+      const reminder = userMsg.lastIndexOf('\n\n══════════════════════════════════════════════════════\n🚨 RAPPEL FINAL');
+      userMsg = reminder >= 0 ? `${userMsg.slice(0, reminder)}\n\n${block}${userMsg.slice(reminder)}` : `${userMsg}\n\n${block}`;
+    };
+    if (WITH_PRIX && standards && !userMsg.includes('💶 PRIX CATALOGUE EXACTS')) {
+      const skuMap = await detectStandardSkus(c.user, standards);
+      const block = skuMap ? buildCatalogFactsBlock(standards, Object.keys(skuMap)) : '';
+      if (block) { insertBlock(block); console.log(`💶 ${c.cnv} : ${Object.keys(skuMap!).length} SKU`); }
+    }
     if (WITH_SM && c.store !== 'COCO' && grille && standards) {
       const block = buildSurMesureBlock(await extraireFilets(c.user), grille, standards);
       if (block) {
         // même position qu'en prod : après les blocs stock, avant le rappel final
-        const reminder = userMsg.lastIndexOf('\n\n══════════════════════════════════════════════════════\n🚨 RAPPEL FINAL');
-        userMsg = reminder >= 0 ? `${userMsg.slice(0, reminder)}\n\n${block}${userMsg.slice(reminder)}` : `${userMsg}\n\n${block}`;
+        insertBlock(block);
         console.log(`📐 ${c.cnv} : bloc sur-mesure injecté\n${block.split('\n').slice(3, -4).join('\n')}`);
       }
     }
@@ -234,7 +246,7 @@ async function main() {
   await db.end();
 
   // ─── rapport ──────────────────────────────────────────────────
-  const ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+  const ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19); // secondes : rejeux parallèles
   const outDir = join('scripts', 'replay-agents', 'runs');
   mkdirSync(outDir, { recursive: true });
   const score = (ch: Check[]) => (ch.length ? `${ch.filter((k) => k.ok).length}/${ch.length}` : '—');
@@ -253,7 +265,7 @@ async function main() {
     block('Origine (prod à l’époque)', c.baseline || '(aucune réponse stockée)', baselineChecks.get(c.cnv)!);
     for (const r of results.filter((x) => x.cnv === c.cnv)) block(`${r.config} — ${Math.round(r.ms / 1000)} s — ${r.usage}`, r.output, r.checks);
   }
-  const file = join(outDir, `${ts}.md`);
+  const file = join(outDir, `${ts}_${configs.map((c) => c.name).join('+')}.md`);
   writeFileSync(file, lines.join('\n'));
   console.log(`\nRapport : ${file}`);
 }

@@ -339,6 +339,8 @@ ${fullBody}`;
         // re-traitement (brouillon supprimé par l'équipe), Claude se confond et
         // sort du méta-commentaire ("le client n'a pas répondu...").
         forceFresh: true,
+        // Périmètre devis uniquement en envoi automatique (bloc injecté par analyze)
+        autoSend: true,
       }),
     });
     const analyzeRes = await analyzePOST(analyzeReq);

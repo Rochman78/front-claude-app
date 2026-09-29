@@ -182,7 +182,7 @@ RÈGLES :
         // erronée en cascade.
         const skuResult = await callClaude(
           [{ role: 'user', content: skuExtractPrompt }],
-          { model: 'claude-sonnet-4-6', maxTokens: 500 }
+          { model: 'claude-sonnet-4-6', maxTokens: 500, label: 'message-sku', storeCode: agent.store_code || '' }
         );
 
         if (skuResult && !skuResult.includes('AUCUN')) {
@@ -299,6 +299,8 @@ RÈGLES :
       model: 'sonnet',
       documents,
       images: imageBlocks.length > 0 ? imageBlocks : undefined,
+      label: 'message',
+      storeCode: agent.store_code || '',
     });
 
     // 6. Passthrough : streamer au client + sauvegarder en BDD

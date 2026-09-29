@@ -114,7 +114,7 @@ Exemple de réponse :
 3760388670796|Filet camouflage noir 2x3|3`;
   const skuResult = await callClaude(
     [{ role: 'user', content: skuExtractPrompt }],
-    { model: 'claude-sonnet-4-6', maxTokens: 500 }
+    { model: 'claude-sonnet-4-6', maxTokens: 500, label: 'sku-detect' }
   );
   if (!skuResult || skuResult.includes('AUCUN')) return null;
   const skuMap: Record<string, { name: string; qtyDemanded: string }> = {};

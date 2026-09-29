@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { recordUsage } from '@/lib/services/claudeService';
 import pool, { initDB } from '@/lib/db';
 import { getStoreByCode } from '@/lib/stores';
 import { resolveChannelAndAuthor } from '@/app/api/plugin/push-draft/route';
@@ -121,6 +122,7 @@ export async function POST(req: NextRequest) {
               },
             ],
           });
+          recordUsage('payment-translate', 'claude-sonnet-4-6', tr.usage, Date.now() - t0);
           const block = tr.content[0];
           if (block && block.type === 'text' && block.text.trim()) {
             finalText = block.text;

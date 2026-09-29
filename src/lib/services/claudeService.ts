@@ -3,6 +3,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import pool from '@/lib/db';
 
 let _client: Anthropic | null = null;
 
@@ -14,6 +15,19 @@ function getClient(): Anthropic {
 }
 
 type MessageParam = Anthropic.Messages.MessageParam;
+
+/**
+ * Trace la consommation de chaque appel dans claude_usage (coût par route,
+ * boutique, modèle). Best-effort : un échec d'écriture ne bloque jamais l'appel.
+ */
+export function recordUsage(label: string, model: string, usage: Anthropic.Messages.Usage | undefined, durationMs: number, storeCode = ''): void {
+  if (!usage) return;
+  pool.query(
+    `INSERT INTO claude_usage (label, store_code, model, input_tokens, cache_creation_tokens, cache_read_tokens, output_tokens, duration_ms)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [label, storeCode, model, usage.input_tokens, usage.cache_creation_input_tokens ?? 0, usage.cache_read_input_tokens ?? 0, usage.output_tokens, durationMs]
+  ).catch((e) => console.warn('[claude] recordUsage failed:', e instanceof Error ? e.message : e));
+}
 
 export interface ImageAttachment {
   data: string;
@@ -30,6 +44,9 @@ export interface StreamChatOptions {
   maxTokens?: number;
   maxMessages?: number;
   images?: ImageAttachment[];
+  /** Route appelante, pour claude_usage (ex : 'analyze', 'message'). */
+  label?: string;
+  storeCode?: string;
 }
 
 /**
@@ -172,6 +189,7 @@ export function createChatStream(options: StreamChatOptions): { stream: Readable
         }
 
         const finalMessage = await stream.finalMessage();
+        recordUsage(options.label || 'stream', model, finalMessage.usage, Date.now() - t0, options.storeCode);
         const usage = finalMessage.usage as unknown as Record<string, number>;
         console.log(`[claude] done in ${Date.now() - t0}ms | stop=${finalMessage.stop_reason} | input=${usage.input_tokens} cache_create=${usage.cache_creation_input_tokens ?? 0} cache_read=${usage.cache_read_input_tokens ?? 0} output=${usage.output_tokens}`);
       } catch (streamErr) {
@@ -200,7 +218,7 @@ export function createChatStream(options: StreamChatOptions): { stream: Readable
 /**
  * Appel Claude simple (non-streaming) — utilisé pour les analyses rapides.
  */
-export async function callClaude(messages: MessageParam[], options?: { model?: string; maxTokens?: number; system?: string }): Promise<string> {
+export async function callClaude(messages: MessageParam[], options?: { model?: string; maxTokens?: number; system?: string; label?: string; storeCode?: string }): Promise<string> {
   const client = getClient();
   const t0 = Date.now();
   const model = options?.model || 'claude-haiku-4-5-20251001';
@@ -212,6 +230,7 @@ export async function callClaude(messages: MessageParam[], options?: { model?: s
     messages,
   });
 
+  recordUsage(options?.label || 'sync', model, result.usage, Date.now() - t0, options?.storeCode);
   console.log(`[claude] sync call ${model} in ${Date.now() - t0}ms`);
   return result.content[0].type === 'text' ? result.content[0].text.trim() : '';
 }

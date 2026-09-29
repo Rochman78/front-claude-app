@@ -113,6 +113,19 @@ export async function initDB() {
       has_draft BOOLEAN NOT NULL DEFAULT FALSE,
       cached_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS claude_usage (
+      id BIGSERIAL PRIMARY KEY,
+      label TEXT NOT NULL,
+      store_code TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_claude_usage_created ON claude_usage(created_at);
     CREATE TABLE IF NOT EXISTS auto_drafts (
       conversation_id TEXT PRIMARY KEY,
       store_code TEXT NOT NULL,

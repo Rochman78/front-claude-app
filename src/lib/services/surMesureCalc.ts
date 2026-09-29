@@ -167,7 +167,7 @@ FIL DE MAILS :
 export async function extraireFilets(mail: string): Promise<FiletDemande[]> {
   const raw = await callClaude(
     [{ role: 'user', content: EXTRACT_PROMPT + mail.substring(0, 12000) }],
-    { model: 'claude-sonnet-4-6', maxTokens: 1500 }
+    { model: 'claude-sonnet-4-6', maxTokens: 1500, label: 'sur-mesure-extract' }
   );
   const json = raw.match(/\{[\s\S]*\}/);
   if (!json) return [];

@@ -546,6 +546,8 @@ Si le mail contient aussi un sujet SAV (retour, remboursement, échange, garanti
       model: 'sonnet',
       documents,
       images: imageBlocks.length > 0 ? imageBlocks : undefined,
+      label: autoSend ? 'analyze-auto' : 'analyze',
+      storeCode,
     });
 
     // 7. Collecter la réponse pour la sauvegarder en BDD, tout en streamant au client

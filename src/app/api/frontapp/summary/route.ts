@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
         '3. Le client a CONFIRME/VALIDE la proposition (accord explicite)\n' +
         '4. On a ses coordonnees (nom + email minimum)\n' +
         'Si une de ces conditions manque, quote_ready = false.\n\n' + text,
-    }]);
+    }], { label: 'mailbox-summary' });
 
     const cleaned = raw.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '').trim();
 

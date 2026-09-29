@@ -555,7 +555,7 @@ Note : "deliveryAddress" doit être :
     // Bulfon, "Réponse Claude invalide" après plusieurs tentatives).
     let result = await callClaude(
       [{ role: 'user', content: userMessage }],
-      { model: 'claude-sonnet-4-6', maxTokens: 4000, system: systemPrompt }
+      { model: 'claude-sonnet-4-6', maxTokens: 4000, system: systemPrompt, label: 'extract-quote', storeCode: storeCode || '' }
     );
 
     console.log(`[extract-quote] done in ${Date.now() - t0}ms, result length=${result.length}`);
@@ -614,7 +614,7 @@ Note : "deliveryAddress" doit être :
       const strictSystem = systemPrompt + '\n\nATTENTION : ta réponse DOIT être UNIQUEMENT le JSON, sans texte avant ni après, sans backticks, sans commentaire. Commence directement par { et termine par }. Aucune exception.';
       result = await callClaude(
         [{ role: 'user', content: userMessage }],
-        { model: 'claude-sonnet-4-6', maxTokens: 4000, system: strictSystem }
+        { model: 'claude-sonnet-4-6', maxTokens: 4000, system: strictSystem, label: 'extract-quote-retry', storeCode: storeCode || '' }
       );
       parsed = tryParseFlexible(result);
     }

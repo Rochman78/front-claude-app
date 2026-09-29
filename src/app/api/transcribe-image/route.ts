@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { recordUsage } from '@/lib/services/claudeService';
 
 export const maxDuration = 60;
 
@@ -9,6 +10,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const t0 = Date.now();
     const result = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
@@ -26,6 +28,7 @@ export async function POST(req: NextRequest) {
         ],
       }],
     });
+    recordUsage('transcribe-image', 'claude-haiku-4-5-20251001', result.usage, Date.now() - t0);
     const text = result.content[0].type === 'text' ? result.content[0].text : '';
     return NextResponse.json({ text });
   } catch (err) {

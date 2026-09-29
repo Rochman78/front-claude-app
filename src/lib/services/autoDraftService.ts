@@ -222,7 +222,7 @@ Mail :
 ${fullBody}`;
         const verdict = (await callClaude(
           [{ role: 'user', content: classifyPrompt }],
-          { model: 'claude-sonnet-4-6', maxTokens: 10 }
+          { model: 'claude-sonnet-4-6', maxTokens: 10, label: 'auto-classifier', storeCode: store.code }
         )).trim().toUpperCase();
         const wantsQuote = verdict.startsWith('OUI');
         console.log(`[auto-draft] ${conversationId} classifier verdict="${verdict.slice(0, 30)}" → ${wantsQuote ? 'accept' : 'skip'}`);
@@ -296,7 +296,7 @@ Mail :
 ${fullBody}`;
         const savVerdict = (await callClaude(
           [{ role: 'user', content: savPrompt }],
-          { model: 'claude-haiku-4-5-20251001', maxTokens: 10 }
+          { model: 'claude-haiku-4-5-20251001', maxTokens: 10, label: 'auto-sav-detect', storeCode: store.code }
         )).trim().toUpperCase();
         if (savVerdict.startsWith('OUI')) {
           forceBrouillonMode = true;

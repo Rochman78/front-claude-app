@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { recordUsage } from '@/lib/services/claudeService';
 
 /**
  * POST /api/plugin/translate
@@ -39,6 +40,7 @@ export async function POST(req: NextRequest) {
       detectedLanguage = targetLanguage.trim().toLowerCase().substring(0, 2);
       console.log(`[plugin/translate] langue forcée: ${detectedLanguage}`);
     } else {
+      const tDetect = Date.now();
       const detectResponse = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 50,
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
           },
         ],
       });
+      recordUsage(detectOnly ? 'lang-detect' : 'translate-detect', 'claude-haiku-4-5-20251001', detectResponse.usage, Date.now() - tDetect);
       detectedLanguage = (detectResponse.content[0].type === 'text' ? detectResponse.content[0].text : 'fr').trim().toLowerCase().substring(0, 2);
       console.log(`[plugin/translate] langue détectée: ${detectedLanguage}`);
     }
@@ -83,6 +86,7 @@ export async function POST(req: NextRequest) {
     // l'image de marque puisque le brouillon part directement au client.
     // La détection de langue au-dessus reste sur Haiku (le sélecteur
     // pré-rempli par store_code prime de toute façon).
+    const tTranslate = Date.now();
     const translateResponse = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
@@ -94,6 +98,7 @@ export async function POST(req: NextRequest) {
       ],
     });
 
+    recordUsage('translate', 'claude-sonnet-4-6', translateResponse.usage, Date.now() - tTranslate);
     const translatedText = translateResponse.content[0].type === 'text' ? translateResponse.content[0].text : text;
     console.log(`[plugin/translate] traduit fr → ${detectedLanguage} (${translatedText.length} chars)`);
 

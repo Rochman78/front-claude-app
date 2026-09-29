@@ -84,26 +84,41 @@ Tout rappel de prix de ce devis dans le brouillon reprend EXACTEMENT ce montant 
 }
 
 
+/** Catalogue réduit aux 6 colonnes utiles au repérage (typologie, forme,
+ *  matière, couleur, taille, SKU) : ~26 k car. au lieu de ~100 k. Les prix
+ *  ne servent pas à trouver le SKU ; le bloc 💶 les recopie ensuite depuis
+ *  la ligne complète (buildCatalogFactsBlock). */
+export function compactStandardsForSkuMatch(standardsContent: string): string {
+  return standardsContent
+    .split('\n')
+    .filter((l) => /\|\s*\d{13}\s*\|/.test(l))
+    .map((l) => l.split('|').slice(0, 6).map((c) => c.trim()).join(' | '))
+    .join('\n');
+}
+
 /** Pré-passage SKU (Sonnet 4.6) : identifie les produits STANDARD demandés
  *  dans le mail et renvoie { SKU → nom, quantité }, ou null si aucun.
  *  Rebasculé sur Sonnet 4.6 le 01/07/2026 : Haiku confondait couleurs proches
  *  (sable ↔ beige) et tailles inversées → mauvais bloc STOCK en cascade.
- *  Utilisé par /api/plugin/analyze et par scripts/replay-agents/replay.ts. */
+ *  Utilisé par /api/plugin/analyze, /api/plugin/message et par
+ *  scripts/replay-agents/replay.ts. */
 export async function detectStandardSkus(
   mailContent: string,
-  standardsContent: string
+  standardsContent: string,
+  opts: { label?: string; storeCode?: string } = {}
 ): Promise<Record<string, { name: string; qtyDemanded: string }> | null> {
   const skuExtractPrompt = `Tu es un assistant qui identifie les produits demandés par le client dans un mail, et qui retrouve les SKU correspondants dans la liste des produits standards.
 
 MAIL DU CLIENT :
 ${mailContent.substring(0, 4000)}
 
-LISTE DES PRODUITS STANDARDS (format colonnes : Nom | Variante | SKU | TTC | HT par taux TVA) :
-${standardsContent}
+LISTE DES PRODUITS STANDARDS (colonnes : typologie | forme | matiere | couleur | taille | SKU) :
+${compactStandardsForSkuMatch(standardsContent)}
 
 RÈGLES :
 - La liste contient des filets standards (par couleur / matière / taille) ET des accessoires (mâts, kits de fixation, cordes, colliers, etc.). Parcourir TOUTE la liste.
 - Identifier les produits CATALOGUE STANDARD que le client demande (couleur, taille, finition, ou accessoire précis).
+- Forme (rectangle ≠ carré ≠ triangle) et matière (polyester ≠ câble acier ≠ coco) doivent aussi correspondre.
 - Vérifier ATTENTIVEMENT que la COULEUR ET la TAILLE demandées correspondent EXACTEMENT à une ligne avant de retourner un SKU. Les tailles sont RÉVERSIBLES (3x4 = 4x3). Si la correspondance n'est pas exacte (taille proche, couleur proche), NE PAS retourner de SKU — ne JAMAIS inventer ni proposer un SKU "approchant".
 - Si le client demande du sur mesure (dimensions non standard), ne retourner AUCUN SKU.
 - Retourner UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
@@ -114,7 +129,7 @@ Exemple de réponse :
 3760388670796|Filet camouflage noir 2x3|3`;
   const skuResult = await callClaude(
     [{ role: 'user', content: skuExtractPrompt }],
-    { model: 'claude-sonnet-4-6', maxTokens: 500, label: 'sku-detect' }
+    { model: 'claude-sonnet-4-6', maxTokens: 500, label: opts.label || 'sku-detect', storeCode: opts.storeCode }
   );
   if (!skuResult || skuResult.includes('AUCUN')) return null;
   const skuMap: Record<string, { name: string; qtyDemanded: string }> = {};

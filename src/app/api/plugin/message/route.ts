@@ -52,9 +52,8 @@ La traduction sera faite automatiquement par le code au moment du push dans Fron
 import { buildDocumentsText } from '@/lib/documentSelector';
 import { getConversationImages } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
-import { buildCatalogFactsBlock, buildIssuedQuoteBlock } from '@/lib/services/promptFacts';
+import { buildCatalogFactsBlock, buildIssuedQuoteBlock, detectStandardSkus } from '@/lib/services/promptFacts';
 import { extraireFilets, buildSurMesureBlock } from '@/lib/services/surMesureCalc';
-import { callClaude } from '@/lib/services/claudeService';
 import { parseStandardsRows, findFamilySkus, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 
 /**
@@ -162,38 +161,9 @@ export async function POST(req: NextRequest) {
       if (standardsDoc && process.env.OCTOPIA_SELLER_ID) {
         // Construire le contexte : dernier message + historique récent
         const recentContext = history.slice(-4).map((m) => m.content).join('\n') + '\n' + message;
-        const skuExtractPrompt = `Tu es un assistant qui identifie les produits standards mentionnés dans une conversation et retrouve les SKU correspondants.
+        const skuMap = await detectStandardSkus(recentContext, standardsDoc.content, { label: 'message-sku', storeCode: agent.store_code || '' });
 
-CONVERSATION RÉCENTE :
-${recentContext.substring(0, 4000)}
-
-LISTE DES PRODUITS STANDARDS (format colonnes : Nom | Variante | SKU | TTC | HT par taux TVA) :
-${standardsDoc.content}
-
-RÈGLES :
-- La liste contient des filets standards (par couleur / matière / taille) ET des accessoires (mâts, kits de fixation, cordes, colliers, etc.). Parcourir TOUTE la liste.
-- Identifier les produits CATALOGUE STANDARD mentionnés (couleur, taille, finition, accessoire précis).
-- Vérifier ATTENTIVEMENT que la COULEUR ET la TAILLE correspondent EXACTEMENT à une ligne. Les tailles sont RÉVERSIBLES (3x4 = 4x3). Si la correspondance n'est pas exacte, NE PAS retourner de SKU — ne JAMAIS inventer ni proposer un SKU "approchant".
-- Retourner UNIQUEMENT les SKU trouvés, un par ligne, format : SKU|nom_produit|quantité_demandée
-- Si aucun produit standard identifié, retourner : AUCUN`;
-
-        // Rebasculé Sonnet 4.6 le 01/07/2026 — même raison qu'analyze : Haiku
-        // se trompait sur le matching couleur/taille exact, injection stock
-        // erronée en cascade.
-        const skuResult = await callClaude(
-          [{ role: 'user', content: skuExtractPrompt }],
-          { model: 'claude-sonnet-4-6', maxTokens: 500, label: 'message-sku', storeCode: agent.store_code || '' }
-        );
-
-        if (skuResult && !skuResult.includes('AUCUN')) {
-          const skuLines = skuResult.trim().split('\n').filter((l) => l.includes('|'));
-          const skuMap: Record<string, { name: string; qtyDemanded: string }> = {};
-          for (const line of skuLines) {
-            const [sku, name, qty] = line.split('|');
-            if (sku && /^37\d{11}$/.test(sku.trim())) {
-              skuMap[sku.trim()] = { name: (name || '').trim(), qtyDemanded: (qty || '?').trim() };
-            }
-          }
+        if (skuMap) {
           const skus = Object.keys(skuMap);
           if (skus.length > 0 && skus.length <= 20) {
             console.log(`[plugin/message] checking stock for ${skus.length} SKUs`);

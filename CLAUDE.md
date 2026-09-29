@@ -82,6 +82,11 @@ front-claude-app/
 - Limite : un produit que le pré-passage ne reconnaît pas n'a pas de bloc prix → l'agent retombe sur la lecture du catalogue. `conversation_quotes` ne garde qu'un devis par conversation et boutique (le dernier).
 - Le banc de rejeu utilise les messages stockés : seules les analyses faites après ce déploiement contiennent ces blocs.
 
+### Calcul sur-mesure fait par le code (29/09/2026)
+- `src/lib/services/surMesureCalc.ts` : pré-passage Sonnet 4.6 qui EXTRAIT seulement les filets et leurs cotes (JSON), puis calcul déterministe injecté dans l'analyse (bloc « 📐 CALCUL SUR-MESURE ») : dimensions au dixième, Héron / 2 triangles via la diagonale / trapèze (bases explicites), surface arrondie AVANT le total, surface totale, tranche, prix HT/m² lu dans `prix-ht-sur-mesure.txt`, totaux HT. Filet dont la combinaison existe au catalogue → sorti du calcul (prix catalogue). Côté ou diagonale manquant → « manque … », pas de prix. analyze (en parallèle du pré-passage SKU, donc auto-draft) + message. Jamais pour COCO.
+- **Arrondis (Charles 29/09/2026)** : dimensions au dixième avec « ,x5 » vers le bas (exemple de la grille 4,25 m → 4,2 m) ; surfaces au dixième le plus proche, « ,x5 » vers le haut (4,5 × 4,5 = 20,25 m² → 20,3 m²).
+- Banc : `--sur-mesure` recalcule le bloc sur les messages stockés. 10 cas sur-mesure rejoués : blocs justes sur les 8 extraits, montants recopiés tels quels, erreur EHPAD (+58 € HT) corrigée. Non extrait : rouleau 2,4 × 78 m (Marinha, `cnv_1m5sm3rr`).
+
 ### Instructions agents — SOURCE UNIQUE dans le repo (28/09/2026)
 - `agents.instructions` est désormais GÉNÉRÉ depuis `agents/prompt/instructions.md` (gabarit commun) + `agents/prompt/stores.json` (nom, préfixe de commande, spécialité, flags `coco` / `mat_bois` par boutique). Syntaxe : `{{VARIABLE}}` et lignes `{% if flag %}` / `{% if store in HET,RED %}` / `{% else %}` / `{% endif %}`.
 - **Ne plus patcher la base à la main ni par chercher-remplacer.** Workflow : éditer le gabarit → `python3 scripts/agents-prompt/prompt.py check` puis `diff <CODE>` → rejouer le banc si le fond change → `push --yes` (backup auto dans `backups/agents-prompt-<ts>/`) → commit + PR. `check` doit afficher `0 boutique(s) à pousser` sur main.

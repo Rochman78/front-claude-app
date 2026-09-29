@@ -121,6 +121,11 @@ front-claude-app/
 - Cas déclencheur : `cnv_1mcdaown` (COCO) — 2 toiles coco triangle 3×3×3, 1 en stock → « la seconde fabriquée sur mesure aux mêmes dimensions (21 jours) ».
 - Purge COCO (même jour) : 5 blocs filet sur-mesure hérités supprimés des instructions COCO (CROQUIS SELON LA FORME, QUADRILATÈRE QUELCONQUE, TAILLE FILET, TRANCHE SUR-MESURE, PÉRIMÈTRE DU SUR-MESURE), 101 k → 86 k car. Script `scripts/patch_coco_purge_blocs_sur_mesure.py`, backup `backups/coco-purge-sur-mesure-20260928-114257/`. Ne pas les réinjecter chez COCO lors d'un futur patch × 10 agents.
 
+### Parasol coco + socle — COCO (Ma Toile Coco) uniquement (29/09/2026)
+- `3760388679379` Parasol en fibre de coco 699,99 € TTC (typologie `parasol coco`) et `3760388679386` Socle pour parasol coco 49,90 € TTC (`accessoire | socle parasol`). Vendus **uniquement sur MTC** : ne pas les ajouter aux 9 autres boutiques.
+- Ils n'avaient jamais été dans `prix-ht-standards.txt`, car le pipeline des prix part du catalogue LFC, qui ne les vend pas. Un produit propre à une boutique s'ajoute à la main (script dédié) ; `regen_prix_ht_standards.py` laisse ces lignes intactes.
+- Script `scripts/catalogue/add_parasol_coco.py`, backup `backups/parasol-coco-20260929-143517/`. Cas déclencheur `cnv_1mdiad5j` (Agora PNC Boulazac).
+
 ### Mât en bois Robinier — LFC / COCO / LVO / MON uniquement, livraison France (28/09/2026)
 - SKU `3770043027001`, 249,99 € TTC. Vendu **uniquement** sur LFC, COCO, LVO, MON et **uniquement pour une livraison en France** (transport C Chez vous). Hors France → pas proposé, alternative mât télescopique alu `3760263850060`.
 - HET, RED, REDE, RETE, TAR, UNI : ligne retirée de `prix-ht-standards.txt`, `FT-Mat-Bois-Robinier.txt` supprimé, ligne SKU retirée des instructions. `regen_prix_ht_standards.py` ne ré-ajoute pas une ligne absente → le retrait tient.

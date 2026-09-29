@@ -75,6 +75,13 @@ front-claude-app/
 - 9 boutiques (LFC, LVO, MON, UNI, TAR, HET, RED, REDE, RETE) : 2 options brouillon = (1) site + (2) sur-mesure. COCO : 1 seule option = site (pas de sur-mesure en coco).
 - Encodé × 10 agents en BDD (remplace l'ancienne formulation "nous pouvons vous prévenir par email dès que le réassort sera disponible").
 
+### Coûts Claude — mesure et règles (29/09/2026)
+- **Table `claude_usage`** : chaque appel Claude (label = route, boutique, modèle, tokens entrée / cache écrit / cache lu / sortie). Tout nouvel appel passe par `callClaude` / `createChatStream` avec un `label`, ou appelle `recordUsage()` s'il utilise le SDK en direct. Coût par jour : `SELECT label, sum(input_tokens), sum(cache_creation_tokens), sum(cache_read_tokens), sum(output_tokens) FROM claude_usage GROUP BY 1`.
+- Préfixe mis en cache de l'appel principal (instructions + tous les fichiers agent) : ~112 k tokens LFC, ~49 k COCO. Un cache froid coûte ~0,45 $ (écriture 1 h = 2× le prix d'entrée), une relecture ~0,02 $. Le cache 1 h est rentable (relectures observées jusqu'à 47 min d'écart) : ne pas repasser à 5 min.
+- Tout ajout dans un fichier agent alourdit CHAQUE appel. Ne jamais sélectionner les documents au cas par cas dans analyze / message : chaque combinaison crée sa propre entrée de cache et coûte plus qu'elle n'économise.
+- Pré-passage SKU (`detectStandardSkus`) : ne reçoit que `typologie | forme | matière | couleur | taille | SKU` (`compactStandardsForSkuMatch`), ~11 k tokens au lieu de ~40 k. Ne pas y remettre le catalogue complet ; les prix du bloc 💶 sont lus par le code dans la ligne complète.
+- Auto-draft : une conv `skipped` « classifier LLM: non-demande » ou « PJ trop volumineuse » est définitive (plus de reclassification toutes les 2 min). Le poll passe conv + inbox déjà lues à `processAutoDraft`.
+
 ### Faits injectés par le code dans l'analyse (28/09/2026)
 - `src/lib/services/promptFacts.ts`, appelé par analyze (1re analyse, reprise, auto-draft) et message :
   - **💶 PRIX CATALOGUE EXACTS** : pour chaque SKU trouvé par le pré-passage (Sonnet 4.6), recopie de la ligne `prix-ht-standards.txt` (TTC + 12 colonnes HT). Le modèle ne cherche plus le prix dans les ~100 000 caractères du catalogue.

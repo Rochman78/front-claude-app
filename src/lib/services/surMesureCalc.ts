@@ -56,11 +56,19 @@ export function trancheIndex(surfaceTotale: number): number {
 }
 
 // ─── géométrie ────────────────────────────────────────────────────
-/** Arrondi au dixième, « ,x5 » vers le bas (exemple de la grille : 4,25 m → 4,2 m). */
+/** Arrondi des DIMENSIONS au dixième, « ,x5 » vers le bas (exemple de la grille : 4,25 m → 4,2 m). */
 export function dixieme(x: number): number {
   const c = Math.round(x * 1000); // millimètres, évite les erreurs flottantes
   const reste = c % 100;
   return (reste <= 50 ? c - reste : c - reste + 100) / 1000;
+}
+
+/** Arrondi des SURFACES au dixième le plus proche, « ,x5 » vers le haut
+ *  (Charles 29/09/2026 : 4,5 × 4,5 = 20,25 m² → 20,3 m²). */
+export function arrondiSurface(x: number): number {
+  const c = Math.round(x * 1000);
+  const reste = c % 100;
+  return (reste < 50 ? c - reste : c - reste + 100) / 1000;
 }
 
 function heron(a: number, b: number, c: number): number | null {
@@ -196,7 +204,7 @@ export function buildSurMesureBlock(filets: FiletDemande[], grilleContent: strin
     if (std === true) return { f: f2, desc, qte, note: 'EXISTE EN STANDARD CATALOGUE (même taille, finition, couleur) → chiffrer au prix catalogue, hors calcul sur-mesure' };
     const s = surface(f2);
     if (s.brute === null) return { f: f2, desc, qte, note: s.manque ? `surface non calculable : manque ${s.manque}` : `⚠️ ${s.invalide} — vérifier les cotes` };
-    return { f: f2, desc, qte, surf: dixieme(s.brute), note: std === 'couleur ?' ? 'cette taille existe en standard dans certaines couleurs : si la couleur demandée y est, chiffrer en standard' : undefined };
+    return { f: f2, desc, qte, surf: arrondiSurface(s.brute), note: std === 'couleur ?' ? 'cette taille existe en standard dans certaines couleurs : si la couleur demandée y est, chiffrer en standard' : undefined };
   });
 
   const calculables = lignes.filter((l) => l.surf !== undefined);
@@ -205,13 +213,13 @@ export function buildSurMesureBlock(filets: FiletDemande[], grilleContent: strin
     out.push(`  • ${l.desc}`);
     if (l.surf !== undefined) {
       const brute = surface(l.f).brute!;
-      out.push(`      surface : ${m(Math.round(brute * 1000) / 1000)} m² → arrondie ${m(l.surf)} m²${l.qte > 1 ? ` × ${l.qte} = ${m(dixieme(l.surf * l.qte))} m²` : ''}`);
+      out.push(`      surface : ${m(Math.round(brute * 1000) / 1000)} m² → arrondie ${m(l.surf)} m²${l.qte > 1 ? ` × ${l.qte} = ${m(arrondiSurface(l.surf * l.qte))} m²` : ''}`);
     }
     if (l.note) out.push(`      ${l.note}`);
   }
 
   if (calculables.length > 0) {
-    const totale = dixieme(calculables.reduce((acc, l) => acc + l.surf! * l.qte, 0));
+    const totale = arrondiSurface(calculables.reduce((acc, l) => acc + l.surf! * l.qte, 0));
     const t = trancheIndex(totale);
     out.push('', `  Surface totale sur-mesure : ${m(totale)} m² → tranche « ${TRANCHES[t]} »`);
     let totalHT = 0;

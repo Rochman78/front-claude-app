@@ -565,6 +565,33 @@ ${fullBody}`;
     // Override : si le détecteur SAV a flaggé un sujet hors-devis dans le mail,
     // on force le mode brouillon même si AUTO_SEND_ENABLED=true.
     const envSendMode = process.env.AUTO_SEND_ENABLED === 'true';
+
+    // 7-pre. Re-contrôle de l'état Front JUSTE avant de poser (08/10/2026).
+    // Le contrôle « 1 seul message » du §3 date d'avant l'analyse, qui dure
+    // 1 à 2 min : un collègue peut répondre entre-temps. Cas cnv_1mftbkuv
+    // (HET) : tag Devis posé à 14:31:06, réponse de Jérémy partie à 14:32:05,
+    // auto-send parti à 14:32:27 → le client a reçu deux réponses.
+    // Si la conv a bougé (réponse, 2e entrant, brouillon en cours) → on ne
+    // pose rien, ni envoi ni brouillon. Contrôle impossible → rien non plus,
+    // sans enregistrement : le poll suivant retentera.
+    const recheckRes = await frontFetch(`/conversations/${conversationId}/messages`);
+    if (!recheckRes.ok) {
+      console.warn(`[auto-draft] ${conversationId} re-contrôle avant pose impossible (messages ${recheckRes.status}) — rien posé`);
+      return { conversationId, status: 'error', reason: `re-contrôle messages ${recheckRes.status}` };
+    }
+    const msgsNow: Record<string, unknown>[] = (await recheckRes.json())._results || [];
+    if (msgsNow.length !== 1 || msgsNow[0].id !== sole.id) {
+      console.log(`[auto-draft] ${conversationId} conv modifiée pendant l'analyse (${msgsNow.length} messages) — rien posé`);
+      return skip(`conv modifiée pendant l'analyse (${msgsNow.length} messages) — un collègue a pris la main, rien posé`, store.code);
+    }
+    try {
+      const draftsRes = await frontFetch(`/conversations/${conversationId}/drafts`);
+      if (draftsRes.ok && ((await draftsRes.json())._results || []).length > 0) {
+        console.log(`[auto-draft] ${conversationId} brouillon en cours côté équipe — rien posé`);
+        return skip('brouillon en cours côté équipe au moment de poser — rien posé', store.code);
+      }
+    } catch { /* best-effort : le contrôle des messages ci-dessus fait foi */ }
+
     const sendMode = envSendMode && !forceBrouillonMode;
     if (envSendMode && forceBrouillonMode) {
       console.log(`[auto-draft] ${conversationId} auto-send DÉSACTIVÉ pour cette conv : ${savReason}`);

@@ -6,6 +6,7 @@ La fiche publique ne cite ni l'essence (Robinier) ni le fournisseur (SPARS desig
 les agents ne doivent plus les écrire à un client. Sur LFC, COCO, LVO, MON :
   - FT-Mat-Bois-Robinier.txt renommé FT-Mat-Bois.txt
   - essence et fournisseur retirés de la fiche, règle de vocabulaire ajoutée en tête
+  - lieu de fabrication réduit à « Fabrication française » (la commune désignait le fournisseur)
 
 La ligne des instructions se change dans agents/prompt/instructions.md (prompt.py push).
 
@@ -33,8 +34,9 @@ REPLACEMENTS = [
     ),
     ('- Essence : Robinier (Robinia pseudoacacia)\n', '- Matière : bois massif naturel\n'),
     ('- Mât en bois Robinier (SKU 3770043027001)', '- Mât en bois naturel (SKU 3770043027001)'),
+    ('- Fabrication / transformation : France, Locmariaquer 56740\n', '- Fabrication française\n'),
 ]
-FORBIDDEN_RE = re.compile(r'robinier|robinia|spars', re.I)
+FORBIDDEN_RE = re.compile(r'robinier|robinia|spars|locmariaquer', re.I)
 
 
 def main():

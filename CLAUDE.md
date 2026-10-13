@@ -134,6 +134,7 @@ front-claude-app/
 - SKU `3770043027001`, 249,99 € TTC. Vendu **uniquement** sur LFC, COCO, LVO, MON et **uniquement pour une livraison en France** (transport C Chez vous). Hors France → pas proposé, alternative mât télescopique alu `3760263850060`.
 - HET, RED, REDE, RETE, TAR, UNI : ligne retirée de `prix-ht-standards.txt`, `FT-Mat-Bois-Robinier.txt` supprimé, ligne SKU retirée des instructions. `regen_prix_ht_standards.py` ne ré-ajoute pas une ligne absente → le retrait tient.
 - Script `scripts/patch_mat_bois_perimetre.py`, backup `backups/mat-bois-perimetre-20260928-135356/`. Fiche technique : prix résiduel 219,99 € corrigé en 249,99 €.
+- Fiche publique `FT_Mat_Bois_LFC.pdf` (13/10/2026) fusionnée dans `FT-Mat-Bois-Robinier.txt` × 4 boutiques : poids 13,5 à 14 kg, compatibilité / utilisation, réserve « bois naturel, variations d'un mât à l'autre ». La fiche interne (scellement, SKU, France uniquement) reste la référence. Script `scripts/patch_ft_mat_bois_fiche_publique.py`, backup `backups/ft-mat-bois-fiche-publique-20261013-154121/`.
 - Les différences de gamme entre boutiques sont VOULUES : ne jamais « réaligner » un produit sur les 10 agents sans vérifier que la boutique le vend (`scripts/agents-audit/diff_agents.py` liste, ne corrige pas).
 
 ### Salutation — TOUJOURS « Bonjour, » seul (03/07/2026)

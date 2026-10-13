@@ -130,11 +130,12 @@ front-claude-app/
 - Ils n'avaient jamais été dans `prix-ht-standards.txt`, car le pipeline des prix part du catalogue LFC, qui ne les vend pas. Un produit propre à une boutique s'ajoute à la main (script dédié) ; `regen_prix_ht_standards.py` laisse ces lignes intactes.
 - Script `scripts/catalogue/add_parasol_coco.py`, backup `backups/parasol-coco-20260929-143517/`. Cas déclencheur `cnv_1mdiad5j` (Agora PNC Boulazac).
 
-### Mât en bois Robinier — LFC / COCO / LVO / MON uniquement, livraison France (28/09/2026)
+### Mât en bois naturel — LFC / COCO / LVO / MON uniquement, livraison France (28/09/2026)
 - SKU `3770043027001`, 249,99 € TTC. Vendu **uniquement** sur LFC, COCO, LVO, MON et **uniquement pour une livraison en France** (transport C Chez vous). Hors France → pas proposé, alternative mât télescopique alu `3760263850060`.
 - HET, RED, REDE, RETE, TAR, UNI : ligne retirée de `prix-ht-standards.txt`, `FT-Mat-Bois-Robinier.txt` supprimé, ligne SKU retirée des instructions. `regen_prix_ht_standards.py` ne ré-ajoute pas une ligne absente → le retrait tient.
 - Script `scripts/patch_mat_bois_perimetre.py`, backup `backups/mat-bois-perimetre-20260928-135356/`. Fiche technique : prix résiduel 219,99 € corrigé en 249,99 €.
 - Fiche publique `FT_Mat_Bois_LFC.pdf` (13/10/2026) fusionnée dans `FT-Mat-Bois-Robinier.txt` × 4 boutiques : poids 13,5 à 14 kg, compatibilité / utilisation, réserve « bois naturel, variations d'un mât à l'autre ». La fiche interne (scellement, SKU, France uniquement) reste la référence. Script `scripts/patch_ft_mat_bois_fiche_publique.py`, backup `backups/ft-mat-bois-fiche-publique-20261013-154121/`.
+- **Vocabulaire client (Charles 13/10/2026)** : « mât en bois naturel » / « bois massif naturel ». L'essence (Robinier) et le fournisseur ne s'écrivent plus nulle part côté agents : fiche renommée `FT-Mat-Bois.txt` (ex `FT-Mat-Bois-Robinier.txt`), ligne du gabarit et libellé `STOCK_HORS_OCTOPIA` alignés. Client qui demande l'essence → 🟠 au gérant. Les synonymes « mat robinier » de `extract-quote` restent (ils reconnaissent la demande du client). Script `scripts/patch_mat_bois_naturel.py`, backups `backups/mat-bois-naturel-20261013-160118/` + `backups/agents-prompt-20261013-160125/`.
 - Les différences de gamme entre boutiques sont VOULUES : ne jamais « réaligner » un produit sur les 10 agents sans vérifier que la boutique le vend (`scripts/agents-audit/diff_agents.py` liste, ne corrige pas).
 
 ### Salutation — TOUJOURS « Bonjour, » seul (03/07/2026)

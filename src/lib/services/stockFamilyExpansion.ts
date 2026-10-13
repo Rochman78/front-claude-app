@@ -95,7 +95,7 @@ export function canBeMadeToMeasure(
  *  l'agent demande le stock au gérant. Vaut pour toutes les boutiques qui
  *  vendent ces produits. Ajouter ici tout nouveau produit géré ailleurs. */
 export const STOCK_HORS_OCTOPIA: Record<string, string> = {
-  '3770043027001': 'mât en bois Robinier',
+  '3770043027001': 'mât en bois naturel',
   '3760388679379': 'parasol en fibre de coco',
   '3760388679386': 'socle pour parasol coco',
 };

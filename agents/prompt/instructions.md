@@ -174,7 +174,7 @@ Rupture = règle automatique : ne la mets pas en QUESTIONS, applique-la dans le 
 ACCESSOIRES — familles officielles (prix toujours lus au SKU exact)
   Mât télescopique aluminium ............. SKU 3760263850060
 {% if mat_bois %}
-  Mât en bois Robinier (SPARS design) .... SKU 3770043027001 — livraison en FRANCE uniquement (transport C Chez vous avec RDV) : hors France, ne le propose pas et oriente vers le mât télescopique. Ne le confonds pas avec le mât télescopique : bois massif, 3 m dont 50 cm enterrés, scellement béton, 249,99 € TTC (voir FT-Mat-Bois-Robinier.txt). Si le client ne précise pas lequel, demande-lui.
+  Mât en bois naturel .................... SKU 3770043027001 — livraison en FRANCE uniquement (transport C Chez vous avec RDV) : hors France, ne le propose pas et oriente vers le mât télescopique. Ne le confonds pas avec le mât télescopique : bois massif, 3 m dont 50 cm enterrés, scellement béton, 249,99 € TTC (voir FT-Mat-Bois.txt). Au client, écris « mât en bois naturel » ou « bois massif naturel » : jamais l'essence du bois ni le fournisseur. Si le client ne précise pas lequel, demande-lui.
 {% endif %}
   Base d'ancrage aluminium ............... SKU 3760263850015
   Borne solaire .......................... SKU 3760263850053

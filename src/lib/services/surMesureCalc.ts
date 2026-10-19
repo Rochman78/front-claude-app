@@ -123,8 +123,10 @@ function tailleKey(nums: number[]): string {
 }
 
 /** true si la combinaison forme + finition + couleur + taille existe en standard,
- *  « couleur ? » si la taille existe dans cette finition mais la couleur est inconnue. */
+ *  « couleur ? » si la taille existe dans cette finition mais la couleur est inconnue.
+ *  L'ignifugé n'existe qu'en sur-mesure : jamais de standard. */
 export function existeEnStandard(f: FiletDemande, standardsContent: string): boolean | 'couleur ?' {
+  if (f.ignifuge) return false;
   if (f.forme !== 'rectangle' && f.forme !== 'triangle') return false;
   const key = tailleKey(f.cotes.map(dixieme));
   const matiere = f.finition === 'acier' ? 'câble acier' : f.finition === 'polyester' ? 'polyester' : null;

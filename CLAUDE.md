@@ -121,6 +121,11 @@ front-claude-app/
 - Cas déclencheur : `cnv_1mcdaown` (COCO) — 2 toiles coco triangle 3×3×3, 1 en stock → « la seconde fabriquée sur mesure aux mêmes dimensions (21 jours) ».
 - Purge COCO (même jour) : 5 blocs filet sur-mesure hérités supprimés des instructions COCO (CROQUIS SELON LA FORME, QUADRILATÈRE QUELCONQUE, TAILLE FILET, TRANCHE SUR-MESURE, PÉRIMÈTRE DU SUR-MESURE), 101 k → 86 k car. Script `scripts/patch_coco_purge_blocs_sur_mesure.py`, backup `backups/coco-purge-sur-mesure-20260928-114257/`. Ne pas les réinjecter chez COCO lors d'un futur patch × 10 agents.
 
+### Ignifugé M3 — tous les coloris (19/10/2026)
+- PV Efectis `EFR-25-003859 – Révision 1` du 16/10/2026 (« extension de la gamme de coloris », coloris : « Tous coloris », valable 5 ans à compter du 02/02/2026). Le sur-mesure ignifugé se fait désormais dans toutes les couleurs du catalogue, plus seulement sable et blanc.
+- Gabarit : règle IGNIFUGÉ réécrite (plus de proposition sable / blanc / non ignifugé), ligne d'annexe « ignifugés GRIS » retirée. `prix-ht-sur-mesure.txt` × 9 : critère 3 mis à jour. `FT-Filets-*.pdf` × 9 : n° du PV complété par la révision 1 (les fiches indiquaient déjà tous les coloris).
+- Script `scripts/patch_ignifuge_tous_coloris.py`, backups `backups/ignifuge-tous-coloris-20261019-110107/` + `backups/agents-prompt-20261019-110119/`.
+
 ### Stock géré hors Octopia — mât en bois, parasol coco, socle (29/09/2026)
 - `STOCK_HORS_OCTOPIA` (`stockFamilyExpansion.ts`) : SKU jamais envoyés à Octopia (qui répondrait 0 → fausse rupture). analyze et message injectent à la place le bloc « 📦 STOCK GÉRÉ HORS SYSTÈME » : prix catalogue normal, question stock au gérant en QUESTIONS, aucune quantité ni rupture annoncée au client. Vaut pour toutes les boutiques qui vendent ces produits.
 - Tout nouveau produit dont le stock est géré ailleurs s'ajoute à cette liste (pas dans les prompts).

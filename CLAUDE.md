@@ -125,6 +125,8 @@ front-claude-app/
 - PV Efectis `EFR-25-003859 – Révision 1` du 16/10/2026 (« extension de la gamme de coloris », coloris : « Tous coloris », valable 5 ans à compter du 02/02/2026). Le sur-mesure ignifugé se fait désormais dans toutes les couleurs du catalogue, plus seulement sable et blanc.
 - Gabarit : règle IGNIFUGÉ réécrite (plus de proposition sable / blanc / non ignifugé), ligne d'annexe « ignifugés GRIS » retirée. `prix-ht-sur-mesure.txt` × 9 : critère 3 mis à jour. `FT-Filets-*.pdf` × 9 : n° du PV complété par la révision 1 (les fiches indiquaient déjà tous les coloris).
 - Script `scripts/patch_ignifuge_tous_coloris.py`, backups `backups/ignifuge-tous-coloris-20261019-110107/` + `backups/agents-prompt-20261019-110119/`.
+- `existeEnStandard` (`surMesureCalc.ts`) renvoie toujours faux pour un filet ignifugé : l'ignifugé n'existe qu'en sur-mesure. Avant, un vert 3×8 ignifugé sortait « EXISTE EN STANDARD » parce que le 3×8 vert existe au catalogue (`cnv_1m28d7kn`).
+- Banc du 19/10/2026 (10 cas × 2 rejeux) : militaire / bleu / vert / noir ignifugés proposés sans restriction, sable inchangé, COCO inchangé. Le rapport d'essai `EFR-25-003859-BE` n'est PAS chargé dans les agents : il nomme le fabricant. Au client, on envoie le PV.
 
 ### Stock géré hors Octopia — mât en bois, parasol coco, socle (29/09/2026)
 - `STOCK_HORS_OCTOPIA` (`stockFamilyExpansion.ts`) : SKU jamais envoyés à Octopia (qui répondrait 0 → fausse rupture). analyze et message injectent à la place le bloc « 📦 STOCK GÉRÉ HORS SYSTÈME » : prix catalogue normal, question stock au gérant en QUESTIONS, aucune quantité ni rupture annoncée au client. Vaut pour toutes les boutiques qui vendent ces produits.

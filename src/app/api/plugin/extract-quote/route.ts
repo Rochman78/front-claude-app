@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callClaude } from '@/lib/services/claudeService';
 import pool, { initDB } from '@/lib/db';
+import { normalizeVatNumber } from '@/lib/vatNumber';
 
 /** Taux de TVA disponibles dans prix-ht-standards.txt (colonnes 4 à 15 des lignes) */
 const VAT_RATES = [0, 17, 18, 19, 20, 21, 22, 23, 24, 25, 25.5, 27];
@@ -488,6 +489,7 @@ ${productMatchSpec}
 - Chercher le téléphone, nom, prénom, adresse dans TOUT le fil de mails (y compris le PREMIER message, souvent un formulaire de contact avec le numéro de téléphone).
 - Ne pas se limiter au dernier message.
 - ENTREPRISE FRANÇAISE : chercher aussi le SIRET (14 chiffres, souvent en signature, en pied de mail, ou dans un mail administratif). Le n° TVA intra FR est distinct du SIRET (le n° TVA FR est 13 caractères FRxxxxxxxxxxx et contient 11 chiffres du SIRET après la clé, mais on saisit les 2 séparément). Format attendu : suite de 14 chiffres consécutifs (avec ou sans espaces à retirer). Si non trouvé, laisser vide — on ne l'invente pas.
+- N° TVA INTRA (vatNumber) : toujours avec le préfixe pays de 2 lettres, sans espace (ex : « B26629626 » donné par un client espagnol → « ESB26629626 » ; Grèce = « EL »). Un CIF / NIF / partita IVA / USt-IdNr donné seul est le n° national : ajouter le préfixe du pays de facturation.
 
 === RÈGLE N°7 BIS : ADRESSE DE FACTURATION vs ADRESSE DE LIVRAISON ===
 - Le client PEUT avoir 2 adresses distinctes : facturation (siège social, domicile administratif) et livraison (chantier, entrepôt, second domicile). Chercher les 2 dans le fil.
@@ -634,6 +636,11 @@ Note : "deliveryAddress" doit être :
     }
     if (parsed?.customer && parsed.customer.deliveryAddress === undefined) {
       parsed.customer.deliveryAddress = null;
+    }
+    // N° TVA intra : préfixe pays ajouté s'il manque (« B26629626 » →
+    // « ESB26629626 », cnv_1m5pll1z), sinon Pennylane refuse le client.
+    if (parsed?.customer?.vatNumber) {
+      parsed.customer.vatNumber = normalizeVatNumber(parsed.customer.vatNumber, parsed.customer.billingAddress?.country);
     }
 
     // Post-processing STANDARDS : convertir le TTC saisi par Claude en HT via

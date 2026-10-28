@@ -3,6 +3,7 @@
  */
 
 import { getStoreByInboxName } from '@/lib/stores';
+import { normalizeVatNumber } from '@/lib/vatNumber';
 
 const PENNYLANE_API_URL = 'https://app.pennylane.com/api/external/v2';
 
@@ -75,7 +76,11 @@ export async function createCustomer(customer: Record<string, unknown>): Promise
   if (type === 'company') {
     endpoint = `${PENNYLANE_API_URL}/company_customers`;
     payload.name = customer.name || '';
-    if (customer.vatNumber) payload.vat_number = customer.vatNumber;
+    // Préfixe pays ajouté s'il manque (filet de sécurité : le plugin le fait
+    // déjà, mais l'app Next.js legacy passe aussi par ici).
+    const billingCountry = (customer.address as Record<string, string> | undefined)?.country;
+    const vatNumber = normalizeVatNumber(customer.vatNumber as string | undefined, billingCountry);
+    if (vatNumber) payload.vat_number = vatNumber;
     // SIRET français (14 chiffres) → SIREN (9 premiers chiffres) → champ
     // Pennylane `reg_no` (le nom réel côté API, PAS `registration_number`
     // qui a été rejeté par Pennylane le 07/07/2026 avec l'erreur
@@ -119,6 +124,15 @@ export async function createCustomer(customer: Record<string, unknown>): Promise
     return result;
   }
   const text = await res.text();
+  // 422 sur le n° TVA : numéro absent de la VIES (société non inscrite aux
+  // opérations intracommunautaires, fréquent en Espagne) ou format invalide.
+  // Sans n° valide, pas d'exonération LIC → message actionnable pour le gérant.
+  if (res.status === 422 && /vat number/i.test(text) && payload.vat_number) {
+    return {
+      error: `N° TVA intra ${payload.vat_number} refusé par Pennylane : absent du registre européen VIES ou format invalide. ` +
+        `Sans n° TVA intra valide, pas d'exonération : vider le champ N° TVA intra et appliquer la TVA du pays de livraison. (${text})`,
+    };
+  }
   return { error: `Erreur création client: ${text}` };
 }
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   type ExtractedQuote,
 } from '../utils/extractQuoteData';
+import { normalizeVatNumber } from '../utils/vatNumber';
 
 const API_BASE = window.location.origin;
 
@@ -660,7 +661,7 @@ export default function QuotePanel({
                       const val = e.target.value;
                       upd('vatNumber', val);
                       // Si n° TVA intra renseigné et pays UE hors France → TVA 0 % (LIC)
-                      const countryFromVat = val.replace(/[^A-Z]/g, '').substring(0, 2);
+                      const countryFromVat = normalizeVatNumber(val, f.country).substring(0, 2);
                       const countryFromForm = f.country?.toUpperCase() || '';
                       const country = countryFromVat || countryFromForm;
                       if (val.trim().length >= 4 && EU_COUNTRIES_NON_FR.includes(country)) {
@@ -1274,7 +1275,7 @@ export default function QuotePanel({
         companyName: String(customer?.companyName || customer?.name || ''),
         email: String(customer?.email || customerEmail || ''),
         phone: String(customer?.phone || ''),
-        vatNumber: String(customer?.vatNumber || ''),
+        vatNumber: normalizeVatNumber(String(customer?.vatNumber || ''), String(billing.country || '')),
         siret: String(customer?.siret || ''),
         street: String(billing.address || ''),
         postalCode: String(billing.postalCode || ''),
@@ -1638,7 +1639,10 @@ export default function QuotePanel({
       // Pays de facturation — utilisé pour l'adresse client Pennylane et le
       // check d'exonération LIC/exportation (§ freeTextLines plus bas).
       // Pennylane exige MAJUSCULES + 2 lettres exactes → uppercase + slice(0,2).
-      const rawCountry = f.vatNumber?.match(/^([A-Za-z]{2})/)?.[1] || f.country || 'FR';
+      // N° TVA intra avec préfixe pays ajouté s'il manque (« B26629626 » →
+      // « ESB26629626 ») : Pennylane refuse le numéro national seul.
+      const vatNumberNorm = normalizeVatNumber(f.vatNumber, f.country);
+      const rawCountry = vatNumberNorm.match(/^([A-Z]{2})/)?.[1] || f.country || 'FR';
       const country = String(rawCountry).toUpperCase().slice(0, 2);
 
       // Résoudre l'adresse de livraison finale : soit distincte, soit copie
@@ -1682,7 +1686,7 @@ export default function QuotePanel({
           name: f.clientType === 'company' ? f.companyName : undefined,
           email: f.email,
           phone: f.phone,
-          vatNumber: f.clientType === 'company' ? f.vatNumber : undefined,
+          vatNumber: f.clientType === 'company' ? vatNumberNorm : undefined,
           siret: f.clientType === 'company' && f.siret.trim() ? f.siret.replace(/\s+/g, '') : undefined,
           address: (f.street || f.postalCode || f.city) ? {
             street: f.street,

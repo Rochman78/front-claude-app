@@ -2,9 +2,18 @@ import { useState, useEffect } from 'react';
 import {
   type ExtractedQuote,
 } from '../utils/extractQuoteData';
-import { normalizeVatNumber } from '../utils/vatNumber';
+import { normalizeVatNumber, countryFromVatNumber, EU_STANDARD_VAT_RATES } from '../utils/vatNumber';
 
 const API_BASE = window.location.origin;
+
+/** Résultat de la vérification VIES du n° TVA intra (/api/plugin/vies-check). */
+type ViesCheck = { vatNumber: string; status: 'checking' | 'valid' | 'invalid' | 'unavailable'; name?: string };
+
+/** Taux normal du pays de livraison (livraison distincte sinon facturation), undefined hors UE. */
+function deliveryVatRate(f: { deliverySameAsBilling: boolean; deliveryCountry: string; country: string }): { country: string; rate: number | undefined } {
+  const country = String((!f.deliverySameAsBilling && f.deliveryCountry) || f.country || '').trim().toUpperCase();
+  return { country, rate: EU_STANDARD_VAT_RATES[country] };
+}
 
 /** Langue par défaut de chaque boutique */
 const STORE_LANG: Record<string, string> = {
@@ -149,6 +158,11 @@ export default function QuotePanel({
   // Popup "TVA incohérente" bloquant quand n° TVA intra UE renseigné mais
   // taux TVA saisi ≠ 0 (LIC art. 138 impose 0 %).
   const [showVatShouldBeZeroPopup, setShowVatShouldBeZeroPopup] = useState(false);
+  // Vérification VIES du n° TVA intra : sans n° valide, pas d'exonération LIC
+  // (cas cnv_1m5pll1z, RED, 28/10/2026 : ESB26629626 absent de la VIES, devis
+  // émis à 0 %). Popup bloquant si TVA 0 % avec un n° invalide.
+  const [vies, setVies] = useState<ViesCheck | null>(null);
+  const [showViesInvalidPopup, setShowViesInvalidPopup] = useState(false);
   // Warnings serveur (ex: TTC saisi ≠ TTC catalogue, SKU absent, etc.)
   // remontés depuis /api/plugin/extract-quote. Affichés en orange dans le panel.
   const [extractWarnings, setExtractWarnings] = useState<string[]>([]);
@@ -510,6 +524,64 @@ export default function QuotePanel({
           </div>
         )}
 
+        {/* Popup n° TVA intra invalide à la VIES — bloquant quand TVA à 0 %.
+            Pas de bypass : sans n° valide, l'exonération LIC n'a pas de base
+            légale (et Pennylane refuse le n°). */}
+        {showViesInvalidPopup && verifyForm && (() => {
+          const { country: dCountry, rate } = deliveryVatRate(verifyForm);
+          const paysLabel = COUNTRY_LABEL[dCountry] || dCountry;
+          return (
+            <div style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2500,
+            }}>
+              <div style={{
+                background: 'white', borderRadius: '12px', padding: '20px', maxWidth: '480px', width: '92%',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.2)', color: '#000',
+              }}>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 700, color: '#9b2c2c' }}>
+                  ✗ N° TVA intra absent de la VIES — pas d'exonération
+                </h3>
+                <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '10px' }}>
+                  Le n°{' '}
+                  <code style={{ background: '#f7fafc', padding: '1px 4px', borderRadius: 3 }}>{vies?.vatNumber || verifyForm.vatNumber}</code>{' '}
+                  n'est pas enregistré au registre européen VIES : la société n'est pas inscrite aux opérations intracommunautaires.
+                </p>
+                <p style={{ fontSize: '12.5px', lineHeight: 1.55, marginBottom: '14px' }}>
+                  La TVA à 0 % (livraison intracommunautaire) ne s'applique donc pas : TVA du pays de livraison
+                  {rate !== undefined ? <> (<strong>{paysLabel}, {rate} %</strong>)</> : null}. Le n° ne sera pas envoyé à Pennylane.
+                  Si le client pense être inscrit, il peut vérifier sur ec.europa.eu/taxation_customs/vies.
+                </p>
+                {rate !== undefined && (
+                  <button
+                    onClick={() => {
+                      setVerifyForm({ ...verifyForm, vatPercent: String(rate) });
+                      setShowViesInvalidPopup(false);
+                    }}
+                    style={{
+                      width: '100%', padding: '10px 16px', fontSize: '13px', fontWeight: 600,
+                      border: 'none', borderRadius: '6px', background: '#38a169', color: 'white', cursor: 'pointer',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Corriger : passer la TVA à {rate} % ({paysLabel})
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowViesInvalidPopup(false)}
+                  style={{
+                    width: '100%', padding: '8px 16px', fontSize: '12.5px', fontWeight: 500,
+                    border: 'none', borderRadius: '6px',
+                    background: 'transparent', color: '#4a5568', cursor: 'pointer',
+                  }}
+                >
+                  Annuler (revenir au formulaire)
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Popup TVA devrait être à 0 % — bloquant quand n° TVA intra UE
             renseigné mais taux TVA saisi ≠ 0. LIC art. 138 : la vente est
             obligatoirement exonérée. Sinon = surfacturation client. */}
@@ -660,15 +732,37 @@ export default function QuotePanel({
                     onChange={(e) => {
                       const val = e.target.value;
                       upd('vatNumber', val);
-                      // Si n° TVA intra renseigné et pays UE hors France → TVA 0 % (LIC)
-                      const countryFromVat = normalizeVatNumber(val, f.country).substring(0, 2);
-                      const countryFromForm = f.country?.toUpperCase() || '';
-                      const country = countryFromVat || countryFromForm;
-                      if (val.trim().length >= 4 && EU_COUNTRIES_NON_FR.includes(country)) {
+                      if (vies && vies.vatNumber !== normalizeVatNumber(val, f.country)) setVies(null);
+                    }}
+                    onBlur={async (e) => {
+                      // N° TVA intra UE hors France vérifié à la VIES : valide
+                      // (ou VIES indisponible) → TVA 0 % (LIC) ; absent → TVA
+                      // du pays de livraison.
+                      const val = e.target.value;
+                      if (val.trim().length < 4) return;
+                      const r = await checkViesFor(val, f.country);
+                      if (!r) return;
+                      if (r.status === 'valid' || r.status === 'unavailable') {
                         upd('vatPercent', '0');
+                      } else if (r.status === 'invalid' && parseFloat(f.vatPercent || '0') === 0) {
+                        const { rate } = deliveryVatRate(f);
+                        if (rate !== undefined) upd('vatPercent', String(rate));
                       }
                     }}
                   />
+                  {vies && f.vatNumber.trim() && vies.vatNumber === normalizeVatNumber(f.vatNumber, f.country) && (
+                    <div style={{
+                      fontSize: '11px', marginTop: '3px', lineHeight: 1.35,
+                      color: vies.status === 'valid' ? '#2f855a'
+                        : vies.status === 'invalid' ? '#c53030'
+                        : vies.status === 'unavailable' ? '#dd6b20' : '#718096',
+                    }}>
+                      {vies.status === 'checking' && 'Vérification VIES…'}
+                      {vies.status === 'valid' && `✓ Valide à la VIES${vies.name ? ` — ${vies.name}` : ''}`}
+                      {vies.status === 'invalid' && '✗ Absent de la VIES : pas d\'exonération, TVA du pays de livraison'}
+                      {vies.status === 'unavailable' && '⚠ VIES indisponible : vérifier le n° à la main avant de générer à 0 %'}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -769,7 +863,7 @@ export default function QuotePanel({
             padding: '8px 10px', margin: '6px 0 10px 0', fontSize: '11.5px', color: '#7b341e',
           }}>
             <div style={{ fontWeight: 600, marginBottom: '4px' }}>
-              ⚠ {extractWarnings.length} avertissement{extractWarnings.length > 1 ? 's' : ''} de cohérence catalogue :
+              ⚠ {extractWarnings.length} avertissement{extractWarnings.length > 1 ? 's' : ''} à vérifier :
             </div>
             <ul style={{ margin: 0, paddingLeft: '18px', lineHeight: 1.4 }}>
               {extractWarnings.map((w, i) => (
@@ -1203,6 +1297,7 @@ export default function QuotePanel({
         // Récupérer les warnings serveur (cohérence catalogue SKU / TTC)
         const w = (parsed?.warnings as string[] | undefined) || [];
         setExtractWarnings(w);
+        setVies((parsed?.vies as ViesCheck | null | undefined) || null);
         if (w.length > 0) {
           console.warn('[QuotePanel] extract-quote warnings:', w);
         }
@@ -1222,6 +1317,7 @@ export default function QuotePanel({
         const err = await response.json().catch(() => ({ error: 'Erreur extraction' }));
         console.warn('[QuotePanel] extract-quote failed:', err);
         setExtractWarnings([]);
+        setVies(null);
         setExtractError(`Extraction échouée : ${err.error || 'erreur serveur'}. Complète à la main, ou clique Réessayer.`);
       }
 
@@ -1550,8 +1646,31 @@ export default function QuotePanel({
     return null;
   }
 
+  /** Vérifie un n° TVA intra UE hors France à la VIES (résultat réutilisé s'il porte sur le même n°). */
+  async function checkViesFor(vatRaw: string, country: string): Promise<ViesCheck | null> {
+    const vatNumber = normalizeVatNumber(vatRaw, country);
+    const vatCountry = countryFromVatNumber(vatNumber);
+    if (!vatCountry || vatCountry === 'FR') { setVies(null); return null; }
+    if (vies && vies.vatNumber === vatNumber && vies.status !== 'checking') return vies;
+    setVies({ vatNumber, status: 'checking' });
+    let result: ViesCheck = { vatNumber, status: 'unavailable' };
+    try {
+      const res = await fetch(`${API_BASE}/api/plugin/vies-check?vat=${encodeURIComponent(vatNumber)}`);
+      const data = res.ok ? await res.json() : null;
+      if (data?.status) result = { vatNumber, status: data.status, name: data.name };
+    } catch { /* VIES injoignable → unavailable */ }
+    setVies(result);
+    return result;
+  }
+
   async function handleCreateFromForm(bypassSketchCheck = false, bypassVatCheck = false, bypassVatShouldBeZeroCheck = false) {
     if (!verifyForm) return;
+
+    // Vérification VIES du n° TVA intra (entreprise, n° UE hors France)
+    const viesResult = verifyForm.clientType === 'company' && verifyForm.vatNumber.trim()
+      ? await checkViesFor(verifyForm.vatNumber, verifyForm.country)
+      : null;
+    const viesInvalid = viesResult?.status === 'invalid';
 
     // Garde-fou croquis obligatoire pour formes non rectangle/carré (sauf bypass)
     if (!bypassSketchCheck) {
@@ -1582,6 +1701,14 @@ export default function QuotePanel({
       }
     }
 
+    // Garde-fou n° TVA intra absent de la VIES + TVA 0 % : pas d'exonération
+    // LIC possible → TVA du pays de livraison (pas de bypass).
+    if (viesInvalid && parseFloat(verifyForm.vatPercent || '0') === 0 && deliveryVatRate(verifyForm).rate !== undefined) {
+      console.log(`[QuotePanel] n° TVA intra ${viesResult?.vatNumber} absent de la VIES + TVA 0 % → popup VIES`);
+      setShowViesInvalidPopup(true);
+      return;
+    }
+
     // Garde-fou TVA=0 obligatoire quand n° TVA intra UE renseigné (LIC
     // art. 138 Directive 2006/112/CE). Sinon le client reçoit un devis
     // avec TVA nationale, alors qu'il aurait dû être exonéré → risque de
@@ -1591,7 +1718,7 @@ export default function QuotePanel({
       const isEuNonFr = EU_COUNTRIES_NON_FR.includes(countryUpper);
       const hasVatNumber = !!verifyForm.vatNumber.trim();
       const vatPercent = parseFloat(verifyForm.vatPercent || '0');
-      if (isEuNonFr && hasVatNumber && vatPercent !== 0) {
+      if (isEuNonFr && hasVatNumber && !viesInvalid && vatPercent !== 0) {
         console.log(`[QuotePanel] n° TVA intra ${verifyForm.vatNumber} + pays ${countryUpper} + TVA ${vatPercent}% → popup TVA devrait être 0`);
         setShowVatShouldBeZeroPopup(true);
         return;
@@ -1641,7 +1768,8 @@ export default function QuotePanel({
       // Pennylane exige MAJUSCULES + 2 lettres exactes → uppercase + slice(0,2).
       // N° TVA intra avec préfixe pays ajouté s'il manque (« B26629626 » →
       // « ESB26629626 ») : Pennylane refuse le numéro national seul.
-      const vatNumberNorm = normalizeVatNumber(f.vatNumber, f.country);
+      // N° absent de la VIES : pas envoyé (Pennylane le refuserait en 422).
+      const vatNumberNorm = viesInvalid ? '' : normalizeVatNumber(f.vatNumber, f.country);
       const rawCountry = vatNumberNorm.match(/^([A-Z]{2})/)?.[1] || f.country || 'FR';
       const country = String(rawCountry).toUpperCase().slice(0, 2);
 
@@ -1686,7 +1814,7 @@ export default function QuotePanel({
           name: f.clientType === 'company' ? f.companyName : undefined,
           email: f.email,
           phone: f.phone,
-          vatNumber: f.clientType === 'company' ? vatNumberNorm : undefined,
+          vatNumber: f.clientType === 'company' && vatNumberNorm ? vatNumberNorm : undefined,
           siret: f.clientType === 'company' && f.siret.trim() ? f.siret.replace(/\s+/g, '') : undefined,
           address: (f.street || f.postalCode || f.city) ? {
             street: f.street,
@@ -1722,7 +1850,7 @@ export default function QuotePanel({
       const freeTextLines: string[] = [];
       const isEuNonFr = EU_COUNTRIES_NON_FR.includes(country);
       const isHorsUE = country !== 'FR' && !isEuNonFr && country.length > 0;
-      if (vatPercent === 0 && isEuNonFr && f.vatNumber) {
+      if (vatPercent === 0 && isEuNonFr && vatNumberNorm) {
         freeTextLines.push('Exonération de TVA – Livraison intracommunautaire – article 262 ter I du CGI – article 138 de la directive 2006/112/CE.');
       } else if (vatPercent === 0 && isHorsUE) {
         freeTextLines.push('Exonération de TVA – exportation – article 262 I du CGI.');

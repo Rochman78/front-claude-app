@@ -35,3 +35,17 @@ export function normalizeVatNumber(raw: string | undefined | null, country?: str
   const prefix = vatPrefixForCountry(country);
   return prefix ? `${prefix}${s}` : s;
 }
+
+/** Taux normaux UE 2026 par code pays ISO (GR, pas EL). FR inclus. */
+export const EU_STANDARD_VAT_RATES: Record<string, number> = {
+  AT: 20, BE: 21, BG: 20, CY: 19, CZ: 21, DE: 19, DK: 25, EE: 24, ES: 21,
+  FI: 25.5, FR: 20, GR: 24, HR: 25, HU: 27, IE: 23, IT: 22, LT: 21, LU: 17,
+  LV: 21, MT: 18, NL: 21, PL: 23, PT: 23, RO: 21, SE: 25, SI: 22, SK: 23,
+};
+
+/** Code pays ISO depuis le préfixe d'un n° TVA intra normalisé (EL → GR), ou null hors UE. */
+export function countryFromVatNumber(vatNumber: string | undefined | null): string | null {
+  const prefix = String(vatNumber || '').slice(0, 2).toUpperCase();
+  if (!EU_VAT_PREFIXES.includes(prefix)) return null;
+  return prefix === 'EL' ? 'GR' : prefix;
+}

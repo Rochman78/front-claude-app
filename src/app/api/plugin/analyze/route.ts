@@ -9,6 +9,7 @@ import { dedupeRepeatedBlocks } from '@/lib/mailDedup';
 import { parseStandardsRows, findFamilySkus, canBeMadeToMeasure, STOCK_HORS_OCTOPIA, buildStockHorsOctopiaBlock, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 import { buildCatalogFactsBlock, buildIssuedQuoteBlock, detectStandardSkus } from '@/lib/services/promptFacts';
 import { extraireFilets, buildSurMesureBlock } from '@/lib/services/surMesureCalc';
+import { buildVatFactsBlock } from '@/lib/services/vatFacts';
 
 // Rappel final ajouté en queue de message user, juste avant que Claude
 // rédige. Position dictée par le "recency bias" des LLM : les instructions
@@ -177,6 +178,11 @@ export async function POST(req: NextRequest) {
           .then((filets) => buildSurMesureBlock(filets, grilleDoc.content, standardsForSm.content))
           .catch((err) => { console.warn('[plugin/analyze] calcul sur-mesure impossible (non bloquant):', err); return ''; })
       : Promise.resolve('');
+
+    // 5-ter. N° TVA intra hors France relevés dans le fil, vérifiés à la VIES
+    // (en parallèle des pré-passages ; cas cnv_1m5pll1z).
+    const vatFactsPromise: Promise<string> = buildVatFactsBlock(mailContent, storeCode)
+      .catch((err) => { console.warn('[plugin/analyze] vérification VIES impossible (non bloquant):', err); return ''; });
 
     // 5. Identifier les SKUs pertinents via Haiku + vérifier stock Octopia (non bloquant)
     let stockInfo = '';
@@ -436,6 +442,12 @@ Si le mail contient aussi un sujet SAV (retour, remboursement, échange, garanti
     if (surMesureBlock) {
       stockInfo += `\n\n${surMesureBlock}`;
       console.log('[plugin/analyze] bloc calcul sur-mesure injecté');
+    }
+
+    const vatFactsBlock = await vatFactsPromise;
+    if (vatFactsBlock) {
+      stockInfo += `\n\n${vatFactsBlock}`;
+      console.log('[plugin/analyze] bloc n° TVA intra (VIES) injecté');
     }
 
     // 6. Construire le message utilisateur avec le contexte mail + stock

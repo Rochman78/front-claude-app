@@ -43,6 +43,20 @@ export async function checkVies(raw: string, country?: string | null): Promise<V
   const hit = cache.get(vatNumber);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.result;
 
+  let result = await queryVies(vatNumber, prefix, national);
+  // Service du pays saturé (MS_MAX_CONCURRENT_REQ) ou lent : une 2e tentative.
+  if (result.status === 'unavailable') {
+    await new Promise((r) => setTimeout(r, 1000));
+    result = await queryVies(vatNumber, prefix, national);
+  }
+
+  console.log(`[vies] ${vatNumber} → ${result.status} (${result.code})`);
+  // On ne garde en cache que les réponses définitives.
+  if (result.status !== 'unavailable') cache.set(vatNumber, { at: Date.now(), result });
+  return result;
+}
+
+async function queryVies(vatNumber: string, prefix: string, national: string): Promise<ViesResult> {
   let result: ViesResult;
   try {
     const res = await fetch(`${VIES_URL}/${prefix}/vat/${encodeURIComponent(national)}`, {
@@ -62,9 +76,5 @@ export async function checkVies(raw: string, country?: string | null): Promise<V
   } catch (err) {
     result = { vatNumber, status: 'unavailable', code: err instanceof Error ? err.name : 'ERROR' };
   }
-
-  console.log(`[vies] ${vatNumber} → ${result.status} (${result.code})`);
-  // On ne garde en cache que les réponses définitives.
-  if (result.status !== 'unavailable') cache.set(vatNumber, { at: Date.now(), result });
   return result;
 }

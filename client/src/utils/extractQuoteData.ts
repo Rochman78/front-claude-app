@@ -678,9 +678,10 @@ export function getMissingFields(quote: ExtractedQuote): MissingField[] {
   if (!c.address?.postalCode) missing.push({ key: 'postalCode', label: 'Code postal' });
   if (!c.address?.city) missing.push({ key: 'city', label: 'Ville' });
 
-  // TVA intra obligatoire UNIQUEMENT si le client a fourni un numéro (2 lettres + chiffres)
+  // TVA intra obligatoire UNIQUEMENT si le client a fourni un numéro (2 lettres
+  // + caractères alphanumériques : un n° espagnol s'écrit ESB26629626)
   // Pas obligatoire pour les entreprises/associations qui n'en ont pas
-  if (c.type === 'company' && c.vatNumber && !/^[A-Z]{2}\d/.test(c.vatNumber)) {
+  if (c.type === 'company' && c.vatNumber && !/^[A-Z]{2}[0-9A-Z]{2,13}$/.test(c.vatNumber)) {
     missing.push({ key: 'vatNumber', label: 'N° TVA intracommunautaire (format invalide)' });
   }
 

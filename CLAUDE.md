@@ -289,6 +289,11 @@ front-claude-app/
 - `pennylaneService.normalizeVatRate()` normalise robustement (accepte nombre, format dégradé, casse mixte) → toujours passer par cette fonction côté serveur.
 - **Le code pays du vat_rate = pays de LIVRAISON**, jamais celui de facturation (juridiction fiscale OSS, cohérent avec la règle « TVA = pays de livraison »). Cas Antje Verhoeven-Helf 25/08/2026 (`cnv_1m169d07`, TAR) : facturation Düsseldorf DE + livraison Estellencs ES + TVA 21 % → code `DE_210` alors que DE n'a pas de taux 21 % → 400 trompeuse. Le bon code était `ES_210`. Fix dans `QuotePanel.tsx` : `deliveryCountry` est calculé AVANT `vatCode`. La variable `country` (facturation) reste utilisée pour l'adresse client Pennylane et les mentions LIC / exportation.
 
+### N° TVA intra — préfixe pays ajouté par le code (28/10/2026)
+- Pennylane refuse un n° sans préfixe pays (422 « VAT number is unregistered or has invalid format »). `normalizeVatNumber()` (`src/lib/vatNumber.ts`, copie `client/src/utils/vatNumber.ts`) nettoie et ajoute le préfixe du pays de facturation : « B26629626 » + ES → « ESB26629626 », Grèce = EL, hors UE inchangé. Appliqué dans extract-quote (après parsing), au pré-remplissage et à l'envoi de QuotePanel, et dans `createCustomer` (filet de sécurité).
+- Un 422 sur le n° TVA donne maintenant un message clair : n° absent de la VIES → pas d'exonération, vider le champ et appliquer la TVA du pays de livraison.
+- Cas déclencheur `cnv_1m5pll1z` (RED, Surf North Spain) : CIF donné seul. `ESB26629626` est en plus INVALIDE à la VIES (société espagnole non inscrite aux opérations intracommunautaires, fréquent en Espagne) → l'exonération LIC ne s'applique pas.
+
 ### Matching SKU dans extract-quote (`productMatch`) — 15/09/2026
 - Le SKU d'une ligne standard n'est JAMAIS écrit par Claude : il sort d'un lookup déterministe côté serveur (`findSkuByProductMatch`) sur 5 attributs (typologie / forme / matière / couleur / taille) comparés au `prix-ht-standards.txt` de la boutique.
 - **Le prompt liste les valeurs autorisées générées depuis le catalogue réel** (`buildProductMatchSpec`, catalogue chargé AVANT l'appel Claude). Les accessoires et échantillons y figurent ligne par ligne, à recopier telles quelles (`accessoire | kit de fixation | n/a | n/a | 1 pièce`). Ne pas revenir à une liste de valeurs écrite en dur : elle se désynchronise du catalogue.

@@ -293,6 +293,10 @@ front-claude-app/
 - Pennylane refuse un n° sans préfixe pays (422 « VAT number is unregistered or has invalid format »). `normalizeVatNumber()` (`src/lib/vatNumber.ts`, copie `client/src/utils/vatNumber.ts`) nettoie et ajoute le préfixe du pays de facturation : « B26629626 » + ES → « ESB26629626 », Grèce = EL, hors UE inchangé. Appliqué dans extract-quote (après parsing), au pré-remplissage et à l'envoi de QuotePanel, et dans `createCustomer` (filet de sécurité).
 - Un 422 sur le n° TVA donne maintenant un message clair : n° absent de la VIES → pas d'exonération, vider le champ et appliquer la TVA du pays de livraison.
 - Cas déclencheur `cnv_1m5pll1z` (RED, Surf North Spain) : CIF donné seul. `ESB26629626` est en plus INVALIDE à la VIES (société espagnole non inscrite aux opérations intracommunautaires, fréquent en Espagne) → l'exonération LIC ne s'applique pas.
+- **Vérification VIES (Charles 28/10/2026)** : pas de TVA 0 % LIC sans n° valide à la VIES. `viesService.checkVies()` (API REST publique de la Commission, timeout 8 s, cache 1 h des réponses définitives) + route `GET /api/plugin/vies-check?vat=`.
+  - extract-quote : n° UE hors FR d'une entreprise vérifié AVANT la conversion TTC → HT ; invalide + `vatPercent` 0 → taux normal du pays de livraison (`EU_STANDARD_VAT_RATES`) + warning ; renvoie `vies` au plugin.
+  - QuotePanel : badge sous le champ (valide + raison sociale / absent / indisponible). La TVA ne passe plus à 0 % à la frappe mais au blur, après la VIES (valide ou indisponible → 0 % ; absent → taux du pays de livraison). À la génération : popup bloquant SANS bypass si n° absent + TVA 0 %, n° absent jamais envoyé à Pennylane, pas de mention LIC.
+  - VIES indisponible (`MS_UNAVAILABLE`, timeout) = on ne conclut pas : ancien comportement (0 %) + alerte orange, contrôle manuel.
 
 ### Matching SKU dans extract-quote (`productMatch`) — 15/09/2026
 - Le SKU d'une ligne standard n'est JAMAIS écrit par Claude : il sort d'un lookup déterministe côté serveur (`findSkuByProductMatch`) sur 5 attributs (typologie / forme / matière / couleur / taille) comparés au `prix-ht-standards.txt` de la boutique.

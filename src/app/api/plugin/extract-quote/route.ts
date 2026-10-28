@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callClaude } from '@/lib/services/claudeService';
 import pool, { initDB } from '@/lib/db';
-import { normalizeVatNumber } from '@/lib/vatNumber';
+import { normalizeVatNumber, countryFromVatNumber, EU_STANDARD_VAT_RATES } from '@/lib/vatNumber';
+import { checkVies, type ViesResult } from '@/lib/services/viesService';
 
 /** Taux de TVA disponibles dans prix-ht-standards.txt (colonnes 4 à 15 des lignes) */
 const VAT_RATES = [0, 17, 18, 19, 20, 21, 22, 23, 24, 25, 25.5, 27];
@@ -657,6 +658,28 @@ Note : "deliveryAddress" doit être :
     //  - Taux TVA absent des 12 colonnes du fichier → fallback
     const warnings: string[] = [];
 
+    // Vérification VIES du n° TVA intra (entreprise UE hors France). Sans n°
+    // valide, pas d'exonération LIC : si Claude a mis 0 %, on repasse au taux
+    // du pays de livraison AVANT la conversion TTC → HT ci-dessous.
+    // Cas cnv_1m5pll1z (RED, 28/10/2026) : ESB26629626 absent de la VIES.
+    let vies: ViesResult | null = null;
+    const vatCountry = countryFromVatNumber(parsed?.customer?.vatNumber);
+    if (parsed?.customer?.type === 'company' && vatCountry && vatCountry !== 'FR') {
+      vies = await checkVies(parsed.customer.vatNumber);
+      if (vies.status === 'invalid' && parsed.vatPercent === 0) {
+        const deliveryCountry = String(
+          parsed.customer.deliveryAddress?.country || parsed.customer.billingAddress?.country || vatCountry
+        ).toUpperCase();
+        const rate = EU_STANDARD_VAT_RATES[deliveryCountry];
+        if (rate !== undefined) {
+          parsed.vatPercent = rate;
+          warnings.push(`N° TVA intra ${vies.vatNumber} absent du registre européen VIES : pas d'exonération, TVA passée de 0 % à ${rate} % (pays de livraison ${deliveryCountry}). Le n° ne sera pas envoyé à Pennylane.`);
+        }
+      } else if (vies.status === 'unavailable') {
+        warnings.push(`VIES indisponible : n° TVA intra ${vies.vatNumber} non vérifié. Contrôle-le sur ec.europa.eu/taxation_customs/vies avant de générer à 0 %.`);
+      }
+    }
+
     // Post-processing SUR-MESURE : la règle CLAUDE.md impose surface au dixième
     // de m² (« DIMENSIONS : on travaille UNIQUEMENT au dixième de mètre, jamais
     // plus fin »). Le prompt N°1 demande à Claude de calculer nombre × largeur
@@ -858,7 +881,7 @@ Note : "deliveryAddress" doit être :
       warnings.push(`Erreur interne lors de la vérification catalogue : ${(postErr as Error).message || postErr}. Prix conservés tels quels.`);
     }
 
-    return NextResponse.json({ ...parsed, warnings });
+    return NextResponse.json({ ...parsed, warnings, vies });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Erreur inconnue';
     console.error('[extract-quote] error:', message);

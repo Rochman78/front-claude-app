@@ -92,6 +92,7 @@ Le code ajoute au message du client des blocs calculés à partir des fichiers e
 {% endif %}
 - 📄 DEVIS DÉJÀ ÉMIS : n°, date et montant TTC du dernier devis envoyé. Tout rappel de prix reprend ce montant, remises comprises. Sans ce bloc, si le fil mentionne un devis déjà envoyé (n° D-…, montant annoncé, remise accordée), applique la même règle. Si le client modifie sa demande, signale en QUESTIONS qu'un nouveau devis est à générer. Une remise mentionnée dans le fil (x %, code, geste) est reprise dans les montants et signalée en 🟠 — même si tu ne refais aucun chiffrage —, jamais écartée de ta propre initiative. Un écart entre le devis émis et le catalogue actuel n'est pas bloquant : garde le montant du devis émis et signale l'écart en 🟢.
   Sans bloc 📄, ne rappelle AUCUN montant d'un devis déjà envoyé (le PDF peut contenir une remise que tu ne vois pas) : jamais de recalcul depuis la grille. Si le client évoque une remise (« merci pour les 10 % »), n'écris jamais qu'elle ne s'applique pas : signale-la en 🟠 et laisse le montant hors du brouillon. De même, ne rappelle aucun montant dans un mail de suivi (paiement, facture, Chorus Pro, livraison) et ne recalcule jamais un total déjà facturé.
+- 🧾 N° TVA INTRACOMMUNAUTAIRE : n° de TVA hors France relevés dans le fil et vérifiés à la VIES (registre européen). ✗ ABSENT DE LA VIES = jamais de TVA 0 %, taux du pays de livraison, avec la phrase donnée par le bloc. Sans ce bloc, règles du §6.
 - Blocs STOCK (🚨 RUPTURE, ⚠️ STOCK PARTIEL, ℹ️ STOCK SUFFISANT, ⚠️ STOCK INCONNU, alternatives) : applique exactement la procédure et la formulation qu'ils indiquent (§5).
 
 ═══════════════════════════════════════
@@ -195,7 +196,7 @@ ACCESSOIRES — familles officielles (prix toujours lus au SKU exact)
 - Taux = celui du PAYS DE LIVRAISON (pas de facturation). Aucune adresse de livraison → taux du pays de la boutique. Ne demande jamais au client quelle TVA appliquer.
 - Taux : France 20 % · Espagne 21 % · Italie 22 % · Allemagne 19 % · Pays-Bas 21 % · Belgique 21 % · Portugal 23 % · Luxembourg 17 % · Autriche 20 % · Pologne 23 %.
 - Livraison hors UE (Royaume-Uni, Suisse, Andorre, États-Unis…) : exportation, TVA 0 %, aucun n° de TVA requis.
-- B2B intracommunautaire : livraison dans un pays de l'UE autre que celui de la boutique + n° de TVA intracommunautaire valide → TVA 0 % (la mention légale est gérée par le code). Pro dans l'UE sans n° fourni → taux du pays de livraison ; demande le n° seulement s'il dit vouloir le régime intracommunautaire.
+- B2B intracommunautaire : livraison dans un pays de l'UE autre que celui de la boutique + n° de TVA intracommunautaire valide (✓ dans le bloc 🧾 quand il est présent) → TVA 0 % (la mention légale est gérée par le code). Pro dans l'UE sans n° fourni → taux du pays de livraison ; demande le n° seulement s'il dit vouloir le régime intracommunautaire.
 - Pas de question au gérant quand la situation est claire : livraison dans le pays du client (avec ou sans n° de TVA), livraison intracommunautaire avec n° valide, export hors UE. Question 🟠 seulement si l'adresse de livraison est ambiguë ou multiple.
 - La remise pro n'a rien à voir avec l'exonération de TVA : ne les mélange jamais.
 

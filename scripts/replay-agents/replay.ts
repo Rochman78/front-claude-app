@@ -35,6 +35,7 @@ import { buildMessages, buildSystemBlock } from '../../src/lib/services/claudeSe
 import { buildDocumentsText } from '../../src/lib/documentSelector';
 import { extraireFilets, buildSurMesureBlock } from '../../src/lib/services/surMesureCalc';
 import { detectStandardSkus, buildCatalogFactsBlock } from '../../src/lib/services/promptFacts';
+import { buildVatFactsBlock } from '../../src/lib/services/vatFacts';
 
 // ─── env ──────────────────────────────────────────────────────────
 const envPath = join(process.cwd(), '.env');
@@ -57,6 +58,8 @@ const WITH_SM = args.includes('--sur-mesure');
 // --prix : recalcule le bloc « 💶 PRIX CATALOGUE EXACTS » (pré-passage SKU partagé
 // avec analyze) — les messages stockés avant le 28/09 ne l'ont pas.
 const WITH_PRIX = args.includes('--prix');
+// --tva : recalcule le bloc « 🧾 N° TVA INTRA » (n° relevés + VIES, vatFacts.ts)
+const WITH_TVA = args.includes('--tva');
 
 // Cas documentés dans CLAUDE.md (erreurs passées connues)
 const DEFAULT_CASES = [
@@ -218,6 +221,10 @@ async function main() {
         insertBlock(block);
         console.log(`📐 ${c.cnv} : bloc sur-mesure injecté\n${block.split('\n').slice(3, -4).join('\n')}`);
       }
+    }
+    if (WITH_TVA && !userMsg.includes('🧾 N° TVA INTRACOMMUNAUTAIRE')) {
+      const block = await buildVatFactsBlock(c.user, c.store);
+      if (block) { insertBlock(block); console.log(`🧾 ${c.cnv} : ${block.split('\n').filter((l) => l.startsWith('  • ')).join(' | ')}`); }
     }
     for (const cfg of configs) {
       const t0 = Date.now();

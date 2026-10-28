@@ -54,6 +54,7 @@ import { getConversationImages } from '@/lib/services/frontappService';
 import { getStockBySkuList } from '@/lib/services/octopiaService';
 import { buildCatalogFactsBlock, buildIssuedQuoteBlock, detectStandardSkus } from '@/lib/services/promptFacts';
 import { extraireFilets, buildSurMesureBlock } from '@/lib/services/surMesureCalc';
+import { buildVatFactsBlock } from '@/lib/services/vatFacts';
 import { parseStandardsRows, findFamilySkus, STOCK_HORS_OCTOPIA, buildStockHorsOctopiaBlock, type CatalogRow } from '@/lib/services/stockFamilyExpansion';
 
 /**
@@ -244,6 +245,16 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.warn('[plugin/message] calcul sur-mesure impossible (non bloquant):', err);
       }
+    }
+
+    // N° TVA intra hors France vérifiés à la VIES, sur tout l'historique (le
+    // n° figure souvent dans le premier mail) + le message du gérant.
+    try {
+      const vatContext = history.map((m) => m.content).join('\n') + '\n' + message;
+      const vatBlock = await buildVatFactsBlock(vatContext, agent.store_code);
+      if (vatBlock) stockInfo += `\n\n${vatBlock}`;
+    } catch (err) {
+      console.warn('[plugin/message] vérification VIES impossible (non bloquant):', err);
     }
 
     const messages = [
